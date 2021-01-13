@@ -13,3 +13,7 @@ val to_string : t -> string
 val string_of_exp : exp -> string
 
 val string_of_prim : prim -> string
+
+val opt : t -> t
+
+val interp : ?read:int option -> t -> int
