@@ -39,11 +39,9 @@ and opt_exp = function
   | Prim (Plus (e1, e2)) -> (
     match (opt_exp e1, opt_exp e2) with
     | Int i1, Prim (Minus (Int i2)) -> Int (i1 - i2)
-    | Int i1, Prim (Plus (Int i2, e2)) ->
+    | Int i1, Prim (Plus (Int i2, e2)) | Prim (Plus (Int i1, e2)), Int i2 ->
         opt_exp (Prim (Plus (Int (i1 + i2), e2)))
     | Prim (Minus (Int i1)), Int i2 -> Int (-i1 + i2)
-    | Prim (Plus (Int i1, e2)), Int i2 ->
-        opt_exp (Prim (Plus (Int (i1 + i2), e2)))
     | e1, e2 -> Prim (Plus (e1, e2)) )
 
 let rec interp ?(read = None) = function
