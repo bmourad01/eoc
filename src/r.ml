@@ -83,3 +83,38 @@ and interp_prim ?(read = None) env = function
     | None -> read_int () )
   | Minus e -> -interp_exp env e ~read
   | Plus (e1, e2) -> interp_exp env e1 ~read + interp_exp env e2 ~read
+
+let rec uniquify = function
+  | Program (info, e) ->
+      let _, e = uniquify_exp String.Map.empty e in
+      Program (info, e)
+
+and uniquify_exp m = function
+  | Int _ as i -> (m, i)
+  | Prim p ->
+      let _, p = uniquify_prim m p in
+      (m, Prim p)
+  | Var v -> (
+    match Map.find m v with
+    | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
+    | Some n -> (m, Var (Printf.sprintf "%s.%d" v n)) )
+  | Let (v, e1, e2) ->
+      let n =
+        match Map.find m v with
+        | None -> 1
+        | Some n -> n + 1
+      in
+      let m' = Map.set m v n in
+      let m', e1 = uniquify_exp m' e1 in
+      let _, e2 = uniquify_exp m' e2 in
+      (m, Let (Printf.sprintf "%s.%d" v n, e1, e2))
+
+and uniquify_prim m = function
+  | Read -> (m, Read)
+  | Minus e ->
+      let _, e = uniquify_exp m e in
+      (m, Minus e)
+  | Plus (e1, e2) ->
+      let _, e1 = uniquify_exp m e1 in
+      let _, e2 = uniquify_exp m e2 in
+      (m, Plus (e1, e2))

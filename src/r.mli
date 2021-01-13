@@ -19,3 +19,5 @@ val string_of_prim : prim -> string
 val opt : t -> t
 
 val interp : ?read:int option -> t -> int
+
+val uniquify : t -> t
