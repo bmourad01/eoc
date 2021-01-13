@@ -56,7 +56,7 @@ and opt_exp env = function
     | e1, e2 -> Prim (Plus (e1, e2)) )
   | Var v -> (
     match Map.find env v with
-    | None -> failwith ("opt_exp: var " ^ v ^ " is not bound")
+    | None -> failwith ("R.opt_exp: var " ^ v ^ " is not bound")
     | Some e -> e )
   | Let (v, e1, e2) ->
       let e1 = opt_exp env e1 in
@@ -72,7 +72,7 @@ and interp_exp ?(read = None) env = function
   | Prim p -> interp_prim env p ~read
   | Var v -> (
     match Map.find env v with
-    | None -> failwith ("interp_exp: var " ^ v ^ " is not bound")
+    | None -> failwith ("R.interp_exp: var " ^ v ^ " is not bound")
     | Some e -> e )
   | Let (v, e1, e2) ->
       let e1 = interp_exp env e1 ~read in
