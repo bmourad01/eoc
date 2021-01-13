@@ -62,8 +62,6 @@ and opt_exp env = function
       let e1 = opt_exp env e1 in
       opt_exp (Map.set env v e1) e2
 
-exception Interp_error of string
-
 let rec interp ?(read = None) = function
   | Program (_, exp) -> interp_exp empty_env exp ~read
 
