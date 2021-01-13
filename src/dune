@@ -1,0 +1,16 @@
+(ocamllex r_lexer)
+
+(menhir
+ (modules r_parser)
+ (flags --explain))
+
+(library
+ (name eoc)
+ (public_name eoc)
+ (flags -w -33)
+ (libraries core_kernel)
+ (modes byte native)
+ (preprocess (pps ppx_compare
+                  ppx_hash
+                  ppx_let
+                  ppx_sexp_conv)))

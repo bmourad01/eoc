@@ -1,0 +1,5 @@
+(executables
+ (names parse_r)
+ (flags -w -33)
+ (modes byte native)
+ (libraries core_kernel eoc))

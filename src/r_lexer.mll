@@ -1,0 +1,30 @@
+{
+  open Lexing
+  open R_parser
+  
+  exception Syntax_error of string
+
+  let newline lexbuf =
+    let pos = lexbuf.lex_curr_p in
+    lexbuf.lex_curr_p <-
+      {pos with pos_lnum= pos.pos_lnum + 1; pos_bol = pos.pos_cnum}
+}
+
+let space = [' ' '\t' '\n' '\r']
+let digit = ['0'-'9']
+let alpha = ['a'-'z' 'A'-'Z']
+let ident = ['a'-'z'] (alpha | '_' | '-' | '\'' | digit)*
+let integer = digit+
+
+rule token = parse
+  | '\n' { newline lexbuf; token lexbuf }
+  | space { token lexbuf }
+  | '+' { PLUS }
+  | '-' { MINUS }
+  | '(' { LPAREN }
+  | ')' { RPAREN }
+  | "read" { READ }
+  | eof { EOF }
+  | integer as n { INT (int_of_string n) }
+  | ident as id { VAR id }
+  | _ { raise Error }

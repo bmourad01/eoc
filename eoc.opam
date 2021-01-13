@@ -1,0 +1,18 @@
+opam-version: "2.0.7"
+version: "0.1"
+maintainer: "Benjamin_Mourad@student.uml.edu"
+authors: ["Benjamin Mourad"]
+license: "GPLv3"
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
+depends: [
+  "dune" {>= "2.7.1"}
+  "core_kernel" {>= "0.14.0"}
+  "menhir"
+  "ocaml" {>= "4.08"}
+  "ppx_compare"
+  "ppx_hash"
+  "ppx_let"
+  "stdio" {>= "0.14.0"}
+]
