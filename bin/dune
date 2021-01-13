@@ -1,5 +1,5 @@
 (executables
- (names parse_r opt_r interp_r uniquify_r)
+ (names parse_r opt_r interp_r uniquify rco)
  (flags -w -33)
  (modes byte native)
  (libraries core_kernel eoc))
