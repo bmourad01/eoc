@@ -16,16 +16,16 @@ and stmt = Assign of var * exp
 
 and exp = Atom of atom | Prim of prim
 
-and atom = Int of int | Var of var
+and atom = R_anf.atom
 
-and prim = Read | Minus of atom | Plus of atom * atom
+and prim = R_anf.prim
 
 let rec to_string = function
   | Program (_, tails) ->
       let tls =
         Map.to_alist tails
         |> List.map ~f:(fun (l, t) ->
-               Printf.sprintf "(%s:\n  %s)\n" l (string_of_tail t))
+               Printf.sprintf "(%s:\n  %s)" l (string_of_tail t))
         |> String.concat ~sep:"\n"
       in
       Printf.sprintf "(%s)" tls
@@ -95,3 +95,20 @@ and interp_prim ?(read = None) env = function
     | None -> read_int () )
   | Minus a -> interp_atom env a
   | Plus (a1, a2) -> interp_atom env a1 + interp_atom env a2
+
+let start_label = "_start"
+
+let rec explicate_control = function
+  | R_anf.Program (_, e) ->
+      let info = {main= start_label} in
+      let tail = explicate_control_tail e in
+      Program (info, String.Map.singleton start_label tail)
+
+and explicate_control_tail = function
+  | R_anf.(Atom a) -> Return (Atom a)
+  | R_anf.(Prim p) -> Return (Prim p)
+  | R_anf.(Let (v, e1, e2)) -> (
+    match e1 with
+    | R_anf.(Atom a) -> Seq (Assign (v, Atom a), explicate_control_tail e2)
+    | R_anf.(Prim p) -> Seq (Assign (v, Prim p), explicate_control_tail e2)
+    | _ -> failwith "C.explicate_control_tail: expected atom or prim" )
