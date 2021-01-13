@@ -105,7 +105,7 @@ and uniquify_exp m = function
         | Some n -> n + 1
       in
       let m' = Map.set m v n in
-      let m', e1 = uniquify_exp m' e1 in
+      let _, e1 = uniquify_exp m' e1 in
       let _, e2 = uniquify_exp m' e2 in
       (m, Let (Printf.sprintf "%s.%d" v n, e1, e2))
 
