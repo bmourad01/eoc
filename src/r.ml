@@ -54,10 +54,15 @@ and opt_exp env = function
         opt_exp env (Prim (Plus (Int (i1 + i2), e2)))
     | Prim (Minus (Int i1)), Int i2 -> Int (-i1 + i2)
     | e1, e2 -> Prim (Plus (e1, e2)) )
-  | Var v -> Map.find_exn env v
+  | Var v -> (
+    match Map.find env v with
+    | None -> failwith ("opt_exp: var " ^ v ^ " is not bound")
+    | Some e -> e )
   | Let (v, e1, e2) ->
       let e1 = opt_exp env e1 in
       opt_exp (Map.set env v e1) e2
+
+exception Interp_error of string
 
 let rec interp ?(read = None) = function
   | Program (_, exp) -> interp_exp empty_env exp ~read
@@ -65,7 +70,10 @@ let rec interp ?(read = None) = function
 and interp_exp ?(read = None) env = function
   | Int i -> i
   | Prim p -> interp_prim env p ~read
-  | Var v -> Map.find_exn env v
+  | Var v -> (
+    match Map.find env v with
+    | None -> failwith ("interp_exp: var " ^ v ^ " is not bound")
+    | Some e -> e )
   | Let (v, e1, e2) ->
       let e1 = interp_exp env e1 ~read in
       interp_exp (Map.set env v e1) e2 ~read
