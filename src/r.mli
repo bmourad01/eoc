@@ -2,9 +2,11 @@ open Core_kernel
 
 type info = unit
 
+type var = string
+
 type t = Program of info * exp
 
-and exp = Int of int | Prim of prim
+and exp = Int of int | Prim of prim | Var of var | Let of var * exp * exp
 
 and prim = Read | Minus of exp | Plus of exp * exp
 

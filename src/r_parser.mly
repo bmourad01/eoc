@@ -6,8 +6,8 @@
 %token <int> INT
 %token <string> VAR
 %token PLUS MINUS
-%token LPAREN RPAREN
-%token READ
+%token LPAREN RPAREN LSQUARE RSQUARE
+%token READ LET
 
 %start prog
 %type <R.t> prog
@@ -23,6 +23,10 @@ exp:
     { Int $1 }
   | prim
     { Prim $1 }
+  | VAR
+    { Var $1 }
+  | LPAREN LET LPAREN LSQUARE v = VAR e1 = exp RSQUARE RPAREN e2 = exp RPAREN
+    { Let (v, e1, e2) }
 
 prim:
   | LPAREN READ RPAREN
