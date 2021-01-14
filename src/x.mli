@@ -82,3 +82,7 @@ val assign_homes : t -> t
 (* fix instructions where there is more than one memory operand *)
 
 val patch_instructions : t -> t
+
+(* uncover the live-after sets for each block *)
+
+val uncover_live : t -> t

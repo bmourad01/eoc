@@ -6,7 +6,8 @@
         resolve_complex
         explicate_control
         select_instructions
-        assign_homes)
+        assign_homes
+        uncover_live)
  (flags -w -33)
  (modes byte native)
  (libraries core_kernel eoc))

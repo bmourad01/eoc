@@ -345,21 +345,53 @@ and patch_instructions_instr = function
 let caller_save_set =
   List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
 
-let write_set = function
-  | ADD (a, _) | SUB (a, _) | NEG a | MOV (a, _) -> Args.singleton a
-  | CALL _ -> Set.add caller_save_set (Reg RSP)
-  | PUSH _ | RET -> Args.singleton (Reg RSP)
-  | POP a -> Args.of_list [a; Reg RSP]
-  | JMP _ -> Args.empty
+let filter_regs_and_temp_vars =
+  Set.filter ~f:(function
+    | Arg.Reg _ -> true
+    | Arg.Var v -> is_temp_var_name v
+    | _ -> false)
 
-let read_set = function
-  | ADD (a1, a2) | SUB (a1, a2) -> Args.of_list [a1; a2]
-  | NEG a | MOV (_, a) -> Args.singleton a
-  | CALL (_, arity) ->
-      List.take Reg.arg_passing arity
-      |> List.map ~f:(fun r -> Arg.Reg r)
-      |> List.append [Arg.Reg RSP]
-      |> Args.of_list
-  | PUSH a -> Args.of_list [a; Reg RSP]
-  | POP _ | RET -> Args.singleton (Reg RSP)
-  | JMP _ -> Args.empty
+let write_set instr =
+  let aux = function
+    | ADD (a, _) | SUB (a, _) | NEG a | MOV (a, _) -> Args.singleton a
+    | CALL _ -> Set.add caller_save_set (Reg RSP)
+    | PUSH _ | RET -> Args.singleton (Reg RSP)
+    | POP a -> Args.of_list [a; Reg RSP]
+    | JMP _ -> Args.empty
+  in
+  aux instr |> filter_regs_and_temp_vars
+
+let read_set instr =
+  let aux = function
+    | ADD (a1, a2) | SUB (a1, a2) -> Args.of_list [a1; a2]
+    | NEG a | MOV (_, a) -> Args.singleton a
+    | CALL (_, arity) ->
+        List.take Reg.arg_passing arity
+        |> List.map ~f:(fun r -> Arg.Reg r)
+        |> List.append [Arg.Reg RSP]
+        |> Args.of_list
+    | PUSH a -> Args.of_list [a; Reg RSP]
+    | POP _ | RET -> Args.singleton (Reg RSP)
+    | JMP _ -> Args.empty
+  in
+  aux instr |> filter_regs_and_temp_vars
+
+let rec uncover_live = function
+  | Program (info, blocks) ->
+      let blocks = Map.map blocks ~f:uncover_live_block in
+      Program (info, blocks)
+
+and uncover_live_block = function
+  | Block (label, info, instrs) ->
+      let live_after, _ =
+        List.fold_right instrs
+          ~init:([], [Args.of_list [Reg RAX; Reg RSP]])
+          ~f:(fun instr (live_after, live_before) ->
+            let live_before' = List.hd_exn live_before in
+            let live_after' = live_before' in
+            let w = write_set instr in
+            let r = read_set instr in
+            let live_before'' = Set.(union (diff live_after' w) r) in
+            (live_after' :: live_after, live_before'' :: live_before))
+      in
+      Block (label, {live_after}, instrs)
