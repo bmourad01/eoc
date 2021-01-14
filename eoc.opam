@@ -11,6 +11,7 @@ depends: [
   "core_kernel" {>= "0.14.0"}
   "menhir"
   "ocaml" {>= "4.08"}
+  "ocamlgraph" {>= "2.0.0"}
   "ppx_compare"
   "ppx_hash"
   "ppx_let"

@@ -8,7 +8,9 @@
  (name eoc)
  (public_name eoc)
  (flags -w -33)
- (libraries core_kernel)
+ (libraries core_kernel
+            core_kernel.pairing_heap
+            ocamlgraph)
  (modes byte native)
  (preprocess (pps ppx_compare
                   ppx_hash

@@ -2,7 +2,7 @@ open Core_kernel
 
 type info = unit
 
-type var = string [@@deriving equal, compare, sexp]
+type var = string [@@deriving equal, compare, hash, sexp]
 
 type 'a var_env = 'a String.Map.t
 

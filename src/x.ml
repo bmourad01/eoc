@@ -8,8 +8,6 @@ let empty_label_map = C.empty_label_map
 
 let word_size = 8
 
-type info = {main: label; locals_types: R.type_env; stack_space: int}
-
 module Reg = struct
   type t =
     | RSP
@@ -28,7 +26,7 @@ module Reg = struct
     | R13
     | R14
     | R15
-  [@@deriving equal, compare, sexp]
+  [@@deriving equal, compare, hash, sexp]
 
   let to_string = function
     | RSP -> "rsp"
@@ -68,7 +66,7 @@ module Arg = struct
       | Reg of Reg.t
       | Deref of Reg.t * int
       | Var of R.var
-    [@@deriving equal, compare, sexp]
+    [@@deriving equal, compare, hash, sexp]
 
     let to_string = function
       | Imm i -> Int.to_string i
@@ -86,6 +84,14 @@ module Arg = struct
 end
 
 module Args = Set.Make (Arg)
+module Arg_map = Map.Make (Arg)
+module Interference_graph = Graph.Persistent.Graph.Concrete (Arg)
+
+type info =
+  { main: label
+  ; locals_types: R.type_env
+  ; stack_space: int
+  ; conflicts: Interference_graph.t }
 
 type t = Program of info * blocks
 
@@ -190,7 +196,12 @@ let rec select_instructions = function
             in
             Map.set blocks label (Block (label, block_info, instrs)))
       in
-      let info = {main= info.main; locals_types; stack_space} in
+      let info =
+        { main= info.main
+        ; locals_types
+        ; stack_space
+        ; conflicts= Interference_graph.empty }
+      in
       Program (info, blocks)
 
 and select_instructions_tail t =
@@ -258,6 +269,9 @@ and select_instructions_stmt s =
       (a, [MOV (a, Var v1); ADD (a, Var v2)])
 
 let is_temp_var_name = String.is_prefix ~prefix:"%"
+
+let caller_save_set =
+  List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
 
 let rec assign_homes = function
   | Program (info, blocks) ->
@@ -340,16 +354,13 @@ and patch_instructions_instr = function
       [MOV (Reg RAX, d2); SUB (d1, Reg RAX)]
   | MOV ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
+  | MOV (a1, a2) when Arg.equal a1 a2 -> []
   | instr -> [instr]
 
-let caller_save_set =
-  List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
-
-let filter_regs_and_temp_vars =
+let filter_non_locations =
   Set.filter ~f:(function
-    | Arg.Reg _ -> true
-    | Arg.Var v -> is_temp_var_name v
-    | _ -> false)
+    | Arg.Imm _ -> false
+    | _ -> true)
 
 let write_set instr =
   let aux = function
@@ -359,7 +370,7 @@ let write_set instr =
     | POP a -> Args.of_list [a; Reg RSP]
     | JMP _ -> Args.empty
   in
-  aux instr |> filter_regs_and_temp_vars
+  aux instr |> filter_non_locations
 
 let read_set instr =
   let aux = function
@@ -374,7 +385,7 @@ let read_set instr =
     | POP _ | RET -> Args.singleton (Reg RSP)
     | JMP _ -> Args.empty
   in
-  aux instr |> filter_regs_and_temp_vars
+  aux instr |> filter_non_locations
 
 let rec uncover_live = function
   | Program (info, blocks) ->
@@ -395,3 +406,116 @@ and uncover_live_block = function
             (live_after' :: live_after, live_before'' :: live_before))
       in
       Block (label, {live_after}, instrs)
+
+let rec build_interference = function
+  | Program (info, blocks) ->
+      let conflicts =
+        let init = Interference_graph.empty in
+        Map.fold blocks ~init ~f:(fun ~key:_ ~data:block g ->
+            build_interference_block g block)
+      in
+      Program ({info with conflicts}, blocks)
+
+and build_interference_block g = function
+  | Block (_, info, instrs) ->
+      List.zip_exn info.live_after instrs
+      |> List.fold ~init:g ~f:(fun g (la, instr) ->
+             let w = write_set instr in
+             Set.fold la ~init:g ~f:(fun g v ->
+                 match instr with
+                 | MOV (d, s) ->
+                     if Arg.(equal v d || equal v s) then g
+                     else Interference_graph.add_edge g v d
+                 | _ ->
+                     Set.fold w ~init:g ~f:(fun g d ->
+                         if Arg.equal v d then g
+                         else Interference_graph.add_edge g v d)))
+
+let color_graph g =
+  let colors =
+    Interference_graph.fold_vertex
+      (fun v colors ->
+        match v with
+        | Reg RAX -> Map.set colors v (-1)
+        | Reg RSP -> Map.set colors v (-2)
+        | _ -> colors)
+      g Arg_map.empty
+  in
+  let cmp (_, n) (_, m) = Int.compare m n in
+  let q = Pairing_heap.create ~cmp () in
+  Interference_graph.iter_vertex
+    (fun v -> Pairing_heap.add q (v, Interference_graph.in_degree g v))
+    g;
+  let rec loop colors =
+    match Pairing_heap.pop q with
+    | None -> colors
+    | Some (u, _) -> (
+      match u with
+      | Arg.Var _ ->
+          let assigned =
+            Interference_graph.fold_succ
+              (fun v assigned ->
+                match v with
+                | Arg.Var _ -> (
+                  match Map.find colors v with
+                  | None -> assigned
+                  | Some c -> Set.add assigned c )
+                | _ -> assigned)
+              g u Int.Set.empty
+          in
+          let c =
+            match Set.max_elt assigned with
+            | None -> 0
+            | Some c -> c + 1
+          in
+          loop (Map.set colors u c)
+      | _ -> loop colors )
+  in
+  loop colors
+
+let allocatable_regs =
+  [| Arg.Reg RBX
+   ; Arg.Reg RDX
+   ; Arg.Reg RSI
+   ; Arg.Reg RDI
+   ; Arg.Reg R8
+   ; Arg.Reg R9
+   ; Arg.Reg R10
+   ; Arg.Reg R12
+   ; Arg.Reg R13
+   ; Arg.Reg R14 |]
+
+let color_arg colors = function
+  | Arg.Var v as a when is_temp_var_name v -> (
+    match Map.find colors a with
+    | Some c when c >= 0 && c < Array.length allocatable_regs ->
+        allocatable_regs.(c)
+    | _ -> a )
+  | a -> a
+
+let rec allocate_registers p =
+  match uncover_live p |> build_interference with
+  | Program (info, blocks) ->
+      let colors = color_graph info.conflicts in
+      let blocks = Map.map blocks ~f:(allocate_registers_block colors) in
+      Program (info, blocks)
+
+and allocate_registers_block colors = function
+  | Block (label, info, instrs) ->
+      let instrs =
+        List.fold instrs ~init:[] ~f:(fun instrs instr ->
+            let instr = allocate_registers_instr colors instr in
+            instr :: instrs)
+      in
+      Block (label, info, List.rev instrs)
+
+and allocate_registers_instr colors = function
+  | ADD (a1, a2) -> ADD (color_arg colors a1, color_arg colors a2)
+  | SUB (a1, a2) -> SUB (color_arg colors a1, color_arg colors a2)
+  | NEG a -> NEG (color_arg colors a)
+  | MOV (a1, a2) -> MOV (color_arg colors a1, color_arg colors a2)
+  | CALL _ as c -> c
+  | PUSH a -> PUSH (color_arg colors a)
+  | POP a -> POP (color_arg colors a)
+  | RET -> RET
+  | JMP _ as j -> j
