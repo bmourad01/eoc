@@ -9,7 +9,7 @@ let () =
           (uncover_live
              (select_instructions
                 (C.explicate_control
-                   (R_anf.resolve_complex R.(uniquify (opt prog))))))))
+                   (R_anf.resolve_complex R.(uniquify prog)))))))
   in
   let colors = Eoc.X.(color_graph info.conflicts) in
   Map.iteri colors ~f:(fun ~key ~data ->
