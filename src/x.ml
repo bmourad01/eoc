@@ -102,11 +102,11 @@ let rec select_instructions = function
         Map.fold tails ~init:String.Map.empty
           ~f:(fun ~key:label ~data:tail blocks ->
             Map.set blocks label
-              (Block (label, select_instruction_tail tail |> snd)))
+              (Block (label, select_instructions_tail tail |> snd)))
       in
       Program ({main= info.main}, blocks)
 
-and select_instruction_tail = function
+and select_instructions_tail = function
   | C.Return (Atom (Int i)) ->
       let a = Reg RAX in
       (a, [MOV (a, Imm i); RET])
@@ -133,11 +133,11 @@ and select_instruction_tail = function
       let a = Reg RAX in
       (a, [MOV (a, Var v1); ADD (a, Var v2); RET])
   | C.Seq (s, t) ->
-      let _, s = select_instruction_stmt s in
-      let a, t = select_instruction_tail t in
+      let _, s = select_instructions_stmt s in
+      let a, t = select_instructions_tail t in
       (a, s @ t)
 
-and select_instruction_stmt = function
+and select_instructions_stmt = function
   | C.Assign (v, Atom (Int i)) ->
       let a = Var v in
       (a, [MOV (a, Imm i)])
