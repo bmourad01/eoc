@@ -74,10 +74,10 @@ module Arg = struct
       | Imm i -> Int.to_string i
       | Reg r -> Reg.to_string r
       | Deref (r, i) ->
-          if i = 0 then Printf.sprintf "[%s]" (Reg.to_string r)
+          if i = 0 then Printf.sprintf "qword [%s]" (Reg.to_string r)
           else if i < 0 then
-            Printf.sprintf "[%s - %d]" (Reg.to_string r) (-i)
-          else Printf.sprintf "[%s + %d]" (Reg.to_string r) i
+            Printf.sprintf "qword [%s - %d]" (Reg.to_string r) (-i)
+          else Printf.sprintf "qword [%s + %d]" (Reg.to_string r) i
       | Var v -> v
   end
 

@@ -96,7 +96,7 @@ and interp_prim ?(read = None) env = function
   | Minus a -> interp_atom env a
   | Plus (a1, a2) -> interp_atom env a1 + interp_atom env a2
 
-let start_label = "_start"
+let start_label = "main"
 
 let rec type_check_cvar = function
   | Program (info, tails) ->

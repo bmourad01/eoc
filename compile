@@ -1,0 +1,17 @@
+#!/bin/sh
+
+set -e
+
+INPROG=$1
+DIR="./output/"
+PROG="$(basename ${INPROG})"
+PROGNAME="${PROG%.*}"
+ASMFILE="${DIR}${PROGNAME}.S"
+OBJFILE="${DIR}${PROGNAME}.o"
+RUNTIMEOBJ="${DIR}runtime.o"
+
+mkdir -p $DIR
+dune exec bin/assign_homes.exe $1 > $ASMFILE
+nasm -f elf64 -o $OBJFILE $ASMFILE
+gcc -no-pie -c runtime/runtime.c -o $RUNTIMEOBJ
+gcc -no-pie -o "${DIR}$PROGNAME" $OBJFILE $RUNTIMEOBJ
