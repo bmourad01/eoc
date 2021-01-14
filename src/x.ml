@@ -175,7 +175,10 @@ let rec select_instructions = function
           ~f:(fun ~key:label ~data:tail blocks ->
             let instrs = select_instructions_tail tail |> snd in
             let instrs =
-              if String.equal label info.main then
+              if
+                String.equal label info.main
+                && not (Map.is_empty locals_types)
+              then
                 function_prologue stack_space
                 @ insert_function_epilogue label stack_space instrs
               else instrs
