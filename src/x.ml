@@ -110,7 +110,9 @@ and arg = Arg.t
 
 let read_int = "read_int"
 
-let externs = [read_int]
+let print_int = "print_int"
+
+let externs = [read_int; print_int]
 
 let rec to_string = function
   | Program (info, blocks) ->
@@ -160,7 +162,10 @@ let insert_function_epilogue label stack_space instrs =
         failwith
           ( "X.insert_function_epilogue: block " ^ label
           ^ " is not well-formed" )
-    | RET :: _ -> List.rev acc @ epilogue @ [RET]
+    | RET :: _ ->
+        List.rev acc
+        @ [MOV (Reg RDI, Reg RAX); CALL (print_int, 1)]
+        @ epilogue @ [RET]
     | instr :: rest -> aux (instr :: acc) rest
   in
   aux [] instrs
