@@ -7,7 +7,7 @@ build: [
   ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
-  "dune" {>= "2.7.1"}
+  "dune" {>= "2.8.0"}
   "core_kernel" {>= "0.14.0"}
   "menhir"
   "ocaml" {>= "4.08"}

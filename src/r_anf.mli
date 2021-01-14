@@ -5,7 +5,12 @@ type info = R.info
 type var = R.var
 
 (* the R language in A-normal form,
- * equivalent to continuation-passing style (CPS) *)
+ * equivalent to continuation-passing style (CPS).
+ *
+ * we use a separate module for this language,
+ * instead of just using R, because the type
+ * system will guarantee that the program
+ * has the ANF structure. *)
 
 type t = Program of info * exp
 

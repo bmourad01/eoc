@@ -31,8 +31,6 @@ let read_int () =
   Out_channel.(flush stdout);
   Int.of_string In_channel.(input_line_exn stdin)
 
-type env = exp String.Map.t
-
 let empty_env = String.Map.empty
 
 let rec opt = function
