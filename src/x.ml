@@ -485,37 +485,60 @@ let allocatable_regs =
    ; Arg.Reg R13
    ; Arg.Reg R14 |]
 
-let color_arg colors = function
+let color_arg colors vars = function
   | Arg.Var v as a when is_temp_var_name v -> (
     match Map.find colors a with
     | Some c when c >= 0 && c < Array.length allocatable_regs ->
-        allocatable_regs.(c)
-    | _ -> a )
-  | a -> a
+        (allocatable_regs.(c), Set.add vars v)
+    | _ -> (a, vars) )
+  | a -> (a, vars)
 
 let rec allocate_registers p =
   match uncover_live p |> build_interference with
   | Program (info, blocks) ->
       let colors = color_graph info.conflicts in
-      let blocks = Map.map blocks ~f:(allocate_registers_block colors) in
-      Program (info, blocks)
-
-and allocate_registers_block colors = function
-  | Block (label, info, instrs) ->
-      let instrs =
-        List.fold instrs ~init:[] ~f:(fun instrs instr ->
-            let instr = allocate_registers_instr colors instr in
-            instr :: instrs)
+      let blocks, vars =
+        Map.fold blocks ~init:(empty_label_map, String.Set.empty)
+          ~f:(fun ~key:label ~data:block (blocks, vars) ->
+            let block, vars = allocate_registers_block colors vars block in
+            (Map.set blocks label block, vars))
       in
-      Block (label, info, List.rev instrs)
+      let locals_types =
+        Map.filter_keys info.locals_types ~f:(fun v -> not (Set.mem vars v))
+      in
+      Program ({info with locals_types}, blocks) |> assign_homes
 
-and allocate_registers_instr colors = function
-  | ADD (a1, a2) -> ADD (color_arg colors a1, color_arg colors a2)
-  | SUB (a1, a2) -> SUB (color_arg colors a1, color_arg colors a2)
-  | NEG a -> NEG (color_arg colors a)
-  | MOV (a1, a2) -> MOV (color_arg colors a1, color_arg colors a2)
-  | CALL _ as c -> c
-  | PUSH a -> PUSH (color_arg colors a)
-  | POP a -> POP (color_arg colors a)
-  | RET -> RET
-  | JMP _ as j -> j
+and allocate_registers_block colors vars = function
+  | Block (label, info, instrs) ->
+      let instrs, vars =
+        List.fold instrs ~init:([], vars) ~f:(fun (instrs, vars) instr ->
+            let instr, vars = allocate_registers_instr colors vars instr in
+            (instr :: instrs, vars))
+      in
+      (Block (label, info, List.rev instrs), vars)
+
+and allocate_registers_instr colors vars = function
+  | ADD (a1, a2) ->
+      let a1, vars = color_arg colors vars a1 in
+      let a2, vars = color_arg colors vars a2 in
+      (ADD (a1, a2), vars)
+  | SUB (a1, a2) ->
+      let a1, vars = color_arg colors vars a1 in
+      let a2, vars = color_arg colors vars a2 in
+      (SUB (a1, a2), vars)
+  | NEG a ->
+      let a, vars = color_arg colors vars a in
+      (NEG a, vars)
+  | MOV (a1, a2) ->
+      let a1, vars = color_arg colors vars a1 in
+      let a2, vars = color_arg colors vars a2 in
+      (MOV (a1, a2), vars)
+  | CALL _ as c -> (c, vars)
+  | PUSH a ->
+      let a, vars = color_arg colors vars a in
+      (PUSH a, vars)
+  | POP a ->
+      let a, vars = color_arg colors vars a in
+      (POP a, vars)
+  | RET -> (RET, vars)
+  | JMP _ as j -> (j, vars)
