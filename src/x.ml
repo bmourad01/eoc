@@ -157,11 +157,21 @@ let function_prologue stack_space =
   [ PUSH (Reg RBP)
   ; MOV (Reg RBP, Reg RSP)
   ; PUSH (Reg RBX)
+  ; PUSH (Reg R12)
+  ; PUSH (Reg R13)
+  ; PUSH (Reg R14)
+  ; PUSH (Reg R15)
   ; SUB (Reg RSP, Imm stack_space) ]
 
 let insert_function_epilogue label stack_space instrs =
   let epilogue =
-    [ADD (Reg RSP, Imm stack_space); POP (Reg RBX); POP (Reg RBP)]
+    [ ADD (Reg RSP, Imm stack_space)
+    ; POP (Reg R15)
+    ; POP (Reg R14)
+    ; POP (Reg R13)
+    ; POP (Reg R12)
+    ; POP (Reg RBX)
+    ; POP (Reg RBP) ]
   in
   let rec aux acc = function
     | [] ->
@@ -431,7 +441,23 @@ and build_interference_block g = function
                          if Arg.equal v d then g
                          else Interference_graph.add_edge g v d)))
 
+let allocatable_regs =
+  [| Arg.Reg RBX
+   ; Arg.Reg RCX
+   ; Arg.Reg RDX
+   ; Arg.Reg RSI
+   ; Arg.Reg RDI
+   ; Arg.Reg R8
+   ; Arg.Reg R9
+   ; Arg.Reg R10
+   ; Arg.Reg R11
+   ; Arg.Reg R12
+   ; Arg.Reg R13
+   ; Arg.Reg R14
+   ; Arg.Reg R15 |]
+
 let color_graph g =
+  (* registers which we will not select *)
   let colors =
     Interference_graph.fold_vertex
       (fun v colors ->
@@ -440,6 +466,12 @@ let color_graph g =
         | Reg RSP -> Map.set colors v (-2)
         | _ -> colors)
       g Arg_map.empty
+  in
+  (* assign registers with their numbers *)
+  let colors =
+    Array.foldi allocatable_regs ~init:colors ~f:(fun i colors a ->
+        if Interference_graph.mem_vertex g a then Map.set colors a i
+        else colors)
   in
   let cmp (_, n) (_, m) = Int.compare m n in
   let q = Pairing_heap.create ~cmp () in
@@ -455,35 +487,21 @@ let color_graph g =
           let assigned =
             Interference_graph.fold_succ
               (fun v assigned ->
-                match v with
-                | Arg.Var _ -> (
-                  match Map.find colors v with
-                  | None -> assigned
-                  | Some c -> Set.add assigned c )
-                | _ -> assigned)
+                match Map.find colors v with
+                | None -> assigned
+                | Some c -> Set.add assigned c)
               g u Int.Set.empty
           in
           let c =
-            match Set.max_elt assigned with
+            match Set.min_elt assigned with
             | None -> 0
+            | Some c when c < 0 -> 0
             | Some c -> c + 1
           in
           loop (Map.set colors u c)
       | _ -> loop colors )
   in
   loop colors
-
-let allocatable_regs =
-  [| Arg.Reg RBX
-   ; Arg.Reg RDX
-   ; Arg.Reg RSI
-   ; Arg.Reg RDI
-   ; Arg.Reg R8
-   ; Arg.Reg R9
-   ; Arg.Reg R10
-   ; Arg.Reg R12
-   ; Arg.Reg R13
-   ; Arg.Reg R14 |]
 
 let color_arg colors vars = function
   | Arg.Var v as a when is_temp_var_name v -> (
