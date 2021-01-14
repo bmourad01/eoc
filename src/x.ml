@@ -466,22 +466,6 @@ let allocatable_regs =
    ; Arg.Reg R15 |]
 
 let color_graph g =
-  (* registers which we will not select *)
-  let colors =
-    Interference_graph.fold_vertex
-      (fun v colors ->
-        match v with
-        | Reg RAX -> Map.set colors v (-1)
-        | Reg RSP -> Map.set colors v (-2)
-        | _ -> colors)
-      g Arg_map.empty
-  in
-  (* assign registers with their numbers *)
-  let colors =
-    Array.foldi allocatable_regs ~init:colors ~f:(fun i colors a ->
-        if Interference_graph.mem_vertex g a then Map.set colors a i
-        else colors)
-  in
   let cmp (_, n) (_, m) = Int.compare m n in
   let q = Pairing_heap.create ~cmp () in
   Interference_graph.iter_vertex
@@ -501,14 +485,28 @@ let color_graph g =
                 | Some c -> Set.add assigned c)
               g u Int.Set.empty
           in
-          let c =
-            match Set.min_elt assigned with
-            | None -> 0
-            | Some c when c < 0 -> 0
-            | Some c -> c + 1
-          in
-          loop (Map.set colors u c)
+          let c = ref 0 in
+          while Set.mem assigned !c do
+            incr c
+          done;
+          loop (Map.set colors u !c)
       | _ -> loop colors )
+  in
+  (* registers which we will not select *)
+  let colors =
+    Interference_graph.fold_vertex
+      (fun v colors ->
+        match v with
+        | Reg RAX -> Map.set colors v (-1)
+        | Reg RSP -> Map.set colors v (-2)
+        | _ -> colors)
+      g Arg_map.empty
+  in
+  (* assign registers with their numbers *)
+  let colors =
+    Array.foldi allocatable_regs ~init:colors ~f:(fun i colors a ->
+        if Interference_graph.mem_vertex g a then Map.set colors a i
+        else colors)
   in
   loop colors
 
