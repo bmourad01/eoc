@@ -153,63 +153,19 @@ and string_of_instr = function
   | RET -> "ret"
   | JMP l -> Printf.sprintf "jmp %s" l
 
-let function_prologue stack_space =
-  [ PUSH (Reg RBP)
-  ; MOV (Reg RBP, Reg RSP)
-  ; PUSH (Reg RBX)
-  ; PUSH (Reg R12)
-  ; PUSH (Reg R13)
-  ; PUSH (Reg R14)
-  ; PUSH (Reg R15)
-  ; SUB (Reg RSP, Imm stack_space) ]
-
-let insert_function_epilogue label stack_space instrs =
-  let epilogue =
-    [ ADD (Reg RSP, Imm stack_space)
-    ; POP (Reg R15)
-    ; POP (Reg R14)
-    ; POP (Reg R13)
-    ; POP (Reg R12)
-    ; POP (Reg RBX)
-    ; POP (Reg RBP) ]
-  in
-  let rec aux acc = function
-    | [] ->
-        failwith
-          ( "X.insert_function_epilogue: block " ^ label
-          ^ " is not well-formed" )
-    | RET :: _ ->
-        List.rev acc
-        @ [MOV (Reg RDI, Reg RAX); CALL (print_int, 1)]
-        @ epilogue @ [RET]
-    | instr :: rest -> aux (instr :: acc) rest
-  in
-  aux [] instrs
-
 let rec select_instructions = function
   | C.Program (info, tails) ->
-      let locals_types = info.locals_types in
-      let stack_space = (Map.length locals_types * word_size lor 15) + 1 in
       let blocks =
         let block_info = {live_after= []} in
         Map.fold tails ~init:empty_label_map
           ~f:(fun ~key:label ~data:tail blocks ->
             let instrs = select_instructions_tail tail |> snd in
-            let instrs =
-              if
-                String.equal label info.main
-                && not (Map.is_empty locals_types)
-              then
-                function_prologue stack_space
-                @ insert_function_epilogue label stack_space instrs
-              else instrs
-            in
             Map.set blocks label (Block (label, block_info, instrs)))
       in
       let info =
         { main= info.main
-        ; locals_types
-        ; stack_space
+        ; locals_types= info.locals_types
+        ; stack_space= 0
         ; conflicts= Interference_graph.empty }
       in
       Program (info, blocks)
@@ -285,13 +241,17 @@ let caller_save_set =
 
 let rec assign_homes = function
   | Program (info, blocks) ->
+      let stack_space =
+        if Map.is_empty info.locals_types then 0
+        else (Map.length info.locals_types * word_size lor 15) + 1
+      in
       let blocks, _ =
         Map.fold blocks ~init:(empty_label_map, R.empty_var_env)
           ~f:(fun ~key:label ~data:block (blocks, env) ->
             let block, env = assign_homes_block env block in
             (Map.set blocks label block, env))
       in
-      Program (info, blocks)
+      Program ({info with stack_space}, blocks)
 
 and assign_homes_block env = function
   | Block (label, info, instrs) ->
@@ -345,28 +305,6 @@ and assign_homes_arg env = function
     | Some offset -> (Deref (RBP, offset), env) )
   | Var _ as v -> (v, env)
 
-let rec patch_instructions = function
-  | Program (info, blocks) ->
-      let blocks = Map.map blocks ~f:patch_instructions_block in
-      Program (info, blocks)
-
-and patch_instructions_block = function
-  | Block (label, info, instrs) ->
-      let instrs =
-        List.map instrs ~f:patch_instructions_instr |> List.concat
-      in
-      Block (label, info, instrs)
-
-and patch_instructions_instr = function
-  | ADD ((Deref _ as d1), (Deref _ as d2)) ->
-      [MOV (Reg RAX, d2); ADD (d1, Reg RAX)]
-  | SUB ((Deref _ as d1), (Deref _ as d2)) ->
-      [MOV (Reg RAX, d2); SUB (d1, Reg RAX)]
-  | MOV ((Deref _ as d1), (Deref _ as d2)) ->
-      [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
-  | MOV (a1, a2) when Arg.equal a1 a2 -> []
-  | instr -> [instr]
-
 let filter_non_locations =
   Set.filter ~f:(function
     | Arg.Imm _ -> false
@@ -396,6 +334,77 @@ let read_set instr =
     | JMP _ -> Args.empty
   in
   aux instr |> filter_non_locations
+
+let function_prologue stack_space w =
+  let setup_frame =
+    if stack_space <= 0 then [] else [PUSH (Reg RBP); MOV (Reg RBP, Reg RSP)]
+  in
+  let callee_save_in_use =
+    Set.fold w ~init:[] ~f:(fun acc a -> PUSH a :: acc) |> List.rev
+  in
+  let adj_sp =
+    if stack_space <= 0 then [] else [SUB (Reg RSP, Imm stack_space)]
+  in
+  setup_frame @ callee_save_in_use @ adj_sp
+
+let insert_function_epilogue label stack_space w instrs =
+  let adj_sp =
+    if stack_space <= 0 then [] else [ADD (Reg RSP, Imm stack_space)]
+  in
+  let callee_save_in_use =
+    Set.fold w ~init:[] ~f:(fun acc a -> POP a :: acc)
+  in
+  let restore_frame = if stack_space <= 0 then [] else [POP (Reg RBP)] in
+  let epilogue = adj_sp @ callee_save_in_use @ restore_frame in
+  let rec aux acc = function
+    | [] ->
+        failwith
+          ( "X.insert_function_epilogue: block " ^ label
+          ^ " is not well-formed" )
+    | RET :: _ ->
+        List.rev acc
+        @ [MOV (Reg RDI, Reg RAX); CALL (print_int, 1)]
+        @ epilogue @ [RET]
+    | instr :: rest -> aux (instr :: acc) rest
+  in
+  aux [] instrs
+
+let rec patch_instructions = function
+  | Program (info, blocks) ->
+      let blocks = Map.map blocks ~f:(patch_instructions_block info) in
+      Program (info, blocks)
+
+and patch_instructions_block info = function
+  | Block (label, block_info, instrs) ->
+      let instrs =
+        List.map instrs ~f:patch_instructions_instr |> List.concat
+      in
+      let instrs =
+        if String.equal label info.main then
+          let w =
+            List.fold instrs ~init:Args.empty ~f:(fun w instr ->
+                Set.union w (write_set instr)
+                |> Set.filter ~f:(function
+                     | Arg.Reg RSP -> false
+                     | Arg.Reg RBP -> false
+                     | Arg.Reg r -> Reg.is_callee_save r
+                     | _ -> false))
+          in
+          function_prologue info.stack_space w
+          @ insert_function_epilogue label info.stack_space w instrs
+        else instrs
+      in
+      Block (label, block_info, instrs)
+
+and patch_instructions_instr = function
+  | ADD ((Deref _ as d1), (Deref _ as d2)) ->
+      [MOV (Reg RAX, d2); ADD (d1, Reg RAX)]
+  | SUB ((Deref _ as d1), (Deref _ as d2)) ->
+      [MOV (Reg RAX, d2); SUB (d1, Reg RAX)]
+  | MOV ((Deref _ as d1), (Deref _ as d2)) ->
+      [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
+  | MOV (a1, a2) when Arg.equal a1 a2 -> []
+  | instr -> [instr]
 
 let rec uncover_live = function
   | Program (info, blocks) ->
