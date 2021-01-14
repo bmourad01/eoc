@@ -1,10 +1,10 @@
 open Core_kernel
-open Eoc
 
 let () =
-  let prog = Parse_r.parse Sys.argv.(1) in
+  let prog = Eoc.Parse_r.parse Sys.argv.(1) in
   print_endline
-    X.(
-      to_string
-        (select_instructions
-           (C.explicate_control (R_anf.resolve_complex (R.uniquify prog)))))
+    Eoc.(
+      X.(
+        to_string
+          (select_instructions
+             (C.explicate_control (R_anf.resolve_complex (R.uniquify prog))))))

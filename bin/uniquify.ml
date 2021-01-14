@@ -1,6 +1,5 @@
 open Core_kernel
-open Eoc
 
 let () =
-  let prog = Parse_r.parse Sys.argv.(1) in
-  print_endline R.(to_string (uniquify prog))
+  let prog = Eoc.Parse_r.parse Sys.argv.(1) in
+  print_endline Eoc.R.(to_string (uniquify prog))
