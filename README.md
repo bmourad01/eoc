@@ -12,7 +12,7 @@ Implementation of a compiler for a subset of Racket, based on the book [Essentia
 Additionally, the following OCaml packages are required:
 
 - core_kernel (>= 0.14.0)
-- dune (>= 2.7.1)
+- dune (>= 2.8.0)
 - menhir
 - ocamlformat
 - ppx_compare
