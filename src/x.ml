@@ -242,7 +242,7 @@ and assign_homes_arg env = function
     match Map.find env v with
     | None ->
         let offset =
-          let inc = -8 in
+          let inc = -word_size in
           Map.fold env ~init:inc ~f:(fun ~key:_ ~data:offset acc ->
               if offset <= acc then offset + inc else acc)
         in
