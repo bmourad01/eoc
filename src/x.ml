@@ -41,19 +41,16 @@ and reg =
   | R14
   | R15
 
+let read_int = "read_int"
+
 let rec to_string = function
-  | Program (_, blocks) ->
-      let ls =
-        Map.keys blocks
-        |> List.map ~f:(fun l -> Printf.sprintf "global %s" l)
-        |> String.concat ~sep:"\n"
-      in
+  | Program (info, blocks) ->
       let blks =
         Map.data blocks
         |> List.map ~f:string_of_block
         |> String.concat ~sep:"\n"
       in
-      Printf.sprintf "%s\n\n%s" ls blks
+      Printf.sprintf "global %s\nextern %s\n\n%s" info.main read_int blks
 
 and string_of_block = function
   | Block (l, is) ->
@@ -97,8 +94,6 @@ and string_of_reg = function
   | R13 -> "r13"
   | R14 -> "r14"
   | R15 -> "r15"
-
-let read_int = "read_int"
 
 let rec select_instructions = function
   | C.Program (info, tails) ->
