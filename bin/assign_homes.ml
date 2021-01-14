@@ -6,7 +6,8 @@ let () =
     Eoc.(
       X.(
         to_string
-          (assign_homes
-             (select_instructions
-                (C.explicate_control
-                   (R_anf.resolve_complex R.(uniquify (opt prog))))))))
+          (patch_instructions
+             (assign_homes
+                (select_instructions
+                   (C.explicate_control
+                      (R_anf.resolve_complex R.(uniquify (opt prog)))))))))
