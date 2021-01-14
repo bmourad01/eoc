@@ -14,7 +14,6 @@ Additionally, the following OCaml packages are required:
 - core_kernel (>= 0.14.0)
 - dune (>= 2.8.0)
 - menhir
-- ocamlformat
 - ppx_compare
 - ppx_hash
 - ppx_let
