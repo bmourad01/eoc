@@ -20,4 +20,4 @@ val string_of_atom : atom -> string
 
 val string_of_prim : prim -> string
 
-val rco : R.t -> t
+val resolve_complex : R.t -> t

@@ -3,7 +3,7 @@
         opt_r
         interp_r
         uniquify
-        rco
+        resolve_complex
         explicate_control
         select_instructions)
  (flags -w -33)
