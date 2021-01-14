@@ -2,7 +2,11 @@ open Core_kernel
 
 type label = string
 
-type info = {main: label}
+type 'a label_map = 'a String.Map.t
+
+val empty_label_map : 'a label_map
+
+type info = {main: label; locals_types: R.type_env}
 
 type var = R.var
 
@@ -10,7 +14,7 @@ type var = R.var
 
 type t = Program of info * tails
 
-and tails = tail String.Map.t
+and tails = tail label_map
 
 and tail = Return of exp | Seq of stmt * tail
 

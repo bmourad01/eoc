@@ -13,3 +13,8 @@ int64_t read_int()
 
   return atoll(buf);
 }
+
+void print_int(int64_t i)
+{
+  printf("%ld\n", i);
+}

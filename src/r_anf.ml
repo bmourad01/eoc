@@ -34,7 +34,7 @@ and string_of_prim = function
 
 let rec resolve_complex = function
   | R.Program (info, e) ->
-      let l, a = resolve_complex_exp String.Map.empty (ref 1) e in
+      let l, a = resolve_complex_exp R.empty_var_env (ref 1) e in
       let e =
         List.fold_right l ~init:(Atom a) ~f:(fun (v, e) acc ->
             Let (v, e, acc))

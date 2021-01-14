@@ -2,13 +2,17 @@ open Core_kernel
 
 type label = string
 
-type info = {main: label}
+type 'a label_map = 'a String.Map.t
+
+let empty_label_map = String.Map.empty
+
+type info = {main: label; locals_types: R.type_env}
 
 type var = R.var
 
 type t = Program of info * tails
 
-and tails = tail String.Map.t
+and tails = tail label_map
 
 and tail = Return of exp | Seq of stmt * tail
 
@@ -52,10 +56,6 @@ and string_of_prim = function
   | Plus (a1, a2) ->
       Printf.sprintf "(+ %s %s)" (string_of_atom a1) (string_of_atom a2)
 
-type env = exp String.Map.t
-
-let empty_env = String.Map.empty
-
 let read_int () =
   Out_channel.(flush stdout);
   Int.of_string In_channel.(input_line_exn stdin)
@@ -64,7 +64,7 @@ let rec interp ?(read = None) = function
   | Program (info, tails) -> (
     match Map.find tails info.main with
     | None -> failwith "C.interp: no main label defined"
-    | Some t -> interp_tail empty_env t ~read )
+    | Some t -> interp_tail R.empty_var_env t ~read )
 
 and interp_tail ?(read = None) env = function
   | Return e -> interp_exp env e ~read
@@ -98,11 +98,53 @@ and interp_prim ?(read = None) env = function
 
 let start_label = "_start"
 
+let rec type_check_cvar = function
+  | Program (info, tails) ->
+      let locals_types =
+        Map.fold tails ~init:empty_label_map ~f:(fun ~key:_ ~data:tail acc ->
+            type_check_cvar_tail acc tail)
+      in
+      Program ({info with locals_types}, tails)
+
+and type_check_cvar_tail env = function
+  | Return e ->
+      let _ = type_check_cvar_exp env e in
+      env
+  | Seq (s, t) ->
+      let env = type_check_cvar_stmt env s in
+      type_check_cvar_tail env t
+
+and type_check_cvar_stmt env = function
+  | Assign (v, e) ->
+      let typ = type_check_cvar_exp env e in
+      Map.set env v typ
+
+and type_check_cvar_exp env = function
+  | Atom a -> type_check_cvar_atom env a
+  | Prim p -> type_check_cvar_prim env p
+
+and type_check_cvar_atom env = function
+  | Int _ -> R.Type.Integer
+  | Var v -> (
+    match Map.find env v with
+    | None -> failwith ("C.type_check_cvar_atom: var " ^ v ^ " is unbound")
+    | Some typ -> typ )
+
+and type_check_cvar_prim env = function
+  | Read -> Integer
+  | Minus a -> (
+    match type_check_cvar_atom env a with
+    | Integer -> Integer )
+  | Plus (a1, a2) -> (
+    match (type_check_cvar_atom env a1, type_check_cvar_atom env a2) with
+    | Integer, Integer -> Integer )
+
 let rec explicate_control = function
   | R_anf.Program (_, e) ->
-      let info = {main= start_label} in
+      let info = {main= start_label; locals_types= R.empty_var_env} in
       let tail = explicate_control_tail e in
       Program (info, String.Map.singleton start_label tail)
+      |> type_check_cvar
 
 and explicate_control_tail = function
   | R_anf.(Atom a) -> Return (Atom a)

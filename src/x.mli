@@ -2,14 +2,20 @@ open Core_kernel
 
 type label = string
 
-type info = {main: label}
+type 'a label_map = 'a C.label_map
+
+val empty_label_map : 'a label_map
+
+val word_size : int
+
+type info = {main: label; locals_types: R.type_env; stack_space: int}
 
 (* the X language, representing a subset of x86-64 programs.
  * X programs are printed in NASM syntax. *)
 
 type t = Program of info * blocks
 
-and blocks = block String.Map.t
+and blocks = block label_map
 
 and block = Block of label * instr list
 
@@ -57,3 +63,7 @@ val string_of_reg : reg -> string
 (* compile a C program to an X program with variables *)
 
 val select_instructions : C.t -> t
+
+(* allocate stack space for local variables *)
+
+val assign_homes : t -> t

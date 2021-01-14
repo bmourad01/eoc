@@ -4,6 +4,19 @@ type info = unit
 
 type var = string
 
+type 'a var_env = 'a String.Map.t
+
+let empty_var_env = String.Map.empty
+
+module Type = struct
+  type t = Integer
+
+  let to_string = function
+    | Integer -> "Integer"
+end
+
+type type_env = Type.t var_env
+
 type t = Program of info * exp
 
 and exp = Int of int | Prim of prim | Var of var | Let of var * exp * exp
@@ -31,10 +44,8 @@ let read_int () =
   Out_channel.(flush stdout);
   Int.of_string In_channel.(input_line_exn stdin)
 
-let empty_env = String.Map.empty
-
 let rec opt = function
-  | Program (info, exp) -> Program (info, opt_exp empty_env exp)
+  | Program (info, exp) -> Program (info, opt_exp empty_var_env exp)
 
 and opt_exp env = function
   | Int _ as i -> i
@@ -63,7 +74,7 @@ and opt_exp env = function
       e2
 
 let rec interp ?(read = None) = function
-  | Program (_, exp) -> interp_exp empty_env exp ~read
+  | Program (_, exp) -> interp_exp empty_var_env exp ~read
 
 and interp_exp ?(read = None) env = function
   | Int i -> i
@@ -86,7 +97,7 @@ and interp_prim ?(read = None) env = function
 
 let rec uniquify = function
   | Program (info, e) ->
-      let _, e = uniquify_exp String.Map.empty e in
+      let _, e = uniquify_exp empty_var_env e in
       Program (info, e)
 
 and uniquify_exp m = function

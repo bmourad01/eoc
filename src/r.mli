@@ -4,6 +4,18 @@ type info = unit
 
 type var = string
 
+type 'a var_env = 'a String.Map.t
+
+val empty_var_env : 'a var_env
+
+module Type : sig
+  type t = Integer
+
+  val to_string : t -> string
+end
+
+type type_env = Type.t var_env
+
 (* the R language: a subset of Racket *)
 
 type t = Program of info * exp
