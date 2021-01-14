@@ -6,4 +6,4 @@ let () =
     Eoc.(
       C.(
         to_string
-          (explicate_control (R_anf.resolve_complex R.(uniquify (opt prog))))))
+          (explicate_control (R_anf.resolve_complex R.(uniquify prog)))))
