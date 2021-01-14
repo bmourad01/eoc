@@ -50,7 +50,8 @@ let rec to_string = function
         |> List.map ~f:string_of_block
         |> String.concat ~sep:"\n"
       in
-      Printf.sprintf "global %s\nextern %s\n\n%s" info.main read_int blks
+      Printf.sprintf "global %s\nextern %s\n\nsection .text\n%s" info.main
+        read_int blks
 
 and string_of_block = function
   | Block (l, is) ->
