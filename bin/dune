@@ -1,5 +1,11 @@
 (executables
- (names parse_r opt_r interp_r uniquify rco explicate_control)
+ (names parse_r
+        opt_r
+        interp_r
+        uniquify
+        rco
+        explicate_control
+        select_instructions)
  (flags -w -33)
  (modes byte native)
  (libraries core_kernel eoc))

@@ -1,8 +1,8 @@
 open Core_kernel
 
-type info = unit
-
 type label = string
+
+type info = {main: label}
 
 type t = Program of info * blocks
 
@@ -21,7 +21,7 @@ and instr =
   | RET
   | JMP of label
 
-and arg = Imm of int | Reg of reg | Deref of reg * int
+and arg = Imm of int | Reg of reg | Deref of reg * int | Var of R.var
 
 and reg =
   | RSP
@@ -50,3 +50,5 @@ val string_of_instr : instr -> string
 val string_of_arg : arg -> string
 
 val string_of_reg : reg -> string
+
+val select_instructions : C.t -> t
