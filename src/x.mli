@@ -4,6 +4,11 @@ type label = string
 
 type info = {main: label}
 
+(* the X language, representing
+ * a subset of x86-64 programs;
+ *
+ * X programs are printed in NASM syntax *)
+
 type t = Program of info * blocks
 
 and blocks = block String.Map.t
@@ -50,5 +55,7 @@ val string_of_instr : instr -> string
 val string_of_arg : arg -> string
 
 val string_of_reg : reg -> string
+
+(* compile a C program to an X program with variables *)
 
 val select_instructions : C.t -> t

@@ -6,6 +6,8 @@ type info = {main: label}
 
 type var = R.var
 
+(* the C intermediate language *)
+
 type t = Program of info * tails
 
 and tails = tail String.Map.t
@@ -22,6 +24,10 @@ and prim = R_anf.prim
 
 val to_string : t -> string
 
+(* interpret a C program *)
+
 val interp : ?read:int option -> t -> int
+
+(* compile an R_anf program to a C program *)
 
 val explicate_control : R_anf.t -> t
