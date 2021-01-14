@@ -7,4 +7,5 @@ let () =
       X.(
         to_string
           (select_instructions
-             (C.explicate_control (R_anf.resolve_complex (R.uniquify prog))))))
+             (C.explicate_control
+                (R_anf.resolve_complex R.(uniquify (opt prog)))))))

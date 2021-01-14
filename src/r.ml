@@ -58,9 +58,11 @@ and opt_exp env = function
     match Map.find env v with
     | None -> failwith ("R.opt_exp: var " ^ v ^ " is not bound")
     | Some e -> e )
+  | Let (v, Prim Read, _) as e -> e
   | Let (v, e1, e2) ->
       let e1 = opt_exp env e1 in
-      opt_exp (Map.set env v e1) e2
+      let e2 = opt_exp (Map.set env v e1) e2 in
+      e2
 
 let rec interp ?(read = None) = function
   | Program (_, exp) -> interp_exp empty_env exp ~read
