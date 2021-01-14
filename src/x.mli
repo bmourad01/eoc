@@ -4,10 +4,8 @@ type label = string
 
 type info = {main: label}
 
-(* the X language, representing
- * a subset of x86-64 programs;
- *
- * X programs are printed in NASM syntax *)
+(* the X language, representing a subset of x86-64 programs.
+ * X programs are printed in NASM syntax. *)
 
 type t = Program of info * blocks
 

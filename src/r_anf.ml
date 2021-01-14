@@ -66,6 +66,6 @@ and resolve_complex_exp m n = function
       (nv1 @ nv2, a2)
 
 and fresh_var n =
-  let x = Printf.sprintf "tmp.%d" !n in
+  let x = Printf.sprintf "%%%d" !n in
   n := !n + 1;
   x

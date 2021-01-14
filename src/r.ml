@@ -97,7 +97,7 @@ and uniquify_exp m = function
   | Var v -> (
     match Map.find m v with
     | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
-    | Some n -> (m, Var (Printf.sprintf "%s.%d" v n)) )
+    | Some n -> (m, Var (newvar v n)) )
   | Let (v, e1, e2) ->
       let n =
         match Map.find m v with
@@ -107,7 +107,7 @@ and uniquify_exp m = function
       let m' = Map.set m v n in
       let _, e1 = uniquify_exp m' e1 in
       let _, e2 = uniquify_exp m' e2 in
-      (m, Let (Printf.sprintf "%s.%d" v n, e1, e2))
+      (m, Let (newvar v n, e1, e2))
 
 and uniquify_prim m = function
   | Read -> (m, Read)
@@ -118,3 +118,5 @@ and uniquify_prim m = function
       let _, e1 = uniquify_exp m e1 in
       let _, e2 = uniquify_exp m e2 in
       (m, Plus (e1, e2))
+
+and newvar v n = Printf.sprintf "%s.%d" v n
