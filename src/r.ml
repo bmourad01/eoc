@@ -166,233 +166,233 @@ and opt_exp env = function
     | Bool false -> opt_exp env e3
     | e1 -> If (e1, e2, e3) )
 
-let rec type_check_rvar = function
-  | Program (_, exp) -> type_check_rvar_exp empty_var_env exp
+let rec type_check = function
+  | Program (_, exp) -> type_check_exp empty_var_env exp
 
-and type_check_rvar_exp env = function
+and type_check_exp env = function
   | Int _ -> Type.Integer
   | Bool _ -> Type.Boolean
-  | Prim p -> type_check_rvar_prim env p
+  | Prim p -> type_check_prim env p
   | Var v -> (
     match Map.find env v with
-    | None -> failwith ("R.type_check_rvar_exp: var " ^ v ^ " is not bound")
+    | None -> failwith ("R.type_check_exp: var " ^ v ^ " is not bound")
     | Some typ -> typ )
   | Let (v, e1, e2) ->
-      let t1 = type_check_rvar_exp env e1 in
+      let t1 = type_check_exp env e1 in
       let env = Map.set env v t1 in
-      type_check_rvar_exp env e2
+      type_check_exp env e2
   | If (e1, e2, e3) -> (
-    match type_check_rvar_exp env e1 with
+    match type_check_exp env e1 with
     | Type.Boolean ->
-        let t1 = type_check_rvar_exp env e2 in
-        let t2 = type_check_rvar_exp env e3 in
+        let t1 = type_check_exp env e2 in
+        let t2 = type_check_exp env e3 in
         if Type.equal t1 t2 then t1
         else
           failwith
-            ( "R.type_check_rvar_exp: if branches " ^ string_of_exp e2 ^ " ("
+            ( "R.type_check_exp: if branches " ^ string_of_exp e2 ^ " ("
             ^ Type.to_string t1 ^ ") and " ^ string_of_exp e3 ^ " ("
             ^ Type.to_string t2 ^ ") are not the same type" )
     | t ->
         failwith
-          ( "R.type_check_rvar_exp: if condition " ^ string_of_exp e1
+          ( "R.type_check_exp: if condition " ^ string_of_exp e1
           ^ " is of type " ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
 
-and type_check_rvar_prim env = function
+and type_check_prim env = function
   | Read -> Type.Integer
   | Minus e -> (
-    match type_check_rvar_exp env e with
+    match type_check_exp env e with
     | Type.Integer -> Type.Integer
     | t ->
         failwith
-          ( "R.type_check_rvar_prim: minus exp " ^ string_of_exp e
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: minus exp " ^ string_of_exp e ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" ) )
   | Plus (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Integer, Type.Integer -> Type.Integer
     | t, Type.Integer ->
         failwith
-          ( "R.type_check_rvar_prim: plus exp " ^ string_of_exp e1
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: plus exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | Type.Integer, t ->
         failwith
-          ( "R.type_check_rvar_prim: plus exp " ^ string_of_exp e2
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: plus exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: plus exps " ^ string_of_exp e1 ^ " and "
+          ( "R.type_check_prim: plus exps " ^ string_of_exp e1 ^ " and "
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | Subtract (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Integer, Type.Integer -> Type.Integer
     | t, Type.Integer ->
         failwith
-          ( "R.type_check_rvar_prim: subtract exp " ^ string_of_exp e1
+          ( "R.type_check_prim: subtract exp " ^ string_of_exp e1
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | Type.Integer, t ->
         failwith
-          ( "R.type_check_rvar_prim: subtract exp " ^ string_of_exp e2
+          ( "R.type_check_prim: subtract exp " ^ string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: subtract exps " ^ string_of_exp e1
-          ^ " and " ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1
-          ^ " and " ^ Type.to_string t2
+          ( "R.type_check_prim: subtract exps " ^ string_of_exp e1 ^ " and "
+          ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
+          ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | Mult (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Integer, Type.Integer -> Type.Integer
     | t, Type.Integer ->
         failwith
-          ( "R.type_check_rvar_prim: mult exp " ^ string_of_exp e1
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: mult exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | Type.Integer, t ->
         failwith
-          ( "R.type_check_rvar_prim: mult exp " ^ string_of_exp e2
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: mult exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: mult exps " ^ string_of_exp e1 ^ " and "
+          ( "R.type_check_prim: mult exps " ^ string_of_exp e1 ^ " and "
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | Eq (e1, e2) ->
-      let t1 = type_check_rvar_exp env e1 in
-      let t2 = type_check_rvar_exp env e2 in
+      let t1 = type_check_exp env e1 in
+      let t2 = type_check_exp env e2 in
       if Type.equal t1 t2 then Type.Boolean
       else
         failwith
-          ( "R.type_check_rvar_prim: eq? exps " ^ string_of_exp e1 ^ " ("
+          ( "R.type_check_prim: eq? exps " ^ string_of_exp e1 ^ " ("
           ^ Type.to_string t1 ^ ") and " ^ string_of_exp e2 ^ " ("
           ^ Type.to_string t2 ^ ") are not the same type" )
   | Lt (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Integer, Type.Integer -> Type.Boolean
     | t, Type.Integer ->
         failwith
-          ( "R.type_check_rvar_prim: < exp " ^ string_of_exp e1
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: < exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | Type.Integer, t ->
         failwith
-          ( "R.type_check_rvar_prim: < exp " ^ string_of_exp e2
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: < exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: < exps " ^ string_of_exp e1 ^ " and "
+          ( "R.type_check_prim: < exps " ^ string_of_exp e1 ^ " and "
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | Le (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Integer, Type.Integer -> Type.Boolean
     | t, Type.Integer ->
         failwith
-          ( "R.type_check_rvar_prim: <= exp " ^ string_of_exp e1
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: <= exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | Type.Integer, t ->
         failwith
-          ( "R.type_check_rvar_prim: <= exp " ^ string_of_exp e2
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: <= exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: <= exps " ^ string_of_exp e1 ^ " and "
+          ( "R.type_check_prim: <= exps " ^ string_of_exp e1 ^ " and "
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | Gt (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Integer, Type.Integer -> Type.Boolean
     | t, Type.Integer ->
         failwith
-          ( "R.type_check_rvar_prim: > exp " ^ string_of_exp e1
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: > exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | Type.Integer, t ->
         failwith
-          ( "R.type_check_rvar_prim: > exp " ^ string_of_exp e2
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: > exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: > exps " ^ string_of_exp e1 ^ " and "
+          ( "R.type_check_prim: > exps " ^ string_of_exp e1 ^ " and "
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | Ge (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Integer, Type.Integer -> Type.Boolean
     | t, Type.Integer ->
         failwith
-          ( "R.type_check_rvar_prim: >= exp " ^ string_of_exp e1
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: >= exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | Type.Integer, t ->
         failwith
-          ( "R.type_check_rvar_prim: >= exp " ^ string_of_exp e2
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: >= exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: >= exps " ^ string_of_exp e1 ^ " and "
+          ( "R.type_check_prim: >= exps " ^ string_of_exp e1 ^ " and "
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | Not e -> (
-    match type_check_rvar_exp env e with
+    match type_check_exp env e with
     | Type.Boolean -> Type.Boolean
     | t ->
         failwith
-          ( "R.type_check_rvar_prim: minus exp " ^ string_of_exp e
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: minus exp " ^ string_of_exp e ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
   | And (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Boolean, Type.Boolean -> Type.Boolean
     | t, Type.Boolean ->
         failwith
-          ( "R.type_check_rvar_prim: and exp " ^ string_of_exp e1
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: and exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" )
     | Type.Boolean, t ->
         failwith
-          ( "R.type_check_rvar_prim: and exp " ^ string_of_exp e2
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: and exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: and exps " ^ string_of_exp e1 ^ " and "
+          ( "R.type_check_prim: and exps " ^ string_of_exp e1 ^ " and "
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Boolean were expected" ) )
   | Or (e1, e2) -> (
-    match (type_check_rvar_exp env e1, type_check_rvar_exp env e2) with
+    match (type_check_exp env e1, type_check_exp env e2) with
     | Type.Boolean, Type.Boolean -> Type.Boolean
     | t, Type.Boolean ->
         failwith
-          ( "R.type_check_rvar_prim: or exp " ^ string_of_exp e1
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: or exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" )
     | Type.Boolean, t ->
         failwith
-          ( "R.type_check_rvar_prim: or exp " ^ string_of_exp e2
-          ^ " has type " ^ Type.to_string t
+          ( "R.type_check_prim: or exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" )
     | t1, t2 ->
         failwith
-          ( "R.type_check_rvar_prim: or exps " ^ string_of_exp e1 ^ " and "
+          ( "R.type_check_prim: or exps " ^ string_of_exp e1 ^ " and "
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Boolean were expected" ) )
@@ -401,7 +401,7 @@ type answer = [`Int of int | `Bool of bool]
 
 let rec interp ?(read = None) = function
   | Program (_, exp) ->
-      type_check_rvar_exp empty_var_env exp |> ignore;
+      type_check_exp empty_var_env exp |> ignore;
       interp_exp empty_var_env exp ~read
 
 and interp_exp ?(read = None) env = function

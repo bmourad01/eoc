@@ -20,7 +20,7 @@ prog:
   | exp EOF
     {
       let open Core_kernel in
-      Program ({typ= type_check_rvar_exp String.Map.empty $1}, $1)
+      Program ({typ= type_check_exp String.Map.empty $1}, $1)
     }
 
 exp:

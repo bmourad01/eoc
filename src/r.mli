@@ -49,9 +49,9 @@ val string_of_exp : exp -> string
 
 val string_of_prim : prim -> string
 
-val type_check_rvar : t -> Type.t
+val type_check : t -> Type.t
 
-val type_check_rvar_exp : Type.t var_env -> exp -> Type.t
+val type_check_exp : Type.t var_env -> exp -> Type.t
 
 type answer = [`Int of int | `Bool of bool]
 
