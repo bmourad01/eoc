@@ -565,9 +565,9 @@ let rec uncover_live = function
   | Program (info, blocks) ->
       let la_map = ref empty_label_map in
       let lb_map = ref empty_label_map in
-      (* the CFG is currently topologically-ordered,
-       * so we start from the exit blocks and work our
-       * way backward to the entry by visiting predecessors *)
+      (* the CFG is currently a DAG, so we start from
+       *  the exit blocks and work our way backward
+       * to the entry by visiting predecessors *)
       Cfg.iter_vertex
         (fun l ->
           if Cfg.out_degree info.cfg l = 0 then
