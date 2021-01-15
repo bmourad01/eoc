@@ -91,7 +91,9 @@ val select_instructions : C.t -> t
 
 val assign_homes : t -> t
 
-(* fix instructions with illegal operands + remove no-ops *)
+(* fix instructions with illegal operands
+ * + remove no-ops (e.g. MOV RAX, RAX)
+ * + allocate stack space if necessary *)
 
 val patch_instructions : t -> t
 
