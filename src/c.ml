@@ -297,7 +297,8 @@ and do_assign e x cont =
   | _ -> failwith ("C.do_assign: unhandled case " ^ string_of_tail e)
 
 and fresh_label n =
-  let l = Printf.sprintf ".L%d" !n in
+  (* in the future, this will be the name of the current function *)
+  let l = Printf.sprintf ".L%s%d" start_label !n in
   incr n; l
 
 and add_tail tails l t = tails := Map.set !tails l t
