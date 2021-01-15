@@ -10,7 +10,11 @@ and exp = Atom of atom | Prim of prim | Let of var * exp * exp
 
 and atom = Int of int | Var of var
 
-and prim = Read | Minus of atom | Plus of atom * atom
+and prim =
+  | Read
+  | Minus of atom
+  | Plus of atom * atom
+  | Subtract of atom * atom
 
 let rec to_string = function
   | Program (_, e) -> string_of_exp e
@@ -31,6 +35,8 @@ and string_of_prim = function
   | Minus a -> Printf.sprintf "(- %s)" (string_of_atom a)
   | Plus (a1, a2) ->
       Printf.sprintf "(+ %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Subtract (a1, a2) ->
+      Printf.sprintf "(- %s %s)" (string_of_atom a1) (string_of_atom a2)
 
 let rec resolve_complex = function
   | R.Program (info, e) ->
@@ -55,6 +61,11 @@ and resolve_complex_exp m n = function
       let nv2, a2 = resolve_complex_exp m n e2 in
       let x = fresh_var n in
       (nv1 @ nv2 @ [(x, Prim (Plus (a1, a2)))], Var x)
+  | R.(Prim (Subtract (e1, e2))) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Subtract (a1, a2)))], Var x)
   | R.Var v -> (
     match Map.find m v with
     | None -> failwith ("R_anf.resolve_complex_exp: var " ^ v ^ " is unbound")

@@ -35,3 +35,5 @@ prim:
     { Minus $3 }
   | LPAREN PLUS exp exp RPAREN
     { Plus ($3, $4) }
+  | LPAREN MINUS exp exp RPAREN
+    { Subtract ($3, $4) }

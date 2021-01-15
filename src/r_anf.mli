@@ -18,7 +18,11 @@ and exp = Atom of atom | Prim of prim | Let of var * exp * exp
 
 and atom = Int of int | Var of var
 
-and prim = Read | Minus of atom | Plus of atom * atom
+and prim =
+  | Read
+  | Minus of atom
+  | Plus of atom * atom
+  | Subtract of atom * atom
 
 val to_string : t -> string
 

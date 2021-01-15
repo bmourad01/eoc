@@ -22,7 +22,7 @@ type t = Program of info * exp
 
 and exp = Int of int | Prim of prim | Var of var | Let of var * exp * exp
 
-and prim = Read | Minus of exp | Plus of exp * exp
+and prim = Read | Minus of exp | Plus of exp * exp | Subtract of exp * exp
 
 val to_string : t -> string
 

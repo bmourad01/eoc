@@ -21,7 +21,7 @@ type t = Program of info * exp
 
 and exp = Int of int | Prim of prim | Var of var | Let of var * exp * exp
 
-and prim = Read | Minus of exp | Plus of exp * exp
+and prim = Read | Minus of exp | Plus of exp * exp | Subtract of exp * exp
 
 let rec to_string = function
   | Program (_, exp) -> string_of_exp exp
@@ -39,6 +39,8 @@ and string_of_prim = function
   | Minus e -> Printf.sprintf "(- %s)" (string_of_exp e)
   | Plus (e1, e2) ->
       Printf.sprintf "(+ %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Subtract (e1, e2) ->
+      Printf.sprintf "(- %s %s)" (string_of_exp e1) (string_of_exp e2)
 
 let read_int () =
   Out_channel.(flush stdout);
@@ -63,6 +65,12 @@ and opt_exp env = function
         opt_exp env (Prim (Plus (Int (i1 + i2), e2)))
     | Prim (Minus (Int i1)), Int i2 -> Int (-i1 + i2)
     | e1, e2 -> Prim (Plus (e1, e2)) )
+  | Prim (Subtract (e1, e2)) -> (
+    match (opt_exp env e1, opt_exp env e2) with
+    | Int i1, Int i2 -> Int (i1 - i2)
+    | Int i1, Prim (Minus (Int i2)) -> Int (i1 + i2)
+    | Prim (Minus (Int i1)), Int i2 -> Int (-i1 - i2)
+    | e1, e2 -> Prim (Subtract (e1, e2)) )
   | Var v -> (
     match Map.find env v with
     | None -> failwith ("R.opt_exp: var " ^ v ^ " is not bound")
@@ -94,6 +102,7 @@ and interp_prim ?(read = None) env = function
     | None -> read_int () )
   | Minus e -> -interp_exp env e ~read
   | Plus (e1, e2) -> interp_exp env e1 ~read + interp_exp env e2 ~read
+  | Subtract (e1, e2) -> interp_exp env e1 ~read - interp_exp env e2 ~read
 
 let rec uniquify = function
   | Program (info, e) ->
@@ -129,5 +138,9 @@ and uniquify_prim m = function
       let _, e1 = uniquify_exp m e1 in
       let _, e2 = uniquify_exp m e2 in
       (m, Plus (e1, e2))
+  | Subtract (e1, e2) ->
+      let _, e1 = uniquify_exp m e1 in
+      let _, e2 = uniquify_exp m e2 in
+      (m, Subtract (e1, e2))
 
 and newvar v n = Printf.sprintf "%s.%d" v n

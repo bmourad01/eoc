@@ -191,6 +191,9 @@ and select_instructions_tail t =
   | C.Return (Prim (Plus (Int i1, Int i2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Imm (i1 + i2)); RET])
+  | C.Return (Prim (Subtract (Int i1, Int i2))) ->
+      let a = Reg RAX in
+      (a, [MOV (a, Imm (i1 - i2)); RET])
   | C.Return (Prim (Plus (Var v, Int i)))
    |C.Return (Prim (Plus (Int i, Var v))) ->
       let a = Reg RAX in
@@ -198,6 +201,15 @@ and select_instructions_tail t =
   | C.Return (Prim (Plus (Var v1, Var v2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v1); ADD (a, Var v2); RET])
+  | C.Return (Prim (Subtract (Var v, Int i))) ->
+      let a = Reg RAX in
+      (a, [MOV (a, Var v); SUB (a, Imm i)])
+  | C.Return (Prim (Subtract (Int i, Var v))) ->
+      let a = Reg RAX in
+      (a, [MOV (a, Imm i); SUB (a, Var v); RET])
+  | C.Return (Prim (Subtract (Var v1, Var v2))) ->
+      let a = Reg RAX in
+      (a, [MOV (a, Var v1); SUB (a, Var v2); RET])
   | C.Seq (s, t) ->
       let _, s = select_instructions_stmt s in
       let a, t = select_instructions_tail t in
@@ -233,6 +245,19 @@ and select_instructions_stmt s =
   | C.Assign (v, Prim (Plus (Var v1, Var v2))) ->
       let a = Var v in
       (a, [MOV (a, Var v1); ADD (a, Var v2)])
+  | C.Assign (v, Prim (Subtract (Int i1, Int i2))) ->
+      let a = Var v in
+      (a, [MOV (a, Imm (i1 - i2))])
+  | C.Assign (v, Prim (Subtract (Var v', Int i))) ->
+      let a = Var v in
+      if String.equal v v' then (a, [SUB (a, Imm i)])
+      else (a, [MOV (a, Var v'); SUB (a, Imm i)])
+  | C.Assign (v, Prim (Subtract (Int i, Var v'))) ->
+      let a = Var v in
+      (a, [MOV (a, Imm i); SUB (a, Var v')])
+  | C.Assign (v, Prim (Subtract (Var v1, Var v2))) ->
+      let a = Var v in
+      (a, [MOV (a, Var v1); SUB (a, Var v2)])
 
 let is_temp_var_name = String.is_prefix ~prefix:"%"
 
