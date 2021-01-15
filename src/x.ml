@@ -17,6 +17,20 @@ module Cc = struct
     | LE -> "le"
     | G -> "g"
     | GE -> "ge"
+
+  let of_c_cmp = function
+    | C.Cmp.Eq -> E
+    | C.Cmp.Lt -> L
+    | C.Cmp.Le -> LE
+    | C.Cmp.Gt -> G
+    | C.Cmp.Ge -> GE
+
+  let of_c_cmp_swap = function
+    | C.Cmp.Eq -> E
+    | C.Cmp.Lt -> G
+    | C.Cmp.Le -> GE
+    | C.Cmp.Gt -> L
+    | C.Cmp.Ge -> LE
 end
 
 module Bytereg = struct
@@ -244,20 +258,12 @@ and select_instructions_tail tails t =
     match cmp with
     | Eq -> if Bool.equal b1 b2 then [JMP lt] else [JMP lf]
     | _ -> assert false )
-  | C.If ((cmp, Var v, Int i), lt, lf) -> (
-    match cmp with
-    | Eq -> [CMP (Var v, Imm i); JCC (Cc.E, lt); JMP lf]
-    | Lt -> [CMP (Var v, Imm i); JCC (Cc.L, lt); JMP lf]
-    | Le -> [CMP (Var v, Imm i); JCC (Cc.LE, lt); JMP lf]
-    | Gt -> [CMP (Var v, Imm i); JCC (Cc.G, lt); JMP lf]
-    | Ge -> [CMP (Var v, Imm i); JCC (Cc.GE, lt); JMP lf] )
-  | C.If ((cmp, Int i, Var v), lt, lf) -> (
-    match cmp with
-    | Eq -> [CMP (Var v, Imm i); JCC (Cc.E, lt); JMP lf]
-    | Lt -> [CMP (Var v, Imm i); JCC (Cc.G, lt); JMP lf]
-    | Le -> [CMP (Var v, Imm i); JCC (Cc.GE, lt); JMP lf]
-    | Gt -> [CMP (Var v, Imm i); JCC (Cc.L, lt); JMP lf]
-    | Ge -> [CMP (Var v, Imm i); JCC (Cc.LE, lt); JMP lf] )
+  | C.If ((cmp, Var v, Int i), lt, lf) ->
+      let cc = Cc.of_c_cmp cmp in
+      [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
+  | C.If ((cmp, Int i, Var v), lt, lf) ->
+      let cc = Cc.of_c_cmp_swap cmp in
+      [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
   | C.If ((cmp, Var v, Bool b), lt, lf) -> (
     match cmp with
     | Eq -> [CMP (Var v, Imm (Bool.to_int b)); JCC (Cc.E, lt); JMP lf]
@@ -270,13 +276,9 @@ and select_instructions_tail tails t =
     match cmp with
     | Eq -> [JMP lt]
     | _ -> [JMP lf] )
-  | C.If ((cmp, Var v1, Var v2), lt, lf) -> (
-    match cmp with
-    | Eq -> [CMP (Var v1, Var v2); JCC (Cc.E, lt); JMP lf]
-    | Lt -> [CMP (Var v1, Var v2); JCC (Cc.L, lt); JMP lf]
-    | Le -> [CMP (Var v1, Var v2); JCC (Cc.LE, lt); JMP lf]
-    | Gt -> [CMP (Var v1, Var v2); JCC (Cc.G, lt); JMP lf]
-    | Ge -> [CMP (Var v1, Var v2); JCC (Cc.GE, lt); JMP lf] )
+  | C.If ((cmp, Var v1, Var v2), lt, lf) ->
+      let cc = Cc.of_c_cmp cmp in
+      [CMP (Var v1, Var v2); JCC (cc, lt); JMP lf]
   | C.If _ -> assert false
 
 and select_instructions_stmt s =
