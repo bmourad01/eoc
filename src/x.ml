@@ -655,11 +655,11 @@ and allocate_registers_instr colors = function
 and color_arg colors = function
   | Arg.Var v as a when is_temp_var_name v -> (
     match Map.find colors a with
+    | None -> failwith ("X.color_arg: var " ^ v ^ " was not colored")
     | Some c ->
         assert (c >= 0);
         if c < num_regs then allocatable_regs.(c)
         else
           let offset = (c - num_regs + 1) * word_size in
-          Deref (RBP, -offset)
-    | None -> a )
+          Deref (RBP, -offset) )
   | a -> a
