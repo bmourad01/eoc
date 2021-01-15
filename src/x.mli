@@ -87,11 +87,11 @@ val string_of_instr : instr -> string
 
 val select_instructions : C.t -> t
 
-(* allocate stack space for local variables *)
+(* spill local variables to the stack *)
 
 val assign_homes : t -> t
 
-(* fix instructions where there is more than one memory operand *)
+(* fix instructions with illegal operands + remove no-ops *)
 
 val patch_instructions : t -> t
 
@@ -103,7 +103,7 @@ val uncover_live : t -> t
 
 val build_interference : t -> t
 
-(* use the greedy graph coloring algorithm on the interference graph *)
+(* use the greedy saturation algorithm on the interference graph *)
 
 val color_graph : Interference_graph.t -> int Arg_map.t
 
