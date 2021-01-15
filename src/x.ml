@@ -423,7 +423,7 @@ let function_prologue stack_space w =
      * as prescribed by the System V ABI *)
     let adj = List.length callee_save_in_use mod 2 in
     if stack_space <= 0 then
-      if adj = 1 then [] else [SUB (Reg RSP, Imm word_size)]
+      if adj <> 0 then [] else [SUB (Reg RSP, Imm word_size)]
     else [SUB (Reg RSP, Imm (stack_space + (word_size * adj)))]
   in
   setup_frame @ callee_save_in_use @ adj_sp
