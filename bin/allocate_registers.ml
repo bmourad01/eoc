@@ -8,6 +8,8 @@ let () =
         to_string
           (patch_instructions
              (allocate_registers
-                (select_instructions
-                   (C.explicate_control
-                      (R_anf.resolve_complex R.(uniquify prog))))))))
+                (build_interference
+                   (uncover_live
+                      (select_instructions
+                         (C.explicate_control
+                            (R_anf.resolve_complex R.(uniquify prog))))))))))

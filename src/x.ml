@@ -582,8 +582,7 @@ let color_graph g =
   in
   loop colors
 
-let rec allocate_registers p =
-  match uncover_live p |> build_interference with
+let rec allocate_registers = function
   | Program (info, blocks) ->
       let colors = color_graph info.conflicts in
       let blocks, vars =
@@ -592,10 +591,19 @@ let rec allocate_registers p =
             let block, vars = allocate_registers_block colors vars block in
             (Map.set blocks label block, vars))
       in
-      let locals_types =
-        Map.filter_keys info.locals_types ~f:(fun v -> not (Set.mem vars v))
+      let locals_types = info.locals_types in
+      let (Program (info, blocks)) =
+        (* we can re-use assign-homes to spill variables onto the stack,
+         * but this requires a bit of a hack, since assign-homes relies
+         * on locals-types to create stack space. those variables which
+         * were allocated to registers need to be removed from this map
+         * when we run assign-homes, but we can restore it later. *)
+        let locals_types =
+          Map.filter_keys locals_types ~f:(fun v -> not (Set.mem vars v))
+        in
+        assign_homes (Program ({info with locals_types}, blocks))
       in
-      Program ({info with locals_types}, blocks) |> assign_homes
+      Program ({info with locals_types}, blocks)
 
 and allocate_registers_block colors vars = function
   | Block (label, info, instrs) ->
