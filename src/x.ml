@@ -305,9 +305,6 @@ and select_instructions_stmt s =
 
 let is_temp_var_name = String.is_prefix ~prefix:"%"
 
-let caller_save_set =
-  List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
-
 let rec assign_homes = function
   | Program (info, blocks) ->
       let stack_space =
@@ -386,6 +383,9 @@ let filter_non_locations =
   Set.filter ~f:(function
     | Arg.Imm _ -> false
     | _ -> true)
+
+let caller_save_set =
+  List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
 
 let write_set instr =
   let aux = function
