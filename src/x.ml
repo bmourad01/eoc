@@ -307,10 +307,7 @@ let is_temp_var_name = String.is_prefix ~prefix:"%"
 
 let rec assign_homes = function
   | Program (info, blocks) ->
-      let stack_space =
-        if Map.is_empty info.locals_types then 0
-        else (Map.length info.locals_types * word_size lor 15) + 1
-      in
+      let stack_space = Map.length info.locals_types * word_size in
       let blocks, _ =
         Map.fold blocks ~init:(empty_label_map, R.empty_var_env)
           ~f:(fun ~key:label ~data:block (blocks, env) ->
@@ -422,16 +419,24 @@ let function_prologue stack_space w =
     Set.fold w ~init:[] ~f:(fun acc a -> PUSH a :: acc) |> List.rev
   in
   let adj_sp =
-    if stack_space <= 0 then [] else [SUB (Reg RSP, Imm stack_space)]
+    (* we need to align RSP to a 16-byte boundary
+     * as prescribed by the System V ABI *)
+    let adj = List.length callee_save_in_use mod 2 in
+    if stack_space <= 0 then
+      if adj = 1 then [] else [SUB (Reg RSP, Imm word_size)]
+    else [SUB (Reg RSP, Imm (stack_space + (word_size * adj)))]
   in
   setup_frame @ callee_save_in_use @ adj_sp
 
-let insert_function_epilogue label stack_space w instrs =
-  let adj_sp =
-    if stack_space <= 0 then [] else [ADD (Reg RSP, Imm stack_space)]
-  in
+let function_epilogue label stack_space w instrs =
   let callee_save_in_use =
     Set.fold w ~init:[] ~f:(fun acc a -> POP a :: acc)
+  in
+  let adj_sp =
+    let adj = List.length callee_save_in_use mod 2 in
+    if stack_space <= 0 then
+      if adj = 1 then [] else [ADD (Reg RSP, Imm word_size)]
+    else [ADD (Reg RSP, Imm (stack_space + (word_size * adj)))]
   in
   let restore_frame = if stack_space <= 0 then [] else [POP (Reg RBP)] in
   let epilogue = adj_sp @ callee_save_in_use @ restore_frame in
@@ -460,6 +465,8 @@ and patch_instructions_block info = function
       in
       let instrs =
         if String.equal label info.main then
+          (* 'w' is a set which exploits the ordering
+           * for registers that Reg.t prescribes *)
           let w =
             List.fold instrs ~init:Args.empty ~f:(fun w instr ->
                 Set.union w (write_set instr)
@@ -470,7 +477,7 @@ and patch_instructions_block info = function
                      | _ -> false))
           in
           function_prologue info.stack_space w
-          @ insert_function_epilogue label info.stack_space w instrs
+          @ function_epilogue label info.stack_space w instrs
         else instrs
       in
       Block (label, block_info, instrs)
@@ -604,9 +611,7 @@ let rec allocate_registers = function
       let stack_space =
         match Map.data colors |> Int.Set.of_list |> Set.max_elt with
         | None -> 0
-        | Some c ->
-            let n = c - num_regs + 1 in
-            if n > 0 then (n * word_size lor 15) + 1 else 0
+        | Some c -> max (c - num_regs + 1) 0 * word_size
       in
       Program ({info with stack_space}, blocks)
 

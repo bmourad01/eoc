@@ -87,7 +87,7 @@ val string_of_instr : instr -> string
 
 val select_instructions : C.t -> t
 
-(* spill local variables to the stack *)
+(* spill local variables to the stack (deprecated) *)
 
 val assign_homes : t -> t
 
