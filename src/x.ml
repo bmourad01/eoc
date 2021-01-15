@@ -363,11 +363,9 @@ and assign_homes_instr env = function
   | JMP _ as j -> (j, env)
 
 and assign_homes_arg env = function
-  | Imm _ as i -> (i, env)
-  | Reg _ as r -> (r, env)
-  | Deref _ as d -> (d, env)
   | Var v when is_temp_var_name v -> (
     match Map.find env v with
+    | Some offset -> (Deref (RBP, offset), env)
     | None ->
         let offset =
           let inc = -word_size in
@@ -375,9 +373,8 @@ and assign_homes_arg env = function
               if offset <= acc then offset + inc else acc)
         in
         let env = Map.set env v offset in
-        (Deref (RBP, offset), env)
-    | Some offset -> (Deref (RBP, offset), env) )
-  | Var _ as v -> (v, env)
+        (Deref (RBP, offset), env) )
+  | a -> (a, env)
 
 let filter_non_locations =
   Set.filter ~f:(function
