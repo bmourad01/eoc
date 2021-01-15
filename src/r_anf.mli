@@ -23,6 +23,7 @@ and prim =
   | Minus of atom
   | Plus of atom * atom
   | Subtract of atom * atom
+  | Mult of atom * atom
 
 val to_string : t -> string
 

@@ -65,6 +65,8 @@ and block_info = {live_after: Args.t list}
 and instr =
   | ADD of arg * arg
   | SUB of arg * arg
+  | IMUL of arg * arg
+  | IMULi of arg * arg * arg
   | NEG of arg
   | MOV of arg * arg
   | CALL of label * int

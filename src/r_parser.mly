@@ -5,7 +5,7 @@
 %token EOF
 %token <int> INT
 %token <string> VAR
-%token PLUS MINUS
+%token PLUS MINUS STAR
 %token LPAREN RPAREN LSQUARE RSQUARE
 %token READ LET
 
@@ -37,3 +37,5 @@ prim:
     { Plus ($3, $4) }
   | LPAREN MINUS exp exp RPAREN
     { Subtract ($3, $4) }
+  | LPAREN STAR exp exp RPAREN
+    { Mult ($3, $4) }

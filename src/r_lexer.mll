@@ -21,6 +21,7 @@ rule token = parse
   | space { token lexbuf }
   | '+' { PLUS }
   | '-' { MINUS }
+  | '*' { STAR }
   | '(' { LPAREN }
   | ')' { RPAREN }
   | '[' { LSQUARE }

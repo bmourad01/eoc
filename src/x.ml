@@ -104,6 +104,8 @@ and block_info = {live_after: Args.t list}
 and instr =
   | ADD of arg * arg
   | SUB of arg * arg
+  | IMUL of arg * arg
+  | IMULi of arg * arg * arg
   | NEG of arg
   | MOV of arg * arg
   | CALL of label * int
@@ -144,6 +146,11 @@ and string_of_instr = function
       Printf.sprintf "add %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | SUB (a1, a2) ->
       Printf.sprintf "sub %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | IMUL (a1, a2) ->
+      Printf.sprintf "imul %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | IMULi (a1, a2, a3) ->
+      Printf.sprintf "imul %s, %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+        (Arg.to_string a3)
   | NEG a -> Printf.sprintf "neg %s" (Arg.to_string a)
   | MOV (a1, a2) ->
       Printf.sprintf "mov %s, %s" (Arg.to_string a1) (Arg.to_string a2)
@@ -210,6 +217,16 @@ and select_instructions_tail t =
   | C.Return (Prim (Subtract (Var v1, Var v2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v1); SUB (a, Var v2); RET])
+  | C.Return (Prim (Mult (Int i1, Int i2))) ->
+      let a = Reg RAX in
+      (a, [MOV (a, Imm (i1 * i2))])
+  | C.Return (Prim (Mult (Var v, Int i)))
+   |C.Return (Prim (Mult (Int i, Var v))) ->
+      let a = Reg RAX in
+      (a, [IMULi (a, Var v, Imm i)])
+  | C.Return (Prim (Mult (Var v1, Var v2))) ->
+      let a = Reg RAX in
+      (a, [MOV (a, Var v1); IMUL (a, Var v2)])
   | C.Seq (s, t) ->
       let _, s = select_instructions_stmt s in
       let a, t = select_instructions_tail t in
@@ -258,6 +275,17 @@ and select_instructions_stmt s =
   | C.Assign (v, Prim (Subtract (Var v1, Var v2))) ->
       let a = Var v in
       (a, [MOV (a, Var v1); SUB (a, Var v2)])
+  | C.Assign (v, Prim (Mult (Int i1, Int i2))) ->
+      let a = Var v in
+      (a, [MOV (a, Imm (i1 * i2))])
+  | C.Assign (v, Prim (Mult (Var v', Int i)))
+   |C.Assign (v, Prim (Mult (Int i, Var v'))) ->
+      let a = Var v in
+      if String.equal v v' then (a, [IMULi (a, a, Imm i)])
+      else (a, [IMULi (a, Var v', Imm i)])
+  | C.Assign (v, Prim (Mult (Var v1, Var v2))) ->
+      let a = Var v in
+      (a, [MOV (a, Var v1); IMUL (a, Var v2)])
 
 let is_temp_var_name = String.is_prefix ~prefix:"%"
 
@@ -296,6 +324,14 @@ and assign_homes_instr env = function
       let a1, env = assign_homes_arg env a1 in
       let a2, env = assign_homes_arg env a2 in
       (SUB (a1, a2), env)
+  | IMUL (a1, a2) ->
+      let a1, env = assign_homes_arg env a1 in
+      let a2, env = assign_homes_arg env a2 in
+      (IMUL (a1, a2), env)
+  | IMULi (a1, a2, a3) ->
+      let a1, env = assign_homes_arg env a1 in
+      let a2, env = assign_homes_arg env a2 in
+      (IMULi (a1, a2, a3), env)
   | NEG a ->
       let a, env = assign_homes_arg env a in
       (NEG a, env)
@@ -337,7 +373,12 @@ let filter_non_locations =
 
 let write_set instr =
   let aux = function
-    | ADD (a, _) | SUB (a, _) | NEG a | MOV (a, _) -> Args.singleton a
+    | ADD (a, _)
+     |SUB (a, _)
+     |NEG a
+     |MOV (a, _)
+     |IMUL (a, _)
+     |IMULi (a, _, _) -> Args.singleton a
     | CALL _ -> Set.add caller_save_set (Reg RSP)
     | PUSH _ | RET -> Args.singleton (Reg RSP)
     | POP a -> Args.of_list [a; Reg RSP]
@@ -347,7 +388,8 @@ let write_set instr =
 
 let read_set instr =
   let aux = function
-    | ADD (a1, a2) | SUB (a1, a2) -> Args.of_list [a1; a2]
+    | ADD (a1, a2) | SUB (a1, a2) | IMUL (a1, a2) | IMULi (a1, a2, _) ->
+        Args.of_list [a1; a2]
     | NEG a | MOV (_, a) -> Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
@@ -429,6 +471,10 @@ and patch_instructions_instr = function
   | MOV ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
   | MOV (a1, a2) when Arg.equal a1 a2 -> []
+  | IMUL ((Deref _ as d), a) ->
+      [MOV (Reg RAX, d); IMUL (Reg RAX, a); MOV (d, Reg RAX)]
+  | IMULi ((Deref _ as d), a, i) ->
+      [MOV (Reg RAX, d); IMULi (Reg RAX, a, i); MOV (d, Reg RAX)]
   | instr -> [instr]
 
 let rec uncover_live = function
@@ -570,6 +616,14 @@ and allocate_registers_instr colors vars = function
       let a1, vars = color_arg colors vars a1 in
       let a2, vars = color_arg colors vars a2 in
       (SUB (a1, a2), vars)
+  | IMUL (a1, a2) ->
+      let a1, vars = color_arg colors vars a1 in
+      let a2, vars = color_arg colors vars a2 in
+      (IMUL (a1, a2), vars)
+  | IMULi (a1, a2, a3) ->
+      let a1, vars = color_arg colors vars a1 in
+      let a2, vars = color_arg colors vars a2 in
+      (IMULi (a1, a2, a3), vars)
   | NEG a ->
       let a, vars = color_arg colors vars a in
       (NEG a, vars)

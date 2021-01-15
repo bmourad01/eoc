@@ -57,6 +57,8 @@ and string_of_prim = function
       Printf.sprintf "(+ %s %s)" (string_of_atom a1) (string_of_atom a2)
   | Subtract (a1, a2) ->
       Printf.sprintf "(- %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Mult (a1, a2) ->
+      Printf.sprintf "(* %s %s)" (string_of_atom a1) (string_of_atom a2)
 
 let read_int () =
   Out_channel.(flush stdout);
@@ -98,6 +100,7 @@ and interp_prim ?(read = None) env = function
   | Minus a -> interp_atom env a
   | Plus (a1, a2) -> interp_atom env a1 + interp_atom env a2
   | Subtract (a1, a2) -> interp_atom env a1 - interp_atom env a2
+  | Mult (a1, a2) -> interp_atom env a1 * interp_atom env a2
 
 let start_label = "main"
 
@@ -142,6 +145,9 @@ and type_check_cvar_prim env = function
     match (type_check_cvar_atom env a1, type_check_cvar_atom env a2) with
     | Integer, Integer -> Integer )
   | Subtract (a1, a2) -> (
+    match (type_check_cvar_atom env a1, type_check_cvar_atom env a2) with
+    | Integer, Integer -> Integer )
+  | Mult (a1, a2) -> (
     match (type_check_cvar_atom env a1, type_check_cvar_atom env a2) with
     | Integer, Integer -> Integer )
 
