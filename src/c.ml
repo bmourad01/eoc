@@ -189,6 +189,8 @@ let rec explicate_control = function
   | R_anf.Program (info, e) ->
       let cfg = Cfg.(add_vertex empty start_label) in
       let info = {main= start_label; typ= info.typ; cfg} in
+      (* we're not using a Hashtbl here because we 
+       * want a specific ordering for each block *)
       let tails = ref empty_label_map in
       let tail = explicate_tail tails (ref 0) e in
       let tails = Map.set !tails start_label tail in

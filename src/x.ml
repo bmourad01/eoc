@@ -566,8 +566,8 @@ and patch_instructions_instr = function
 
 let rec uncover_live = function
   | Program (info, blocks) ->
-      let la_map = ref empty_label_map in
-      let lb_map = ref empty_label_map in
+      let la_map = Hashtbl.create (module String) in
+      let lb_map = Hashtbl.create (module String) in
       let blocks' = Hashtbl.of_alist_exn (module String) blocks in
       (* the CFG is currently a DAG, so we start from
        * the exit blocks and work our way backward
@@ -581,7 +581,7 @@ let rec uncover_live = function
       let blocks =
         List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
             let live_after =
-              match Map.find !la_map label with
+              match Hashtbl.find la_map label with
               | None -> List.map instrs ~f:(fun _ -> Args.empty)
               | Some la -> la
             in
@@ -593,14 +593,14 @@ and uncover_live_cfg blocks cfg la_map lb_map = function
   | Block (label, _, instrs) ->
       let live_before =
         let lb =
-          match Map.find !lb_map label with
+          match Hashtbl.find lb_map label with
           | None -> Args.empty
           | Some lb -> lb
         in
         Cfg.fold_succ
           (fun l acc ->
             let lb =
-              match Map.find !lb_map l with
+              match Hashtbl.find lb_map l with
               | None -> Args.empty
               | Some lb -> lb
             in
@@ -618,8 +618,8 @@ and uncover_live_cfg blocks cfg la_map lb_map = function
             let live_before'' = Set.(union (diff live_after' w) r) in
             (live_after' :: live_after, live_before'' :: live_before))
       in
-      la_map := Map.set !la_map label live_after;
-      lb_map := Map.set !lb_map label (List.hd_exn live_before);
+      Hashtbl.set la_map label live_after;
+      Hashtbl.set lb_map label (List.hd_exn live_before);
       Cfg.iter_pred
         (fun l ->
           uncover_live_cfg blocks cfg la_map lb_map
