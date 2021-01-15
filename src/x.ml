@@ -440,6 +440,9 @@ let write_set instr =
 
 let read_set instr =
   let aux = function
+    (* special case, it DOES read the source register,
+     * but in effect it's just zeroing the destination. *)
+    | XOR (a1, a2) when Arg.equal a1 a2 -> Args.empty
     | ADD (a1, a2)
      |SUB (a1, a2)
      |IMUL (a1, a2)
@@ -639,6 +642,10 @@ and build_interference_block g = function
              Set.fold la ~init:g ~f:(fun g v ->
                  match instr with
                  | MOV (d, s) | MOVZX (d, s) ->
+                     if Arg.(equal v d || equal v s) then g
+                     else Interference_graph.add_edge g v d
+                 | XOR (d, s) when Arg.(equal d s) ->
+                     (* special case, treat this like a MOV *)
                      if Arg.(equal v d || equal v s) then g
                      else Interference_graph.add_edge g v d
                  | _ ->
