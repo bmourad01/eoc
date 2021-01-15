@@ -59,6 +59,16 @@ and resolve_complex_exp m n = function
       let nv, a = resolve_complex_exp m n e in
       let x = fresh_var n in
       (nv @ [(x, Prim (Minus a))], Var x)
+  | R.(Prim (Plus (e1, Prim (Minus e2)))) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Subtract (a1, a2)))], Var x)
+  | R.(Prim (Plus (Prim (Minus e1), e2))) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Subtract (a2, a1)))], Var x)
   | R.(Prim (Plus (e1, e2))) ->
       let nv1, a1 = resolve_complex_exp m n e1 in
       let nv2, a2 = resolve_complex_exp m n e2 in
