@@ -451,8 +451,8 @@ and build_interference_block g = function
                          else Interference_graph.add_edge g v d)))
 
 let allocatable_regs =
-  [| Arg.Reg RBX
-   ; Arg.Reg RCX
+  (* prioritize caller-save registers over callee-save registers *)
+  [| Arg.Reg RCX
    ; Arg.Reg RDX
    ; Arg.Reg RSI
    ; Arg.Reg RDI
@@ -460,6 +460,7 @@ let allocatable_regs =
    ; Arg.Reg R9
    ; Arg.Reg R10
    ; Arg.Reg R11
+   ; Arg.Reg RBX
    ; Arg.Reg R12
    ; Arg.Reg R13
    ; Arg.Reg R14
@@ -499,6 +500,7 @@ let color_graph g =
         match v with
         | Reg RAX -> Map.set colors v (-1)
         | Reg RSP -> Map.set colors v (-2)
+        | Reg RBP -> Map.set colors v (-3)
         | _ -> colors)
       g Arg_map.empty
   in
@@ -509,14 +511,6 @@ let color_graph g =
         else colors)
   in
   loop colors
-
-let color_arg colors vars = function
-  | Arg.Var v as a when is_temp_var_name v -> (
-    match Map.find colors a with
-    | Some c when c >= 0 && c < Array.length allocatable_regs ->
-        (allocatable_regs.(c), Set.add vars v)
-    | _ -> (a, vars) )
-  | a -> (a, vars)
 
 let rec allocate_registers p =
   match uncover_live p |> build_interference with
@@ -567,3 +561,11 @@ and allocate_registers_instr colors vars = function
       (POP a, vars)
   | RET -> (RET, vars)
   | JMP _ as j -> (j, vars)
+
+and color_arg colors vars = function
+  | Arg.Var v as a when is_temp_var_name v -> (
+    match Map.find colors a with
+    | Some c when c >= 0 && c < Array.length allocatable_regs ->
+        (allocatable_regs.(c), Set.add vars v)
+    | _ -> (a, vars) )
+  | a -> (a, vars)
