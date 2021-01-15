@@ -83,7 +83,7 @@ val string_of_block : block -> string
 
 val string_of_instr : instr -> string
 
-(* compile a C program to an X program with variables *)
+(* lower a C program to an X program with variables *)
 
 val select_instructions : C.t -> t
 
