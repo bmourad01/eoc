@@ -151,7 +151,9 @@ let read_int = "read_int"
 
 let print_int = "print_int"
 
-let externs = [read_int; print_int]
+let print_bool = "print_bool"
+
+let externs = [read_int; print_int; print_bool]
 
 let rec to_string = function
   | Program (info, blocks) ->
@@ -473,7 +475,7 @@ let function_prologue stack_space w =
   in
   setup_frame @ callee_save_in_use @ adj_sp
 
-let function_epilogue label stack_space w instrs =
+let function_epilogue typ label stack_space w instrs =
   let callee_save_in_use =
     Set.fold w ~init:[] ~f:(fun acc a -> POP a :: acc)
   in
@@ -491,8 +493,13 @@ let function_epilogue label stack_space w instrs =
           ( "X.insert_function_epilogue: block " ^ label
           ^ " is not well-formed" )
     | RET :: _ ->
+        let print =
+          match typ with
+          | C.Type.Integer -> print_int
+          | C.Type.Boolean -> print_bool
+        in
         List.rev acc
-        @ [MOV (Reg RDI, Reg RAX); CALL (print_int, 1)]
+        @ [MOV (Reg RDI, Reg RAX); CALL (print, 1)]
         @ epilogue @ [RET]
     | instr :: rest -> aux (instr :: acc) rest
   in
@@ -501,31 +508,41 @@ let function_epilogue label stack_space w instrs =
 let rec patch_instructions = function
   | Program (info, blocks) ->
       let blocks =
-        List.map blocks ~f:(fun (label, block) ->
-            (label, patch_instructions_block info block))
+        List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
+            let instrs =
+              List.map instrs ~f:patch_instructions_instr |> List.concat
+            in
+            (label, Block (label, info, instrs)))
       in
-      Program (info, blocks)
-
-and patch_instructions_block info = function
-  | Block (label, block_info, instrs) ->
-      let instrs =
-        List.map instrs ~f:patch_instructions_instr |> List.concat
-      in
-      let instrs =
-        if String.equal label info.main then
-          (* 'w' is a set which exploits the ordering
-           * for registers that Reg.t prescribes *)
-          let w =
-            List.fold instrs ~init:Args.empty ~f:(fun w instr ->
+      (* 'w' is a set which exploits the ordering
+       * for registers that Reg.t prescribes *)
+      let w =
+        List.fold blocks ~init:Args.empty
+          ~f:(fun init (_, Block (_, _, instrs)) ->
+            List.fold instrs ~init ~f:(fun w instr ->
                 Set.union w (write_set instr)
                 |> Set.filter ~f:(function
                      | Arg.Reg RSP -> false
                      | Arg.Reg RBP -> false
                      | Arg.Reg r -> Reg.is_callee_save r
-                     | _ -> false))
-          in
-          function_prologue info.stack_space w
-          @ function_epilogue label info.stack_space w instrs
+                     | _ -> false)))
+      in
+      let blocks =
+        List.map blocks ~f:(fun (label, block) ->
+            (label, patch_instructions_block w info block))
+      in
+      Program (info, blocks)
+
+and patch_instructions_block w info = function
+  | Block (label, block_info, instrs) ->
+      let instrs =
+        if String.equal label info.main then
+          function_prologue info.stack_space w @ instrs
+        else instrs
+      in
+      let instrs =
+        if Cfg.out_degree info.cfg label = 0 then
+          function_epilogue info.typ label info.stack_space w instrs
         else instrs
       in
       Block (label, block_info, instrs)
@@ -546,17 +563,49 @@ and patch_instructions_instr = function
 
 let rec uncover_live = function
   | Program (info, blocks) ->
+      let la_map = ref empty_label_map in
+      let lb_map = ref empty_label_map in
+      (* the CFG is currently topologically-ordered,
+       * so we start from the exit blocks and work our
+       * way backward to the entry by visiting predecessors *)
+      Cfg.iter_vertex
+        (fun l ->
+          if Cfg.out_degree info.cfg l = 0 then
+            let block = List.Assoc.find_exn blocks l ~equal:String.equal in
+            uncover_live_cfg blocks info.cfg la_map lb_map block)
+        info.cfg;
       let blocks =
-        List.map blocks ~f:(fun (label, block) ->
-            (label, uncover_live_block block))
+        List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
+            let live_after =
+              match Map.find !la_map label with
+              | None -> List.map instrs ~f:(fun _ -> Args.empty)
+              | Some la -> la
+            in
+            (label, Block (label, {live_after}, instrs)))
       in
       Program (info, blocks)
 
-and uncover_live_block = function
-  | Block (label, info, instrs) ->
-      let live_after, _ =
+and uncover_live_cfg blocks cfg la_map lb_map = function
+  | Block (label, _, instrs) ->
+      let live_before =
+        let lb =
+          match Map.find !lb_map label with
+          | None -> Args.empty
+          | Some lb -> lb
+        in
+        Cfg.fold_succ
+          (fun l acc ->
+            let lb =
+              match Map.find !lb_map l with
+              | None -> Args.empty
+              | Some lb -> lb
+            in
+            Set.union lb acc)
+          cfg label lb
+      in
+      let live_after, live_before =
         List.fold_right instrs
-          ~init:([], [Args.of_list [Reg RAX; Reg RSP]])
+          ~init:([], [live_before])
           ~f:(fun instr (live_after, live_before) ->
             let live_before' = List.hd_exn live_before in
             let live_after' = live_before' in
@@ -565,7 +614,13 @@ and uncover_live_block = function
             let live_before'' = Set.(union (diff live_after' w) r) in
             (live_after' :: live_after, live_before'' :: live_before))
       in
-      Block (label, {live_after}, instrs)
+      la_map := Map.set !la_map label live_after;
+      lb_map := Map.set !lb_map label (List.hd_exn live_before);
+      Cfg.iter_pred
+        (fun l ->
+          uncover_live_cfg blocks cfg la_map lb_map
+            (List.Assoc.find_exn blocks l ~equal:String.equal))
+        cfg label
 
 let rec build_interference = function
   | Program (info, blocks) ->
@@ -583,7 +638,7 @@ and build_interference_block g = function
              let w = write_set instr in
              Set.fold la ~init:g ~f:(fun g v ->
                  match instr with
-                 | MOV (d, s) ->
+                 | MOV (d, s) | MOVZX (d, s) ->
                      if Arg.(equal v d || equal v s) then g
                      else Interference_graph.add_edge g v d
                  | _ ->

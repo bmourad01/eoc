@@ -18,3 +18,12 @@ void print_int(int64_t i)
 {
   printf("%ld\n", i);
 }
+
+void print_bool(int64_t i)
+{
+  if (i) {
+    printf("#t");
+  } else {
+    printf("#f");
+  }
+}

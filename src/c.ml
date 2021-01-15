@@ -187,7 +187,7 @@ let start_label = "main"
 
 let rec explicate_control = function
   | R_anf.Program (info, e) ->
-      let cfg = Cfg.empty in
+      let cfg = Cfg.(add_vertex empty start_label) in
       let info = {main= start_label; typ= info.typ; cfg} in
       let tails = ref empty_label_map in
       let tail = explicate_tail tails (ref 0) e in
