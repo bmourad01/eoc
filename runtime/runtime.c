@@ -22,8 +22,8 @@ void print_int(int64_t i)
 void print_bool(int64_t i)
 {
   if (i) {
-    printf("#t");
+    printf("#t\n");
   } else {
-    printf("#f");
+    printf("#f\n");
   }
 }
