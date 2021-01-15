@@ -160,6 +160,8 @@ and string_of_instr = function
   | RET -> "ret"
   | JMP l -> Printf.sprintf "jmp %s" l
 
+let fits_int32 i = Option.is_some (Int32.of_int i)
+
 let rec select_instructions = function
   | C.Program (info, tails) ->
       let blocks =
@@ -223,7 +225,8 @@ and select_instructions_tail t =
   | C.Return (Prim (Mult (Var v, Int i)))
    |C.Return (Prim (Mult (Int i, Var v))) ->
       let a = Reg RAX in
-      (a, [IMULi (a, Var v, Imm i)])
+      if fits_int32 i then (a, [IMULi (a, Var v, Imm i)])
+      else (a, [MOV (a, Imm i); IMUL (a, Var v)])
   | C.Return (Prim (Mult (Var v1, Var v2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v1); IMUL (a, Var v2)])
@@ -281,8 +284,8 @@ and select_instructions_stmt s =
   | C.Assign (v, Prim (Mult (Var v', Int i)))
    |C.Assign (v, Prim (Mult (Int i, Var v'))) ->
       let a = Var v in
-      if String.equal v v' then (a, [IMULi (a, a, Imm i)])
-      else (a, [IMULi (a, Var v', Imm i)])
+      if fits_int32 i then (a, [IMULi (a, Var v', Imm i)])
+      else (a, [MOV (a, Imm i); IMUL (a, Var v')])
   | C.Assign (v, Prim (Mult (Var v1, Var v2))) ->
       let a = Var v in
       (a, [MOV (a, Var v1); IMUL (a, Var v2)])
