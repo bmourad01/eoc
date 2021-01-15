@@ -388,9 +388,8 @@ let write_set instr =
 
 let read_set instr =
   let aux = function
-    | ADD (a1, a2) | SUB (a1, a2) | IMUL (a1, a2) | IMULi (a1, a2, _) ->
-        Args.of_list [a1; a2]
-    | NEG a | MOV (_, a) -> Args.singleton a
+    | ADD (a1, a2) | SUB (a1, a2) | IMUL (a1, a2) -> Args.of_list [a1; a2]
+    | NEG a | MOV (_, a) | IMULi (_, a, _) -> Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
         |> List.map ~f:(fun r -> Arg.Reg r)
