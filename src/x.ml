@@ -435,7 +435,7 @@ let function_epilogue label stack_space w instrs =
   let adj_sp =
     let adj = List.length callee_save_in_use mod 2 in
     if stack_space <= 0 then
-      if adj = 1 then [] else [ADD (Reg RSP, Imm word_size)]
+      if adj <> 0 then [] else [ADD (Reg RSP, Imm word_size)]
     else [ADD (Reg RSP, Imm (stack_space + (word_size * adj)))]
   in
   let restore_frame = if stack_space <= 0 then [] else [POP (Reg RBP)] in
