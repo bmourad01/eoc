@@ -182,27 +182,28 @@ let rec select_instructions = function
 and select_instructions_tail t =
   let open Arg in
   match t with
+  (* atom *)
   | C.Return (Atom (Int i)) ->
       let a = Reg RAX in
       (a, [MOV (a, Imm i); RET])
   | C.Return (Atom (Var v)) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v); RET])
+  (* read *)
   | C.Return (Prim Read) ->
       let a = Reg RAX in
       (a, [CALL (read_int, 0); RET])
+  (* minus *)
   | C.Return (Prim (Minus (Int i))) ->
       let a = Reg RAX in
       (a, [MOV (a, Imm (-i)); RET])
   | C.Return (Prim (Minus (Var v))) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v); NEG a; RET])
+  (* plus *)
   | C.Return (Prim (Plus (Int i1, Int i2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Imm (i1 + i2)); RET])
-  | C.Return (Prim (Subtract (Int i1, Int i2))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Imm (i1 - i2)); RET])
   | C.Return (Prim (Plus (Var v, Int i)))
    |C.Return (Prim (Plus (Int i, Var v))) ->
       let a = Reg RAX in
@@ -210,6 +211,10 @@ and select_instructions_tail t =
   | C.Return (Prim (Plus (Var v1, Var v2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v1); ADD (a, Var v2); RET])
+  (* subtract *)
+  | C.Return (Prim (Subtract (Int i1, Int i2))) ->
+      let a = Reg RAX in
+      (a, [MOV (a, Imm (i1 - i2)); RET])
   | C.Return (Prim (Subtract (Var v, Int i))) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v); SUB (a, Imm i)])
@@ -219,6 +224,7 @@ and select_instructions_tail t =
   | C.Return (Prim (Subtract (Var v1, Var v2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v1); SUB (a, Var v2); RET])
+  (* mult *)
   | C.Return (Prim (Mult (Int i1, Int i2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Imm (i1 * i2))])
@@ -230,6 +236,7 @@ and select_instructions_tail t =
   | C.Return (Prim (Mult (Var v1, Var v2))) ->
       let a = Reg RAX in
       (a, [MOV (a, Var v1); IMUL (a, Var v2)])
+  (* seq *)
   | C.Seq (s, t) ->
       let _, s = select_instructions_stmt s in
       let a, t = select_instructions_tail t in
@@ -238,15 +245,18 @@ and select_instructions_tail t =
 and select_instructions_stmt s =
   let open Arg in
   match s with
+  (* atom *)
   | C.Assign (v, Atom (Int i)) ->
       let a = Var v in
       (a, [MOV (a, Imm i)])
   | C.Assign (v, Atom (Var v')) ->
       let a = Var v in
       (a, [MOV (a, Var v')])
+  (* read *)
   | C.Assign (v, Prim Read) ->
       let a = Var v in
       (a, [CALL (read_int, 0); MOV (a, Reg RAX)])
+  (* minus *)
   | C.Assign (v, Prim (Minus (Int i))) ->
       let a = Var v in
       (a, [MOV (a, Imm (-i))])
@@ -254,6 +264,7 @@ and select_instructions_stmt s =
       let a = Var v in
       if String.equal v v' then (a, [NEG a])
       else (a, [MOV (a, Var v'); NEG a])
+  (* plus *)
   | C.Assign (v, Prim (Plus (Int i1, Int i2))) ->
       let a = Var v in
       (a, [MOV (a, Imm (i1 + i2))])
@@ -265,6 +276,7 @@ and select_instructions_stmt s =
   | C.Assign (v, Prim (Plus (Var v1, Var v2))) ->
       let a = Var v in
       (a, [MOV (a, Var v1); ADD (a, Var v2)])
+  (* subtract *)
   | C.Assign (v, Prim (Subtract (Int i1, Int i2))) ->
       let a = Var v in
       (a, [MOV (a, Imm (i1 - i2))])
@@ -278,6 +290,7 @@ and select_instructions_stmt s =
   | C.Assign (v, Prim (Subtract (Var v1, Var v2))) ->
       let a = Var v in
       (a, [MOV (a, Var v1); SUB (a, Var v2)])
+  (* mult *)
   | C.Assign (v, Prim (Mult (Int i1, Int i2))) ->
       let a = Var v in
       (a, [MOV (a, Imm (i1 * i2))])
