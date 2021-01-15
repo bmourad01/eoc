@@ -552,6 +552,8 @@ let allocatable_regs =
    ; Arg.Reg R14
    ; Arg.Reg R15 |]
 
+let num_regs = Array.length allocatable_regs
+
 let color_graph g =
   let cmp (_, n) (_, m) = Int.compare m n in
   let q = Pairing_heap.create ~cmp () in
@@ -601,73 +603,63 @@ let color_graph g =
 let rec allocate_registers = function
   | Program (info, blocks) ->
       let colors = color_graph info.conflicts in
-      let blocks, vars =
-        Map.fold blocks ~init:(empty_label_map, String.Set.empty)
-          ~f:(fun ~key:label ~data:block (blocks, vars) ->
-            let block, vars = allocate_registers_block colors vars block in
-            (Map.set blocks label block, vars))
+      let blocks = Map.map blocks ~f:(allocate_registers_block colors) in
+      let stack_space =
+        match Map.data colors |> Int.Set.of_list |> Set.max_elt with
+        | None -> 0
+        | Some c ->
+            let n = c - num_regs + 1 in
+            if n > 0 then (n * word_size lor 15) + 1 else 0
       in
-      let locals_types = info.locals_types in
-      let (Program (info, blocks)) =
-        (* we can re-use assign-homes to spill variables onto the stack,
-         * but this requires a bit of a hack, since assign-homes relies
-         * on locals-types to create stack space. those variables which
-         * were allocated to registers need to be removed from this map
-         * when we run assign-homes, but we can restore it later. *)
-        let locals_types =
-          Map.filter_keys locals_types ~f:(fun v -> not (Set.mem vars v))
-        in
-        assign_homes (Program ({info with locals_types}, blocks))
-      in
-      Program ({info with locals_types}, blocks)
+      Program ({info with stack_space}, blocks)
 
-and allocate_registers_block colors vars = function
+and allocate_registers_block colors = function
   | Block (label, info, instrs) ->
-      let instrs, vars =
-        List.fold instrs ~init:([], vars) ~f:(fun (instrs, vars) instr ->
-            let instr, vars = allocate_registers_instr colors vars instr in
-            (instr :: instrs, vars))
-      in
-      (Block (label, info, List.rev instrs), vars)
+      let instrs = List.map instrs ~f:(allocate_registers_instr colors) in
+      Block (label, info, instrs)
 
-and allocate_registers_instr colors vars = function
+and allocate_registers_instr colors = function
   | ADD (a1, a2) ->
-      let a1, vars = color_arg colors vars a1 in
-      let a2, vars = color_arg colors vars a2 in
-      (ADD (a1, a2), vars)
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      ADD (a1, a2)
   | SUB (a1, a2) ->
-      let a1, vars = color_arg colors vars a1 in
-      let a2, vars = color_arg colors vars a2 in
-      (SUB (a1, a2), vars)
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      SUB (a1, a2)
   | IMUL (a1, a2) ->
-      let a1, vars = color_arg colors vars a1 in
-      let a2, vars = color_arg colors vars a2 in
-      (IMUL (a1, a2), vars)
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      IMUL (a1, a2)
   | IMULi (a1, a2, a3) ->
-      let a1, vars = color_arg colors vars a1 in
-      let a2, vars = color_arg colors vars a2 in
-      (IMULi (a1, a2, a3), vars)
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      IMULi (a1, a2, a3)
   | NEG a ->
-      let a, vars = color_arg colors vars a in
-      (NEG a, vars)
+      let a = color_arg colors a in
+      NEG a
   | MOV (a1, a2) ->
-      let a1, vars = color_arg colors vars a1 in
-      let a2, vars = color_arg colors vars a2 in
-      (MOV (a1, a2), vars)
-  | CALL _ as c -> (c, vars)
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      MOV (a1, a2)
+  | CALL _ as c -> c
   | PUSH a ->
-      let a, vars = color_arg colors vars a in
-      (PUSH a, vars)
+      let a = color_arg colors a in
+      PUSH a
   | POP a ->
-      let a, vars = color_arg colors vars a in
-      (POP a, vars)
-  | RET -> (RET, vars)
-  | JMP _ as j -> (j, vars)
+      let a = color_arg colors a in
+      POP a
+  | RET -> RET
+  | JMP _ as j -> j
 
-and color_arg colors vars = function
+and color_arg colors = function
   | Arg.Var v as a when is_temp_var_name v -> (
     match Map.find colors a with
-    | Some c when c >= 0 && c < Array.length allocatable_regs ->
-        (allocatable_regs.(c), Set.add vars v)
-    | _ -> (a, vars) )
-  | a -> (a, vars)
+    | Some c ->
+        assert (c >= 0);
+        if c < num_regs then allocatable_regs.(c)
+        else
+          let offset = (c - num_regs + 1) * word_size in
+          Deref (RBP, -offset)
+    | None -> a )
+  | a -> a
