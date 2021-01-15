@@ -2,11 +2,11 @@
  (names parse_r
         opt_r
         interp_r
+        interp_c
         uniquify
         resolve_complex
         explicate_control
         select_instructions
-        assign_homes
         uncover_live
         color_graph
         allocate_registers)

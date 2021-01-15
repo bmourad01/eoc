@@ -1,0 +1,5 @@
+(let ([x (read)])
+  (let ([y (read)])
+    (if (and (eq? x 0) (> y 2))
+        (+ y 2)
+        (+ y x))))

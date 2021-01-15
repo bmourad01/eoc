@@ -8,6 +8,27 @@ let empty_label_map = C.empty_label_map
 
 let word_size = 8
 
+module Cc = struct
+  type t = E | L | LE | G | GE
+
+  let to_string = function
+    | E -> "e"
+    | L -> "l"
+    | LE -> "le"
+    | G -> "g"
+    | GE -> "ge"
+end
+
+module Bytereg = struct
+  type t = AL | BL | CL | DL [@@deriving equal, compare, hash, sexp]
+
+  let to_string = function
+    | AL -> "al"
+    | BL -> "bl"
+    | CL -> "cl"
+    | DL -> "dl"
+end
+
 module Reg = struct
   type t =
     | RSP
@@ -64,6 +85,7 @@ module Arg = struct
     type t =
       | Imm of int
       | Reg of Reg.t
+      | Bytereg of Bytereg.t
       | Deref of Reg.t * int
       | Var of R.var
     [@@deriving equal, compare, hash, sexp]
@@ -71,6 +93,7 @@ module Arg = struct
     let to_string = function
       | Imm i -> Int.to_string i
       | Reg r -> Reg.to_string r
+      | Bytereg r -> Bytereg.to_string r
       | Deref (r, i) ->
           if i = 0 then Printf.sprintf "qword [%s]" (Reg.to_string r)
           else if i < 0 then
@@ -86,16 +109,18 @@ end
 module Args = Set.Make (Arg)
 module Arg_map = Map.Make (Arg)
 module Interference_graph = Graph.Persistent.Graph.Concrete (Arg)
+module Cfg = C.Cfg
 
 type info =
   { main: label
-  ; locals_types: R.type_env
   ; stack_space: int
-  ; conflicts: Interference_graph.t }
+  ; conflicts: Interference_graph.t
+  ; typ: C.Type.t
+  ; cfg: Cfg.t }
 
 type t = Program of info * blocks
 
-and blocks = block label_map
+and blocks = (label * block) list
 
 and block = Block of label * block_info * instr list
 
@@ -113,6 +138,12 @@ and instr =
   | POP of arg
   | RET
   | JMP of label
+  | NOT of arg
+  | XOR of arg * arg
+  | CMP of arg * arg
+  | SETCC of Cc.t * arg
+  | MOVZX of arg * arg
+  | JCC of Cc.t * label
 
 and arg = Arg.t
 
@@ -125,7 +156,7 @@ let externs = [read_int; print_int]
 let rec to_string = function
   | Program (info, blocks) ->
       let blks =
-        Map.data blocks
+        List.map blocks ~f:snd
         |> List.map ~f:string_of_block
         |> String.concat ~sep:"\n"
       in
@@ -159,6 +190,16 @@ and string_of_instr = function
   | POP a -> Printf.sprintf "pop %s" (Arg.to_string a)
   | RET -> "ret"
   | JMP l -> Printf.sprintf "jmp %s" l
+  | NOT a -> Printf.sprintf "not %s" (Arg.to_string a)
+  | XOR (a1, a2) ->
+      Printf.sprintf "xor %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | CMP (a1, a2) ->
+      Printf.sprintf "cmp %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | SETCC (cc, a) ->
+      Printf.sprintf "set%s %s" (Cc.to_string cc) (Arg.to_string a)
+  | MOVZX (a1, a2) ->
+      Printf.sprintf "movzx %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | JCC (cc, l) -> Printf.sprintf "j%s %s" (Cc.to_string cc) l
 
 let fits_int32 i = Option.is_some (Int32.of_int i)
 
@@ -166,212 +207,200 @@ let rec select_instructions = function
   | C.Program (info, tails) ->
       let blocks =
         let block_info = {live_after= []} in
-        Map.fold tails ~init:empty_label_map
-          ~f:(fun ~key:label ~data:tail blocks ->
-            let instrs = select_instructions_tail tail |> snd in
-            Map.set blocks label (Block (label, block_info, instrs)))
+        List.fold tails ~init:[] ~f:(fun blocks (label, tail) ->
+            let instrs = select_instructions_tail tails tail in
+            (label, Block (label, block_info, instrs)) :: blocks)
       in
       let info =
         { main= info.main
-        ; locals_types= info.locals_types
         ; stack_space= 0
-        ; conflicts= Interference_graph.empty }
+        ; conflicts= Interference_graph.empty
+        ; typ= info.typ
+        ; cfg= info.cfg }
       in
-      Program (info, blocks)
+      Program (info, blocks |> List.rev)
 
-and select_instructions_tail t =
+and select_instructions_tail tails t =
   let open Arg in
   match t with
-  (* atom *)
-  | C.Return (Atom (Int i)) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Imm i); RET])
-  | C.Return (Atom (Var v)) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Var v); RET])
-  (* read *)
-  | C.Return (Prim Read) ->
-      let a = Reg RAX in
-      (a, [CALL (read_int, 0); RET])
-  (* minus *)
-  | C.Return (Prim (Minus (Int i))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Imm (-i)); RET])
-  | C.Return (Prim (Minus (Var v))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Var v); NEG a; RET])
-  (* plus *)
-  | C.Return (Prim (Plus (Int i1, Int i2))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Imm (i1 + i2)); RET])
-  | C.Return (Prim (Plus (Var v, Int i)))
-   |C.Return (Prim (Plus (Int i, Var v))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Var v); ADD (a, Imm i); RET])
-  | C.Return (Prim (Plus (Var v1, Var v2))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Var v1); ADD (a, Var v2); RET])
-  (* subtract *)
-  | C.Return (Prim (Subtract (Int i1, Int i2))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Imm (i1 - i2)); RET])
-  | C.Return (Prim (Subtract (Var v, Int i))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Var v); SUB (a, Imm i)])
-  | C.Return (Prim (Subtract (Int i, Var v))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Imm i); SUB (a, Var v); RET])
-  | C.Return (Prim (Subtract (Var v1, Var v2))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Var v1); SUB (a, Var v2); RET])
-  (* mult *)
-  | C.Return (Prim (Mult (Int i1, Int i2))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Imm (i1 * i2))])
-  | C.Return (Prim (Mult (Var v, Int i)))
-   |C.Return (Prim (Mult (Int i, Var v))) ->
-      let a = Reg RAX in
-      if fits_int32 i then (a, [IMULi (a, Var v, Imm i)])
-      else (a, [MOV (a, Imm i); IMUL (a, Var v)])
-  | C.Return (Prim (Mult (Var v1, Var v2))) ->
-      let a = Reg RAX in
-      (a, [MOV (a, Var v1); IMUL (a, Var v2)])
-  (* seq *)
+  | C.Return e -> select_instruction_exp (Reg RAX) e @ [RET]
   | C.Seq (s, t) ->
-      let _, s = select_instructions_stmt s in
-      let a, t = select_instructions_tail t in
-      (a, s @ t)
+      let s = select_instructions_stmt s in
+      let t = select_instructions_tail tails t in
+      s @ t
+  (* goto *)
+  | C.Goto l -> [JMP l]
+  (* if *)
+  | C.If ((cmp, Int i1, Int i2), lt, lf) -> (
+    match cmp with
+    | Eq -> if Int.(i1 = i2) then [JMP lt] else [JMP lf]
+    | Lt -> if Int.(i1 < i2) then [JMP lt] else [JMP lf]
+    | Le -> if Int.(i1 <= i2) then [JMP lt] else [JMP lf]
+    | Gt -> if Int.(i1 > i2) then [JMP lt] else [JMP lf]
+    | Ge -> if Int.(i1 >= i2) then [JMP lt] else [JMP lf] )
+  | C.If ((cmp, Bool b1, Bool b2), lt, lf) -> (
+    match cmp with
+    | Eq -> if Bool.equal b1 b2 then [JMP lt] else [JMP lf]
+    | _ -> assert false )
+  | C.If ((cmp, Var v, Int i), lt, lf) -> (
+    match cmp with
+    | Eq -> [CMP (Var v, Imm i); JCC (Cc.E, lt); JMP lf]
+    | Lt -> [CMP (Var v, Imm i); JCC (Cc.L, lt); JMP lf]
+    | Le -> [CMP (Var v, Imm i); JCC (Cc.LE, lt); JMP lf]
+    | Gt -> [CMP (Var v, Imm i); JCC (Cc.G, lt); JMP lf]
+    | Ge -> [CMP (Var v, Imm i); JCC (Cc.GE, lt); JMP lf] )
+  | C.If ((cmp, Int i, Var v), lt, lf) -> (
+    match cmp with
+    | Eq -> [CMP (Var v, Imm i); JCC (Cc.E, lt); JMP lf]
+    | Lt -> [CMP (Var v, Imm i); JCC (Cc.G, lt); JMP lf]
+    | Le -> [CMP (Var v, Imm i); JCC (Cc.GE, lt); JMP lf]
+    | Gt -> [CMP (Var v, Imm i); JCC (Cc.L, lt); JMP lf]
+    | Ge -> [CMP (Var v, Imm i); JCC (Cc.LE, lt); JMP lf] )
+  | C.If ((cmp, Var v, Bool b), lt, lf) -> (
+    match cmp with
+    | Eq -> [CMP (Var v, Imm (Bool.to_int b)); JCC (Cc.E, lt); JMP lf]
+    | _ -> assert false )
+  | C.If ((cmp, Bool b, Var v), lt, lf) -> (
+    match cmp with
+    | Eq -> [CMP (Var v, Imm (Bool.to_int b)); JCC (Cc.E, lt); JMP lf]
+    | _ -> assert false )
+  | C.If ((cmp, Var v1, Var v2), lt, lf) when String.equal v1 v2 -> (
+    match cmp with
+    | Eq -> [JMP lt]
+    | _ -> [JMP lf] )
+  | C.If ((cmp, Var v1, Var v2), lt, lf) -> (
+    match cmp with
+    | Eq -> [CMP (Var v1, Var v2); JCC (Cc.E, lt); JMP lf]
+    | Lt -> [CMP (Var v1, Var v2); JCC (Cc.L, lt); JMP lf]
+    | Le -> [CMP (Var v1, Var v2); JCC (Cc.LE, lt); JMP lf]
+    | Gt -> [CMP (Var v1, Var v2); JCC (Cc.G, lt); JMP lf]
+    | Ge -> [CMP (Var v1, Var v2); JCC (Cc.GE, lt); JMP lf] )
+  | C.If _ -> assert false
 
 and select_instructions_stmt s =
   let open Arg in
   match s with
+  | C.Assign (v, e) -> select_instruction_exp (Var v) e
+
+and select_instruction_exp a p =
+  let open Arg in
+  match p with
   (* atom *)
-  | C.Assign (v, Atom (Int i)) ->
-      let a = Var v in
-      (a, [MOV (a, Imm i)])
-  | C.Assign (v, Atom (Var v')) ->
-      let a = Var v in
-      (a, [MOV (a, Var v')])
+  | C.(Atom (Int i)) -> if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Atom (Bool b)) -> if not b then [XOR (a, a)] else [MOV (a, Imm 1)]
+  | C.(Atom (Var v)) -> [MOV (a, Var v)]
   (* read *)
-  | C.Assign (v, Prim Read) ->
-      let a = Var v in
-      (a, [CALL (read_int, 0); MOV (a, Reg RAX)])
+  | C.(Prim Read) -> (
+      let c = CALL (read_int, 0) in
+      match a with
+      | Arg.Reg RAX -> [c]
+      | _ -> [c; MOV (a, Reg RAX)] )
   (* minus *)
-  | C.Assign (v, Prim (Minus (Int i))) ->
-      let a = Var v in
-      (a, [MOV (a, Imm (-i))])
-  | C.Assign (v, Prim (Minus (Var v'))) ->
-      let a = Var v in
-      if String.equal v v' then (a, [NEG a])
-      else (a, [MOV (a, Var v'); NEG a])
+  | C.(Prim (Minus (Int i))) -> [MOV (a, Imm (-i))]
+  | C.(Prim (Minus (Var v))) -> [MOV (a, Var v); NEG a]
+  | C.(Prim (Minus _)) -> assert false
   (* plus *)
-  | C.Assign (v, Prim (Plus (Int i1, Int i2))) ->
-      let a = Var v in
-      (a, [MOV (a, Imm (i1 + i2))])
-  | C.Assign (v, Prim (Plus (Var v', Int i)))
-   |C.Assign (v, Prim (Plus (Int i, Var v'))) ->
-      let a = Var v in
-      if String.equal v v' then (a, [ADD (a, Imm i)])
-      else (a, [MOV (a, Var v'); ADD (a, Imm i)])
-  | C.Assign (v, Prim (Plus (Var v1, Var v2))) ->
-      let a = Var v in
-      (a, [MOV (a, Var v1); ADD (a, Var v2)])
+  | C.(Prim (Plus (Int i1, Int i2))) ->
+      let i = i1 + i2 in
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Plus (Var v, Int i))) | C.(Prim (Plus (Int i, Var v))) ->
+      [MOV (a, Var v); ADD (a, Imm i)]
+  | C.(Prim (Plus (Var v1, Var v2))) -> [MOV (a, Var v1); ADD (a, Var v2)]
+  | C.(Prim (Plus _)) -> assert false
   (* subtract *)
-  | C.Assign (v, Prim (Subtract (Int i1, Int i2))) ->
-      let a = Var v in
-      (a, [MOV (a, Imm (i1 - i2))])
-  | C.Assign (v, Prim (Subtract (Var v', Int i))) ->
-      let a = Var v in
-      if String.equal v v' then (a, [SUB (a, Imm i)])
-      else (a, [MOV (a, Var v'); SUB (a, Imm i)])
-  | C.Assign (v, Prim (Subtract (Int i, Var v'))) ->
-      let a = Var v in
-      (a, [MOV (a, Imm i); SUB (a, Var v')])
-  | C.Assign (v, Prim (Subtract (Var v1, Var v2))) ->
-      let a = Var v in
-      (a, [MOV (a, Var v1); SUB (a, Var v2)])
+  | C.(Prim (Subtract (Int i1, Int i2))) ->
+      let i = i1 - i2 in
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm (i1 - i2))]
+  | C.(Prim (Subtract (Var v, Int i))) -> [MOV (a, Var v); SUB (a, Imm i)]
+  | C.(Prim (Subtract (Int i, Var v))) -> [MOV (a, Imm i); SUB (a, Var v)]
+  | C.(Prim (Subtract (Var v1, Var v2))) -> [MOV (a, Var v1); SUB (a, Var v2)]
+  | C.(Prim (Subtract _)) -> assert false
   (* mult *)
-  | C.Assign (v, Prim (Mult (Int i1, Int i2))) ->
-      let a = Var v in
-      (a, [MOV (a, Imm (i1 * i2))])
-  | C.Assign (v, Prim (Mult (Var v', Int i)))
-   |C.Assign (v, Prim (Mult (Int i, Var v'))) ->
-      let a = Var v in
-      if fits_int32 i then (a, [IMULi (a, Var v', Imm i)])
-      else (a, [MOV (a, Imm i); IMUL (a, Var v')])
-  | C.Assign (v, Prim (Mult (Var v1, Var v2))) ->
-      let a = Var v in
-      (a, [MOV (a, Var v1); IMUL (a, Var v2)])
+  | C.(Prim (Mult (_, Int 0))) | C.(Prim (Mult (Int 0, _))) -> [XOR (a, a)]
+  | C.(Prim (Mult (Int i1, Int i2))) ->
+      let i = i1 * i2 in
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm (i1 * i2))]
+  | C.(Prim (Mult (Var v, Int i))) | C.(Prim (Mult (Int i, Var v))) ->
+      if fits_int32 i then [IMULi (a, Var v, Imm i)]
+      else [MOV (a, Imm i); IMUL (a, Var v)]
+  | C.(Prim (Mult (Var v1, Var v2))) -> [MOV (a, Var v1); IMUL (a, Var v2)]
+  | C.(Prim (Mult _)) -> assert false
+  (* eq *)
+  | C.(Prim (Eq (Int i1, Int i2))) ->
+      if Int.(i1 = i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+  | C.(Prim (Eq (Bool b1, Bool b2))) ->
+      if Bool.equal b1 b2 then [MOV (a, Imm 1)] else [XOR (a, a)]
+  | C.(Prim (Eq (Var v, Int i))) | C.(Prim (Eq (Int i, Var v))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.E, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Eq (Var v1, Var v2))) ->
+      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      else
+        [ CMP (Var v1, Var v2)
+        ; SETCC (Cc.E, Bytereg AL)
+        ; MOVZX (a, Bytereg AL) ]
+  | C.(Prim (Eq _)) -> assert false
+  (* lt *)
+  | C.(Prim (Lt (Int i1, Int i2))) ->
+      if Int.(i1 < i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+  | C.(Prim (Lt (Var v, Int i))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Lt (Int i, Var v))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Lt (Var v1, Var v2))) ->
+      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      else
+        [ CMP (Var v1, Var v2)
+        ; SETCC (Cc.L, Bytereg AL)
+        ; MOVZX (a, Bytereg AL) ]
+  | C.(Prim (Lt _)) -> assert false
+  (* le *)
+  | C.(Prim (Le (Int i1, Int i2))) ->
+      if Int.(i1 <= i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+  | C.(Prim (Le (Var v, Int i))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.LE, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Le (Int i, Var v))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.GE, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Le (Var v1, Var v2))) ->
+      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      else
+        [ CMP (Var v1, Var v2)
+        ; SETCC (Cc.LE, Bytereg AL)
+        ; MOVZX (a, Bytereg AL) ]
+  | C.(Prim (Le _)) -> assert false
+  (* gt *)
+  | C.(Prim (Gt (Int i1, Int i2))) ->
+      if Int.(i1 > i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+  | C.(Prim (Gt (Var v, Int i))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Gt (Int i, Var v))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Gt (Var v1, Var v2))) ->
+      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      else
+        [ CMP (Var v1, Var v2)
+        ; SETCC (Cc.G, Bytereg AL)
+        ; MOVZX (a, Bytereg AL) ]
+  | C.(Prim (Gt _)) -> assert false
+  (* ge *)
+  | C.(Prim (Ge (Int i1, Int i2))) ->
+      if Int.(i1 >= i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+  | C.(Prim (Ge (Var v, Int i))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.GE, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Ge (Int i, Var v))) ->
+      [CMP (Var v, Imm i); SETCC (Cc.LE, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Ge (Var v1, Var v2))) ->
+      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      else
+        [ CMP (Var v1, Var v2)
+        ; SETCC (Cc.GE, Bytereg AL)
+        ; MOVZX (a, Bytereg AL) ]
+  | C.(Prim (Ge _)) -> assert false
+  (* not *)
+  | C.(Prim (Not (Bool b))) -> if b then [XOR (a, a)] else [MOV (a, Imm 1)]
+  | C.(Prim (Not (Var v))) -> [MOV (a, Var v); NOT a]
+  | C.(Prim (Not _)) -> assert false
 
 let is_temp_var_name = String.is_prefix ~prefix:"%"
-
-let rec assign_homes = function
-  | Program (info, blocks) ->
-      let stack_space = Map.length info.locals_types * word_size in
-      let blocks, _ =
-        Map.fold blocks ~init:(empty_label_map, R.empty_var_env)
-          ~f:(fun ~key:label ~data:block (blocks, env) ->
-            let block, env = assign_homes_block env block in
-            (Map.set blocks label block, env))
-      in
-      Program ({info with stack_space}, blocks)
-
-and assign_homes_block env = function
-  | Block (label, info, instrs) ->
-      let instrs, env =
-        List.fold instrs ~init:([], env) ~f:(fun (instrs, env) instr ->
-            let instr, env = assign_homes_instr env instr in
-            (instr :: instrs, env))
-      in
-      (Block (label, info, List.rev instrs), env)
-
-and assign_homes_instr env = function
-  | ADD (a1, a2) ->
-      let a1, env = assign_homes_arg env a1 in
-      let a2, env = assign_homes_arg env a2 in
-      (ADD (a1, a2), env)
-  | SUB (a1, a2) ->
-      let a1, env = assign_homes_arg env a1 in
-      let a2, env = assign_homes_arg env a2 in
-      (SUB (a1, a2), env)
-  | IMUL (a1, a2) ->
-      let a1, env = assign_homes_arg env a1 in
-      let a2, env = assign_homes_arg env a2 in
-      (IMUL (a1, a2), env)
-  | IMULi (a1, a2, a3) ->
-      let a1, env = assign_homes_arg env a1 in
-      let a2, env = assign_homes_arg env a2 in
-      (IMULi (a1, a2, a3), env)
-  | NEG a ->
-      let a, env = assign_homes_arg env a in
-      (NEG a, env)
-  | MOV (a1, a2) ->
-      let a1, env = assign_homes_arg env a1 in
-      let a2, env = assign_homes_arg env a2 in
-      (MOV (a1, a2), env)
-  | CALL _ as c -> (c, env)
-  | PUSH a ->
-      let a, env = assign_homes_arg env a in
-      (PUSH a, env)
-  | POP a ->
-      let a, env = assign_homes_arg env a in
-      (POP a, env)
-  | RET -> (RET, env)
-  | JMP _ as j -> (j, env)
-
-and assign_homes_arg env = function
-  | Var v when is_temp_var_name v -> (
-    match Map.find env v with
-    | Some offset -> (Deref (RBP, offset), env)
-    | None ->
-        let offset =
-          let inc = -word_size in
-          Map.fold env ~init:inc ~f:(fun ~key:_ ~data:offset acc ->
-              if offset <= acc then offset + inc else acc)
-        in
-        let env = Map.set env v offset in
-        (Deref (RBP, offset), env) )
-  | a -> (a, env)
 
 let filter_non_locations =
   Set.filter ~f:(function
@@ -381,6 +410,13 @@ let filter_non_locations =
 let caller_save_set =
   List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
 
+let convert_bytereg = function
+  | Arg.Bytereg AL -> Arg.Reg RAX
+  | Arg.Bytereg BL -> Arg.Reg RBX
+  | Arg.Bytereg CL -> Arg.Reg RCX
+  | Arg.Bytereg DL -> Arg.Reg RDX
+  | a -> a
+
 let write_set instr =
   let aux = function
     | ADD (a, _)
@@ -388,18 +424,27 @@ let write_set instr =
      |NEG a
      |MOV (a, _)
      |IMUL (a, _)
-     |IMULi (a, _, _) -> Args.singleton a
+     |IMULi (a, _, _)
+     |NOT a
+     |XOR (a, _)
+     |SETCC (_, a)
+     |MOVZX (a, _) -> Args.singleton a
     | CALL _ -> Set.add caller_save_set (Reg RSP)
     | PUSH _ | RET -> Args.singleton (Reg RSP)
     | POP a -> Args.of_list [a; Reg RSP]
-    | JMP _ -> Args.empty
+    | JMP _ | JCC _ | CMP _ -> Args.empty
   in
-  aux instr |> filter_non_locations
+  aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
 
 let read_set instr =
   let aux = function
-    | ADD (a1, a2) | SUB (a1, a2) | IMUL (a1, a2) -> Args.of_list [a1; a2]
-    | NEG a | MOV (_, a) | IMULi (_, a, _) -> Args.singleton a
+    | ADD (a1, a2)
+     |SUB (a1, a2)
+     |IMUL (a1, a2)
+     |XOR (a1, a2)
+     |CMP (a1, a2) -> Args.of_list [a1; a2]
+    | NEG a | MOV (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a) ->
+        Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
         |> List.map ~f:(fun r -> Arg.Reg r)
@@ -407,7 +452,7 @@ let read_set instr =
         |> Args.of_list
     | PUSH a -> Args.of_list [a; Reg RSP]
     | POP _ | RET -> Args.singleton (Reg RSP)
-    | JMP _ -> Args.empty
+    | JMP _ | SETCC _ | JCC _ -> Args.empty
   in
   aux instr |> filter_non_locations
 
@@ -455,7 +500,10 @@ let function_epilogue label stack_space w instrs =
 
 let rec patch_instructions = function
   | Program (info, blocks) ->
-      let blocks = Map.map blocks ~f:(patch_instructions_block info) in
+      let blocks =
+        List.map blocks ~f:(fun (label, block) ->
+            (label, patch_instructions_block info block))
+      in
       Program (info, blocks)
 
 and patch_instructions_block info = function
@@ -498,7 +546,10 @@ and patch_instructions_instr = function
 
 let rec uncover_live = function
   | Program (info, blocks) ->
-      let blocks = Map.map blocks ~f:uncover_live_block in
+      let blocks =
+        List.map blocks ~f:(fun (label, block) ->
+            (label, uncover_live_block block))
+      in
       Program (info, blocks)
 
 and uncover_live_block = function
@@ -520,7 +571,7 @@ let rec build_interference = function
   | Program (info, blocks) ->
       let conflicts =
         let init = Interference_graph.empty in
-        Map.fold blocks ~init ~f:(fun ~key:_ ~data:block g ->
+        List.fold blocks ~init ~f:(fun g (_, block) ->
             build_interference_block g block)
       in
       Program ({info with conflicts}, blocks)
@@ -607,7 +658,10 @@ let color_graph g =
 let rec allocate_registers = function
   | Program (info, blocks) ->
       let colors = color_graph info.conflicts in
-      let blocks = Map.map blocks ~f:(allocate_registers_block colors) in
+      let blocks =
+        List.map blocks ~f:(fun (label, block) ->
+            (label, allocate_registers_block colors block))
+      in
       let stack_space =
         match Map.data colors |> Int.Set.of_list |> Set.max_elt with
         | None -> 0
@@ -653,6 +707,22 @@ and allocate_registers_instr colors = function
       POP a
   | RET -> RET
   | JMP _ as j -> j
+  | NOT a ->
+      let a = color_arg colors a in
+      NOT a
+  | XOR (a1, a2) ->
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      XOR (a1, a2)
+  | CMP (a1, a2) ->
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      CMP (a1, a2)
+  | SETCC _ as s -> s
+  | MOVZX (a1, a2) ->
+      let a1 = color_arg colors a1 in
+      MOVZX (a1, a2)
+  | JCC _ as j -> j
 
 and color_arg colors = function
   | Arg.Var v as a when is_temp_var_name v -> (

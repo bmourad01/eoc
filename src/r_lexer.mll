@@ -25,9 +25,20 @@ rule token = parse
   | '(' { LPAREN }
   | ')' { RPAREN }
   | '[' { LSQUARE }
-  | ']' { RSQUARE }
+  | ']' { RSQUARE } 
   | "read" { READ }
   | "let" { LET }
+  | "#t" { TRUE }
+  | "#f" { FALSE }
+  | "eq?" { EQ }
+  | '<' { LT }
+  | "<=" { LE }
+  | '>' { GT }
+  | ">=" { GE }
+  | "not" { NOT }
+  | "and" { AND }
+  | "or" { OR }
+  | "if" { IF }
   | eof { EOF }
   | integer as n { INT (int_of_string n) }
   | ident as id { VAR id }

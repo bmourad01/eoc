@@ -14,9 +14,13 @@ type var = R.var
 
 type t = Program of info * exp
 
-and exp = Atom of atom | Prim of prim | Let of var * exp * exp
+and exp =
+  | Atom of atom
+  | Prim of prim
+  | Let of var * exp * exp
+  | If of exp * exp * exp
 
-and atom = Int of int | Var of var
+and atom = Int of int | Bool of bool | Var of var
 
 and prim =
   | Read
@@ -24,6 +28,12 @@ and prim =
   | Plus of atom * atom
   | Subtract of atom * atom
   | Mult of atom * atom
+  | Eq of atom * atom
+  | Lt of atom * atom
+  | Le of atom * atom
+  | Gt of atom * atom
+  | Ge of atom * atom
+  | Not of atom
 
 val to_string : t -> string
 

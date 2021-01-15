@@ -10,7 +10,7 @@ let () =
              (C.explicate_control
                 (R_anf.resolve_complex R.(uniquify (opt prog)))))))
   in
-  Map.iter blocks ~f:(fun Eoc.X.(Block (label, info, instrs)) ->
+  List.iter blocks ~f:(fun (_, Eoc.X.(Block (label, info, instrs))) ->
       let l = List.zip_exn Eoc.X.(info.live_after) instrs in
       Printf.printf "%s:\n" label;
       List.iter l ~f:(fun (la, instr) ->

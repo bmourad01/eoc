@@ -8,6 +8,20 @@ val empty_label_map : 'a label_map
 
 val word_size : int
 
+module Cc : sig
+  type t = E | L | LE | G | GE
+
+  val to_string : t -> string
+end
+
+module Bytereg : sig
+  (* the upper 8-bit registers cannot be used
+   * in 64-bit mode when a REX prefix is present *)
+  type t = AL | BL | CL | DL [@@deriving equal, compare, hash, sexp]
+
+  val to_string : t -> string
+end
+
 module Reg : sig
   type t =
     | RSP
@@ -32,7 +46,12 @@ module Reg : sig
 end
 
 module Arg : sig
-  type t = Imm of int | Reg of Reg.t | Deref of Reg.t * int | Var of R.var
+  type t =
+    | Imm of int
+    | Reg of Reg.t
+    | Bytereg of Bytereg.t
+    | Deref of Reg.t * int
+    | Var of R.var
   [@@deriving equal, compare, hash, sexp]
 
   val to_string : t -> string
@@ -45,18 +64,21 @@ module Arg_map : module type of Map.Make (Arg)
 module Interference_graph :
     module type of Graph.Persistent.Graph.Concrete (Arg)
 
+module Cfg : module type of C.Cfg
+
 type info =
   { main: label
-  ; locals_types: R.type_env
   ; stack_space: int
-  ; conflicts: Interference_graph.t }
+  ; conflicts: Interference_graph.t
+  ; typ: C.Type.t
+  ; cfg: Cfg.t }
 
 (* the X language, representing a subset of x86-64 programs.
  * X programs are printed in NASM syntax. *)
 
 type t = Program of info * blocks
 
-and blocks = block label_map
+and blocks = (label * block) list
 
 and block = Block of label * block_info * instr list
 
@@ -74,6 +96,12 @@ and instr =
   | POP of arg
   | RET
   | JMP of label
+  | NOT of arg
+  | XOR of arg * arg
+  | CMP of arg * arg
+  | SETCC of Cc.t * arg
+  | MOVZX of arg * arg
+  | JCC of Cc.t * label
 
 and arg = Arg.t
 
@@ -86,10 +114,6 @@ val string_of_instr : instr -> string
 (* lower a C program to an X program with variables *)
 
 val select_instructions : C.t -> t
-
-(* spill local variables to the stack (deprecated) *)
-
-val assign_homes : t -> t
 
 (* fix instructions with illegal operands
  * + remove no-ops (e.g. MOV RAX, RAX)
