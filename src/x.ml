@@ -568,14 +568,15 @@ let rec uncover_live = function
   | Program (info, blocks) ->
       let la_map = ref empty_label_map in
       let lb_map = ref empty_label_map in
+      let blocks' = Hashtbl.of_alist_exn (module String) blocks in
       (* the CFG is currently a DAG, so we start from
        * the exit blocks and work our way backward
        * to the entry by visiting predecessors *)
       Cfg.iter_vertex
         (fun l ->
           if Cfg.out_degree info.cfg l = 0 then
-            let block = List.Assoc.find_exn blocks l ~equal:String.equal in
-            uncover_live_cfg blocks info.cfg la_map lb_map block)
+            let block = Hashtbl.find_exn blocks' l in
+            uncover_live_cfg blocks' info.cfg la_map lb_map block)
         info.cfg;
       let blocks =
         List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
@@ -622,7 +623,7 @@ and uncover_live_cfg blocks cfg la_map lb_map = function
       Cfg.iter_pred
         (fun l ->
           uncover_live_cfg blocks cfg la_map lb_map
-            (List.Assoc.find_exn blocks l ~equal:String.equal))
+            (Hashtbl.find_exn blocks l))
         cfg label
 
 let rec build_interference = function
