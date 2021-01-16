@@ -1,11 +1,5 @@
 open Core_kernel
 
-type label = string
-
-type 'a label_map = 'a C.label_map
-
-val empty_label_map : 'a label_map
-
 val word_size : int
 
 module Cc : sig
@@ -67,7 +61,7 @@ module Interference_graph :
 module Cfg : module type of C.Cfg
 
 type info =
-  { main: label
+  { main: Label.t
   ; stack_space: int
   ; conflicts: Interference_graph.t
   ; typ: C.Type.t
@@ -78,9 +72,9 @@ type info =
 
 type t = Program of info * blocks
 
-and blocks = (label * block) list
+and blocks = (Label.t * block) list
 
-and block = Block of label * block_info * instr list
+and block = Block of Label.t * block_info * instr list
 
 and block_info = {live_after: Args.t list}
 
@@ -92,11 +86,11 @@ and instr =
   | IDIV of arg
   | NEG of arg
   | MOV of arg * arg
-  | CALL of label * int
+  | CALL of Label.t * int
   | PUSH of arg
   | POP of arg
   | RET
-  | JMP of label
+  | JMP of Label.t
   | NOT of arg
   | XOR of arg * arg
   | AND of arg * arg
@@ -105,7 +99,7 @@ and instr =
   | TEST of arg * arg
   | SETCC of Cc.t * arg
   | MOVZX of arg * arg
-  | JCC of Cc.t * label
+  | JCC of Cc.t * Label.t
 
 and arg = Arg.t
 

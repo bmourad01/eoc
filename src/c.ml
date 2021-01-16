@@ -1,18 +1,11 @@
 open Core_kernel
-
-type label = string
-
-type 'a label_map = 'a String.Map.t
-
-let empty_label_map = String.Map.empty
-
 module Type = R.Type
 
 type type_env = R.type_env
 
-module Cfg = Graph.Persistent.Digraph.Concrete (String)
+module Cfg = Graph.Persistent.Digraph.Concrete (Label)
 
-type info = {main: label; typ: Type.t; cfg: Cfg.t}
+type info = {main: Label.t; typ: Type.t; cfg: Cfg.t}
 
 type var = R.var
 
@@ -29,13 +22,13 @@ end
 
 type t = Program of info * tails
 
-and tails = (label * tail) list
+and tails = (Label.t * tail) list
 
 and tail =
   | Return of exp
   | Seq of stmt * tail
-  | Goto of label
-  | If of cmp * label * label
+  | Goto of Label.t
+  | If of cmp * Label.t * Label.t
 
 and stmt = Assign of var * exp
 
@@ -215,7 +208,7 @@ let rec explicate_control = function
       let info = {main= start_label; typ= info.typ; cfg} in
       (* we're not using a Hashtbl here because we 
        * want a specific ordering for each block *)
-      let tails = ref empty_label_map in
+      let tails = ref Label.Map.empty in
       let tail = explicate_tail tails (ref 0) e in
       let tails = Map.set !tails start_label tail in
       let cfg =
@@ -337,7 +330,7 @@ and remove_jumps cfg tails =
         match tail with
         | Goto label' -> Some (label, label')
         | _ -> None)
-    |> Hashtbl.of_alist_exn (module String)
+    |> Hashtbl.of_alist_exn (module Label)
   in
   let cfg, tails, changed =
     List.fold tails ~init:(cfg, [], false)
@@ -350,17 +343,17 @@ and remove_jumps cfg tails =
             | Return _ as r -> r
             | Seq (s, t) -> Seq (s, aux t)
             | Goto label' as g -> (
-                if String.equal label label' then g
+                if Label.equal label label' then g
                 else
                   match Hashtbl.find singles label' with
-                  | Some label'' when not (String.equal label' label'') ->
+                  | Some label'' when not (Label.equal label' label'') ->
                       cfg := Cfg.remove_vertex !cfg label';
                       cfg := Cfg.add_edge !cfg label label'';
                       changed := true;
                       Goto label''
                   | _ -> g )
             | If (cmp, lt, lf) as i ->
-                if String.(equal label lt || equal label lf) then i
+                if Label.(equal label lt || equal label lf) then i
                 else
                   let lt' =
                     match Hashtbl.find singles lt with
@@ -372,11 +365,11 @@ and remove_jumps cfg tails =
                     | None -> lf
                     | Some lf' -> lf'
                   in
-                  if not (String.equal lt lt') then (
+                  if not (Label.equal lt lt') then (
                     cfg := Cfg.remove_vertex !cfg lt;
                     cfg := Cfg.add_edge !cfg label lt';
                     changed := true );
-                  if not (String.equal lf lf') then (
+                  if not (Label.equal lf lf') then (
                     cfg := Cfg.remove_vertex !cfg lf;
                     cfg := Cfg.add_edge !cfg label lf';
                     changed := true );

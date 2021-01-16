@@ -1,11 +1,5 @@
 open Core_kernel
 
-type label = string
-
-type 'a label_map = 'a C.label_map
-
-let empty_label_map = C.empty_label_map
-
 let word_size = 8
 
 module Cc = struct
@@ -127,7 +121,7 @@ module Interference_graph = Graph.Persistent.Graph.Concrete (Arg)
 module Cfg = C.Cfg
 
 type info =
-  { main: label
+  { main: Label.t
   ; stack_space: int
   ; conflicts: Interference_graph.t
   ; typ: C.Type.t
@@ -135,9 +129,9 @@ type info =
 
 type t = Program of info * blocks
 
-and blocks = (label * block) list
+and blocks = (Label.t * block) list
 
-and block = Block of label * block_info * instr list
+and block = Block of Label.t * block_info * instr list
 
 and block_info = {live_after: Args.t list}
 
@@ -149,11 +143,11 @@ and instr =
   | IDIV of arg
   | NEG of arg
   | MOV of arg * arg
-  | CALL of label * int
+  | CALL of Label.t * int
   | PUSH of arg
   | POP of arg
   | RET
-  | JMP of label
+  | JMP of Label.t
   | NOT of arg
   | XOR of arg * arg
   | AND of arg * arg
@@ -162,7 +156,7 @@ and instr =
   | TEST of arg * arg
   | SETCC of Cc.t * arg
   | MOVZX of arg * arg
-  | JCC of Cc.t * label
+  | JCC of Cc.t * Label.t
 
 and arg = Arg.t
 
@@ -647,7 +641,7 @@ let rec patch_instructions = function
 and patch_instructions_block w info = function
   | Block (label, block_info, instrs) ->
       let instrs =
-        if String.equal label info.main then
+        if Label.equal label info.main then
           function_prologue info.stack_space w @ instrs
         else instrs
       in
@@ -674,9 +668,9 @@ and patch_instructions_instr = function
 
 let rec uncover_live = function
   | Program (info, blocks) ->
-      let la_map = Hashtbl.create (module String) in
-      let lb_map = Hashtbl.create (module String) in
-      let blocks' = Hashtbl.of_alist_exn (module String) blocks in
+      let la_map = Hashtbl.create (module Label) in
+      let lb_map = Hashtbl.create (module Label) in
+      let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
       (* the CFG is currently a DAG, so we start from
        * the exit blocks and work our way backward
        * to the entry by visiting predecessors *)
@@ -968,16 +962,16 @@ let rec remove_jumps = function
 and remove_jumps_aux cfg blocks =
   (* find blocks that are sequentially adjacent and
    * merge them if it doesn't break any dependencies *)
-  let after = Hashtbl.create (module String) in
-  let before = Hashtbl.create (module String) in
+  let after = Hashtbl.create (module Label) in
+  let before = Hashtbl.create (module Label) in
   let rec build_maps = function
     | [] | [_] -> ()
     | (a, _) :: (b, _) :: rest ->
         Hashtbl.set after a b; Hashtbl.set before b a; build_maps rest
   in
   build_maps blocks;
-  let blocks' = Hashtbl.of_alist_exn (module String) blocks in
-  let merged = Hash_set.create (module String) in
+  let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
+  let merged = Hash_set.create (module Label) in
   let merge_info info info' =
     {live_after= List.drop_last_exn info.live_after @ info'.live_after}
   in
@@ -989,7 +983,7 @@ and remove_jumps_aux cfg blocks =
           | None -> Some b
           | Some label' -> (
             match List.last_exn instrs with
-            | JMP label'' when String.equal label' label'' ->
+            | JMP label'' when Label.equal label' label'' ->
                 if Cfg.in_degree cfg label' = 1 then (
                   let (Block (_, info', instrs')) =
                     Hashtbl.find_exn blocks' label'

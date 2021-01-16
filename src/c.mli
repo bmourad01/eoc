@@ -1,18 +1,12 @@
 open Core_kernel
 
-type label = string
-
-type 'a label_map = 'a String.Map.t
-
-val empty_label_map : 'a label_map
-
 module Type : module type of R.Type
 
 type type_env = R.type_env
 
-module Cfg : module type of Graph.Persistent.Digraph.Concrete (String)
+module Cfg : module type of Graph.Persistent.Digraph.Concrete (Label)
 
-type info = {main: label; typ: Type.t; cfg: Cfg.t}
+type info = {main: Label.t; typ: Type.t; cfg: Cfg.t}
 
 type var = R.var
 
@@ -26,13 +20,13 @@ end
 
 type t = Program of info * tails
 
-and tails = (label * tail) list
+and tails = (Label.t * tail) list
 
 and tail =
   | Return of exp
   | Seq of stmt * tail
-  | Goto of label
-  | If of cmp * label * label
+  | Goto of Label.t
+  | If of cmp * Label.t * Label.t
 
 and stmt = Assign of var * exp
 
