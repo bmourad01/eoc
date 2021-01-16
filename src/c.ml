@@ -343,7 +343,7 @@ and remove_jumps_erase cfg tails =
     let cfg, tails, changed =
       List.fold tails ~init:(cfg, [], false)
         ~f:(fun (cfg, tails, changed) (label, tail) ->
-          if not (Cfg.mem_vertex cfg label) then (cfg, tails, changed)
+          if not (Cfg.mem_vertex cfg label) then (cfg, tails, true)
           else
             let cfg = ref cfg in
             let changed = ref changed in
