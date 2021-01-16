@@ -34,6 +34,12 @@ and prim =
   | Plus of exp * exp
   | Subtract of exp * exp
   | Mult of exp * exp
+  | Div of exp * exp
+  | Rem of exp * exp
+  | Land of exp * exp
+  | Lor of exp * exp
+  | Lxor of exp * exp
+  | Lnot of exp
   | Eq of exp * exp
   | Lt of exp * exp
   | Le of exp * exp

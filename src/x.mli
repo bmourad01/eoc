@@ -89,6 +89,7 @@ and instr =
   | SUB of arg * arg
   | IMUL of arg * arg
   | IMULi of arg * arg * arg
+  | IDIV of arg
   | NEG of arg
   | MOV of arg * arg
   | CALL of label * int
@@ -98,6 +99,8 @@ and instr =
   | JMP of label
   | NOT of arg
   | XOR of arg * arg
+  | AND of arg * arg
+  | OR of arg * arg
   | CMP of arg * arg
   | TEST of arg * arg
   | SETCC of Cc.t * arg

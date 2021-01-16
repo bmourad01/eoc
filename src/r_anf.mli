@@ -28,6 +28,12 @@ and prim =
   | Plus of atom * atom
   | Subtract of atom * atom
   | Mult of atom * atom
+  | Div of atom * atom
+  | Rem of atom * atom
+  | Land of atom * atom
+  | Lor of atom * atom
+  | Lxor of atom * atom
+  | Lnot of atom
   | Eq of atom * atom
   | Lt of atom * atom
   | Le of atom * atom

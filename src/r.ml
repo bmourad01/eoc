@@ -34,6 +34,12 @@ and prim =
   | Plus of exp * exp
   | Subtract of exp * exp
   | Mult of exp * exp
+  | Div of exp * exp
+  | Rem of exp * exp
+  | Land of exp * exp
+  | Lor of exp * exp
+  | Lxor of exp * exp
+  | Lnot of exp
   | Eq of exp * exp
   | Lt of exp * exp
   | Le of exp * exp
@@ -68,6 +74,17 @@ and string_of_prim = function
       Printf.sprintf "(- %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Mult (e1, e2) ->
       Printf.sprintf "(* %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Div (e1, e2) ->
+      Printf.sprintf "(/ %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Rem (e1, e2) ->
+      Printf.sprintf "(rem %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Land (e1, e2) ->
+      Printf.sprintf "(land %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Lor (e1, e2) ->
+      Printf.sprintf "(lor %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Lxor (e1, e2) ->
+      Printf.sprintf "(lxor %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Lnot e -> Printf.sprintf "(lnot %s)" (string_of_exp e)
   | Eq (e1, e2) ->
       Printf.sprintf "(eq? %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Lt (e1, e2) ->
@@ -116,8 +133,42 @@ and opt_exp env = function
     | e1, e2 -> Prim (Subtract (e1, e2)) )
   | Prim (Mult (e1, e2)) -> (
     match (opt_exp env e1, opt_exp env e2) with
+    | Int 0, _ -> Int 0
+    | _, Int 0 -> Int 0
     | Int i1, Int i2 -> Int (i1 * i2)
     | e1, e2 -> Prim (Mult (e1, e2)) )
+  | Prim (Div (e1, e2)) -> (
+    match (opt_exp env e1, opt_exp env e2) with
+    | Int 0, _ -> Int 0
+    | _, Int 0 -> failwith "R.opt_exp: divide by zero"
+    | Int i1, Int i2 -> Int (i1 / i2)
+    | e1, e2 -> Prim (Div (e1, e2)) )
+  | Prim (Rem (e1, e2)) -> (
+    match (opt_exp env e1, opt_exp env e2) with
+    | Int 0, _ -> Int 0
+    | _, Int 0 -> failwith "R.opt_exp: divide by zero"
+    | Int i1, Int i2 -> Int (i1 mod i2)
+    | e1, e2 -> Prim (Rem (e1, e2)) )
+  | Prim (Land (e1, e2)) -> (
+    match (opt_exp env e1, opt_exp env e2) with
+    | Int 0, _ -> Int 0
+    | _, Int 0 -> Int 0
+    | Int i1, Int i2 -> Int (i1 land i2)
+    | e1, e2 -> Prim (Land (e1, e2)) )
+  | Prim (Lor (e1, e2)) -> (
+    match (opt_exp env e1, opt_exp env e2) with
+    | Int 0, e -> e
+    | e, Int 0 -> Int 0
+    | Int i1, Int i2 -> Int (i1 lor i2)
+    | e1, e2 -> Prim (Lor (e1, e2)) )
+  | Prim (Lxor (e1, e2)) -> (
+    match (opt_exp env e1, opt_exp env e2) with
+    | Int i1, Int i2 -> Int (i1 lxor i2)
+    | e1, e2 -> Prim (Lxor (e1, e2)) )
+  | Prim (Lnot e) -> (
+    match opt_exp env e with
+    | Int i -> Int (lnot i)
+    | e -> Prim (Lnot e) )
   | Prim (Eq (e1, e2)) -> (
     match (opt_exp env e1, opt_exp env e2) with
     | Int i1, Int i2 -> Bool (i1 = i2)
@@ -265,6 +316,109 @@ and type_check_prim env = function
           ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
+  | Div (e1, e2) -> (
+    match (type_check_exp env e1, type_check_exp env e2) with
+    | Type.Integer, Type.Integer -> Type.Integer
+    | t, Type.Integer ->
+        failwith
+          ( "R.type_check_prim: div exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | Type.Integer, t ->
+        failwith
+          ( "R.type_check_prim: div exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | t1, t2 ->
+        failwith
+          ( "R.type_check_prim: div exps " ^ string_of_exp e1 ^ " and "
+          ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
+          ^ Type.to_string t2
+          ^ " but expressions of type Integer were expected" ) )
+  | Rem (e1, e2) -> (
+    match (type_check_exp env e1, type_check_exp env e2) with
+    | Type.Integer, Type.Integer -> Type.Integer
+    | t, Type.Integer ->
+        failwith
+          ( "R.type_check_prim: rem exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | Type.Integer, t ->
+        failwith
+          ( "R.type_check_prim: rem exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | t1, t2 ->
+        failwith
+          ( "R.type_check_prim: rem exps " ^ string_of_exp e1 ^ " and "
+          ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
+          ^ Type.to_string t2
+          ^ " but expressions of type Integer were expected" ) )
+  | Land (e1, e2) -> (
+    match (type_check_exp env e1, type_check_exp env e2) with
+    | Type.Integer, Type.Integer -> Type.Integer
+    | t, Type.Integer ->
+        failwith
+          ( "R.type_check_prim: land exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | Type.Integer, t ->
+        failwith
+          ( "R.type_check_prim: land exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | t1, t2 ->
+        failwith
+          ( "R.type_check_prim: land exps " ^ string_of_exp e1 ^ " and "
+          ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
+          ^ Type.to_string t2
+          ^ " but expressions of type Integer were expected" ) )
+  | Lor (e1, e2) -> (
+    match (type_check_exp env e1, type_check_exp env e2) with
+    | Type.Integer, Type.Integer -> Type.Integer
+    | t, Type.Integer ->
+        failwith
+          ( "R.type_check_prim: lor exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | Type.Integer, t ->
+        failwith
+          ( "R.type_check_prim: lor exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | t1, t2 ->
+        failwith
+          ( "R.type_check_prim: lor exps " ^ string_of_exp e1 ^ " and "
+          ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
+          ^ Type.to_string t2
+          ^ " but expressions of type Integer were expected" ) )
+  | Lxor (e1, e2) -> (
+    match (type_check_exp env e1, type_check_exp env e2) with
+    | Type.Integer, Type.Integer -> Type.Integer
+    | t, Type.Integer ->
+        failwith
+          ( "R.type_check_prim: lxor exp " ^ string_of_exp e1 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | Type.Integer, t ->
+        failwith
+          ( "R.type_check_prim: lxor exp " ^ string_of_exp e2 ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | t1, t2 ->
+        failwith
+          ( "R.type_check_prim: lxor exps " ^ string_of_exp e1 ^ " and "
+          ^ string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
+          ^ Type.to_string t2
+          ^ " but expressions of type Integer were expected" ) )
+  | Lnot e -> (
+    match type_check_exp env e with
+    | Type.Integer -> Type.Integer
+    | t ->
+        failwith
+          ( "R.type_check_prim: lnot exp " ^ string_of_exp e ^ " has type "
+          ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" ) )
   | Eq (e1, e2) ->
       let t1 = type_check_exp env e1 in
       let t2 = type_check_exp env e2 in
@@ -448,6 +602,40 @@ and interp_prim ?(read = None) env = function
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int (i1 * i2)
       | _ -> assert false )
+  | Div (e1, e2) -> (
+      let a1 = interp_exp env e1 ~read in
+      let a2 = interp_exp env e2 ~read in
+      match (a1, a2) with
+      | `Int i1, `Int i2 -> `Int (i1 / i2)
+      | _ -> assert false )
+  | Rem (e1, e2) -> (
+      let a1 = interp_exp env e1 ~read in
+      let a2 = interp_exp env e2 ~read in
+      match (a1, a2) with
+      | `Int i1, `Int i2 -> `Int (i1 mod i2)
+      | _ -> assert false )
+  | Land (e1, e2) -> (
+      let a1 = interp_exp env e1 ~read in
+      let a2 = interp_exp env e2 ~read in
+      match (a1, a2) with
+      | `Int i1, `Int i2 -> `Int (i1 land i2)
+      | _ -> assert false )
+  | Lor (e1, e2) -> (
+      let a1 = interp_exp env e1 ~read in
+      let a2 = interp_exp env e2 ~read in
+      match (a1, a2) with
+      | `Int i1, `Int i2 -> `Int (i1 lor i2)
+      | _ -> assert false )
+  | Lxor (e1, e2) -> (
+      let a1 = interp_exp env e1 ~read in
+      let a2 = interp_exp env e2 ~read in
+      match (a1, a2) with
+      | `Int i1, `Int i2 -> `Int (i1 lxor i2)
+      | _ -> assert false )
+  | Lnot e -> (
+    match interp_exp env e ~read with
+    | `Int i -> `Int (lnot i)
+    | _ -> assert false )
   | Eq (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
@@ -544,6 +732,29 @@ and uniquify_prim m = function
       let _, e1 = uniquify_exp m e1 in
       let _, e2 = uniquify_exp m e2 in
       (m, Mult (e1, e2))
+  | Div (e1, e2) ->
+      let _, e1 = uniquify_exp m e1 in
+      let _, e2 = uniquify_exp m e2 in
+      (m, Div (e1, e2))
+  | Rem (e1, e2) ->
+      let _, e1 = uniquify_exp m e1 in
+      let _, e2 = uniquify_exp m e2 in
+      (m, Rem (e1, e2))
+  | Land (e1, e2) ->
+      let _, e1 = uniquify_exp m e1 in
+      let _, e2 = uniquify_exp m e2 in
+      (m, Land (e1, e2))
+  | Lor (e1, e2) ->
+      let _, e1 = uniquify_exp m e1 in
+      let _, e2 = uniquify_exp m e2 in
+      (m, Lor (e1, e2))
+  | Lxor (e1, e2) ->
+      let _, e1 = uniquify_exp m e1 in
+      let _, e2 = uniquify_exp m e2 in
+      (m, Lxor (e1, e2))
+  | Lnot e ->
+      let _, e = uniquify_exp m e in
+      (m, Lnot e)
   | Eq (e1, e2) ->
       let _, e1 = uniquify_exp m e1 in
       let _, e2 = uniquify_exp m e2 in

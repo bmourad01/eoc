@@ -20,6 +20,12 @@ and prim =
   | Plus of atom * atom
   | Subtract of atom * atom
   | Mult of atom * atom
+  | Div of atom * atom
+  | Rem of atom * atom
+  | Land of atom * atom
+  | Lor of atom * atom
+  | Lxor of atom * atom
+  | Lnot of atom
   | Eq of atom * atom
   | Lt of atom * atom
   | Le of atom * atom
@@ -54,6 +60,17 @@ and string_of_prim = function
       Printf.sprintf "(- %s %s)" (string_of_atom a1) (string_of_atom a2)
   | Mult (a1, a2) ->
       Printf.sprintf "(* %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Div (a1, a2) ->
+      Printf.sprintf "(/ %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Rem (a1, a2) ->
+      Printf.sprintf "(rem %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Land (a1, a2) ->
+      Printf.sprintf "(land %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Lor (a1, a2) ->
+      Printf.sprintf "(lor %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Lxor (a1, a2) ->
+      Printf.sprintf "(lxor %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Lnot a -> Printf.sprintf "(lnot %s)" (string_of_atom a)
   | Eq (a1, a2) ->
       Printf.sprintf "(eq? %s %s)" (string_of_atom a1) (string_of_atom a2)
   | Lt (a1, a2) ->
@@ -110,6 +127,35 @@ and resolve_complex_exp m n = function
       let nv2, a2 = resolve_complex_exp m n e2 in
       let x = fresh_var n in
       (nv1 @ nv2 @ [(x, Prim (Mult (a1, a2)))], Var x)
+  | R.(Prim (Div (e1, e2))) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Div (a1, a2)))], Var x)
+  | R.(Prim (Rem (e1, e2))) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Rem (a1, a2)))], Var x)
+  | R.(Prim (Land (e1, e2))) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Land (a1, a2)))], Var x)
+  | R.(Prim (Lor (e1, e2))) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Lor (a1, a2)))], Var x)
+  | R.(Prim (Lxor (e1, e2))) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Lxor (a1, a2)))], Var x)
+  | R.(Prim (Lnot e)) ->
+      let nv, a = resolve_complex_exp m n e in
+      let x = fresh_var n in
+      (nv @ [(x, Prim (Lnot a))], Var x)
   | R.(Prim (Eq (e1, e2))) ->
       let nv1, a1 = resolve_complex_exp m n e1 in
       let nv2, a2 = resolve_complex_exp m n e2 in
@@ -186,6 +232,29 @@ and allow_complex m n = function
       let nv1, a1 = resolve_complex_exp m n e1 in
       let nv2, a2 = resolve_complex_exp m n e2 in
       unfold (nv1 @ nv2) (Prim (Mult (a1, a2)))
+  | R.Prim (Div (e1, e2)) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      unfold (nv1 @ nv2) (Prim (Div (a1, a2)))
+  | R.Prim (Rem (e1, e2)) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      unfold (nv1 @ nv2) (Prim (Rem (a1, a2)))
+  | R.Prim (Land (e1, e2)) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      unfold (nv1 @ nv2) (Prim (Land (a1, a2)))
+  | R.Prim (Lor (e1, e2)) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      unfold (nv1 @ nv2) (Prim (Lor (a1, a2)))
+  | R.Prim (Lxor (e1, e2)) ->
+      let nv1, a1 = resolve_complex_exp m n e1 in
+      let nv2, a2 = resolve_complex_exp m n e2 in
+      unfold (nv1 @ nv2) (Prim (Lxor (a1, a2)))
+  | R.Prim (Lnot e) ->
+      let nv, a = resolve_complex_exp m n e in
+      unfold nv (Prim (Lnot a))
   | R.Prim (Eq (e1, e2)) ->
       let nv1, a1 = resolve_complex_exp m n e1 in
       let nv2, a2 = resolve_complex_exp m n e2 in
@@ -225,7 +294,6 @@ and allow_complex m n = function
   | R.If (e1, e2, e3) ->
       If (allow_complex m n e1, allow_complex m n e2, allow_complex m n e3)
 
-(* | R.If (e1, e2, e3) *)
 and fresh_var n =
   let x = Printf.sprintf "%%%d" !n in
   incr n; x

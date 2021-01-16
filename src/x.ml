@@ -146,6 +146,7 @@ and instr =
   | SUB of arg * arg
   | IMUL of arg * arg
   | IMULi of arg * arg * arg
+  | IDIV of arg
   | NEG of arg
   | MOV of arg * arg
   | CALL of label * int
@@ -155,6 +156,8 @@ and instr =
   | JMP of label
   | NOT of arg
   | XOR of arg * arg
+  | AND of arg * arg
+  | OR of arg * arg
   | CMP of arg * arg
   | TEST of arg * arg
   | SETCC of Cc.t * arg
@@ -200,6 +203,7 @@ and string_of_instr = function
   | IMULi (a1, a2, a3) ->
       Printf.sprintf "imul %s, %s, %s" (Arg.to_string a1) (Arg.to_string a2)
         (Arg.to_string a3)
+  | IDIV a -> Printf.sprintf "idiv %s" (Arg.to_string a)
   | NEG a -> Printf.sprintf "neg %s" (Arg.to_string a)
   | MOV (a1, a2) ->
       Printf.sprintf "mov %s, %s" (Arg.to_string a1) (Arg.to_string a2)
@@ -211,6 +215,10 @@ and string_of_instr = function
   | NOT a -> Printf.sprintf "not %s" (Arg.to_string a)
   | XOR (a1, a2) ->
       Printf.sprintf "xor %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | AND (a1, a2) ->
+      Printf.sprintf "and %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | OR (a1, a2) ->
+      Printf.sprintf "or %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | CMP (a1, a2) ->
       Printf.sprintf "cmp %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | TEST (a1, a2) ->
@@ -326,12 +334,92 @@ and select_instruction_exp a p =
   | C.(Prim (Mult (_, Int 0))) | C.(Prim (Mult (Int 0, _))) -> [XOR (a, a)]
   | C.(Prim (Mult (Int i1, Int i2))) ->
       let i = i1 * i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm (i1 * i2))]
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Prim (Mult (Var v, Int i))) | C.(Prim (Mult (Int i, Var v))) ->
       if fits_int32 i then [IMULi (a, Var v, Imm i)]
       else [MOV (a, Imm i); IMUL (a, Var v)]
   | C.(Prim (Mult (Var v1, Var v2))) -> [MOV (a, Var v1); IMUL (a, Var v2)]
   | C.(Prim (Mult _)) -> assert false
+  (* div *)
+  | C.(Prim (Div (Int 0, _))) -> [XOR (a, a)]
+  | C.(Prim (Div (Int i1, Int i2))) ->
+      let i = i1 / i2 in
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Div (Var v, Int i))) ->
+      [ XOR (Reg RDX, Reg RDX)
+      ; MOV (Reg RAX, Var v)
+      ; MOV (Reg RCX, Imm i)
+      ; IDIV (Reg RCX)
+      ; MOV (a, Reg RAX) ]
+  | C.(Prim (Div (Int i, Var v))) ->
+      [ XOR (Reg RDX, Reg RDX)
+      ; MOV (Reg RAX, Imm i)
+      ; IDIV (Var v)
+      ; MOV (a, Reg RAX) ]
+  | C.(Prim (Div (Var v1, Var v2))) ->
+      [ XOR (Reg RDX, Reg RDX)
+      ; MOV (Reg RAX, Var v1)
+      ; IDIV (Var v2)
+      ; MOV (a, Reg RAX) ]
+  | C.(Prim (Div _)) -> assert false
+  (* rem *)
+  | C.(Prim (Rem (Int 0, _))) -> [XOR (a, a)]
+  | C.(Prim (Rem (Int i1, Int i2))) ->
+      let i = i1 mod i2 in
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Rem (Var v, Int i))) ->
+      [ XOR (Reg RDX, Reg RDX)
+      ; MOV (Reg RAX, Var v)
+      ; MOV (Reg RCX, Imm i)
+      ; IDIV (Reg RCX)
+      ; MOV (a, Reg RDX) ]
+  | C.(Prim (Rem (Int i, Var v))) ->
+      [ XOR (Reg RDX, Reg RDX)
+      ; MOV (Reg RAX, Imm i)
+      ; IDIV (Var v)
+      ; MOV (a, Reg RDX) ]
+  | C.(Prim (Rem (Var v1, Var v2))) ->
+      [ XOR (Reg RDX, Reg RDX)
+      ; MOV (Reg RAX, Var v1)
+      ; IDIV (Var v2)
+      ; MOV (a, Reg RDX) ]
+  | C.(Prim (Rem _)) -> assert false
+  (* land *)
+  | C.(Prim (Land (Int 0, _))) | C.(Prim (Land (_, Int 0))) -> [XOR (a, a)]
+  | C.(Prim (Land (Int i1, Int i2))) ->
+      let i = i1 land i2 in
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Land (Var v, Int i))) | C.(Prim (Land (Int i, Var v))) ->
+      [MOV (a, Var v); AND (a, Imm i)]
+  | C.(Prim (Land (Var v1, Var v2))) when String.equal v1 v2 ->
+      [MOV (a, Var v1)]
+  | C.(Prim (Land (Var v1, Var v2))) -> [MOV (a, Var v1); AND (a, Var v2)]
+  | C.(Prim (Land _)) -> assert false
+  (* lor *)
+  | C.(Prim (Lor (Int i1, Int i2))) ->
+      let i = i1 land i2 in
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm (i1 lor i2))]
+  | C.(Prim (Lor (Var v, Int 0))) | C.(Prim (Lor (Int 0, Var v))) ->
+      [MOV (a, Var v)]
+  | C.(Prim (Lor (Var v, Int i))) | C.(Prim (Lor (Int i, Var v))) ->
+      [MOV (a, Var v); OR (a, Imm i)]
+  | C.(Prim (Lor (Var v1, Var v2))) when String.equal v1 v2 ->
+      [MOV (a, Var v1)]
+  | C.(Prim (Lor (Var v1, Var v2))) -> [MOV (a, Var v1); OR (a, Var v2)]
+  | C.(Prim (Lor _)) -> assert false
+  (* lxor *)
+  | C.(Prim (Lxor (Int i1, Int i2))) ->
+      let i = i1 lxor i2 in
+      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Lxor (Var v, Int i))) | C.(Prim (Lxor (Int i, Var v))) ->
+      [MOV (a, Var v); XOR (a, Imm i)]
+  | C.(Prim (Lxor (Var v1, Var v2))) when String.equal v1 v2 -> [XOR (a, a)]
+  | C.(Prim (Lxor (Var v1, Var v2))) -> [MOV (a, Var v1); XOR (a, Var v2)]
+  | C.(Prim (Lxor _)) -> assert false
+  (* lnot *)
+  | C.(Prim (Lnot (Int i))) -> [MOV (a, Imm (lnot i))]
+  | C.(Prim (Lnot (Var v))) -> [MOV (a, Var v); NOT a]
+  | C.(Prim (Lnot _)) -> assert false
   (* eq *)
   | C.(Prim (Eq (Int i1, Int i2))) ->
       if Int.(i1 = i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
@@ -437,8 +525,11 @@ let write_set instr =
      |IMULi (a, _, _)
      |NOT a
      |XOR (a, _)
+     |AND (a, _)
+     |OR (a, _)
      |SETCC (_, a)
      |MOVZX (a, _) -> Args.singleton a
+    | IDIV _ -> Args.of_list [Reg RAX; Reg RDX]
     | CALL _ -> Set.add caller_save_set (Reg RSP)
     | PUSH _ | RET -> Args.singleton (Reg RSP)
     | POP a -> Args.of_list [a; Reg RSP]
@@ -458,8 +549,11 @@ let read_set instr =
      |SUB (a1, a2)
      |IMUL (a1, a2)
      |XOR (a1, a2)
+     |AND (a1, a2)
+     |OR (a1, a2)
      |CMP (a1, a2)
      |TEST (a1, a2) -> Args.of_list [a1; a2]
+    | IDIV a -> Args.of_list [a; Reg RAX; Reg RDX]
     | NEG a | MOV (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a) ->
         Args.singleton a
     | CALL (_, arity) ->
@@ -605,7 +699,11 @@ and uncover_live_cfg blocks cfg la_map lb_map = function
       let live_before =
         let lb =
           match Hashtbl.find lb_map label with
-          | None -> Args.empty
+          | None ->
+              if Cfg.out_degree cfg label = 0 then
+                (* these registers are always live after an exit node *)
+                Args.of_list [Reg RAX; Reg RSP; Reg RBP]
+              else Args.empty
           | Some lb -> lb
         in
         Cfg.fold_succ
@@ -765,6 +863,9 @@ and allocate_registers_instr colors = function
       let a1 = color_arg colors a1 in
       let a2 = color_arg colors a2 in
       IMULi (a1, a2, a3)
+  | IDIV a ->
+      let a = color_arg colors a in
+      IDIV a
   | NEG a ->
       let a = color_arg colors a in
       NEG a
@@ -788,6 +889,14 @@ and allocate_registers_instr colors = function
       let a1 = color_arg colors a1 in
       let a2 = color_arg colors a2 in
       XOR (a1, a2)
+  | AND (a1, a2) ->
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      AND (a1, a2)
+  | OR (a1, a2) ->
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      OR (a1, a2)
   | CMP (a1, a2) ->
       let a1 = color_arg colors a1 in
       let a2 = color_arg colors a2 in

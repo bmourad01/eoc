@@ -22,6 +22,12 @@ rule token = parse
   | '+' { PLUS }
   | '-' { MINUS }
   | '*' { STAR }
+  | '/' { FSLASH }
+  | "rem" { REM }
+  | "land" { LAND }
+  | "lor" { LOR }
+  | "lxor" { LXOR }
+  | "lnot" { LNOT }
   | '(' { LPAREN }
   | ')' { RPAREN }
   | '[' { LSQUARE }

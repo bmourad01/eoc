@@ -146,6 +146,30 @@ and interp_prim ?(read = None) env = function
     match (interp_atom env a1, interp_atom env a2) with
     | `Int i1, `Int i2 -> `Int (i1 * i2)
     | _ -> assert false )
+  | Div (a1, a2) -> (
+    match (interp_atom env a1, interp_atom env a2) with
+    | `Int i1, `Int i2 -> `Int (i1 / i2)
+    | _ -> assert false )
+  | Rem (a1, a2) -> (
+    match (interp_atom env a1, interp_atom env a2) with
+    | `Int i1, `Int i2 -> `Int (i1 mod i2)
+    | _ -> assert false )
+  | Land (a1, a2) -> (
+    match (interp_atom env a1, interp_atom env a2) with
+    | `Int i1, `Int i2 -> `Int (i1 land i2)
+    | _ -> assert false )
+  | Lor (a1, a2) -> (
+    match (interp_atom env a1, interp_atom env a2) with
+    | `Int i1, `Int i2 -> `Int (i1 lor i2)
+    | _ -> assert false )
+  | Lxor (a1, a2) -> (
+    match (interp_atom env a1, interp_atom env a2) with
+    | `Int i1, `Int i2 -> `Int (i1 lxor i2)
+    | _ -> assert false )
+  | Lnot a -> (
+    match interp_atom env a with
+    | `Int i -> `Int (lnot i)
+    | _ -> assert false )
   | Eq (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
     | `Int i1, `Int i2 -> `Bool (i1 = i2)
