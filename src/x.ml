@@ -962,42 +962,46 @@ and color_arg colors = function
 
 let remove_jumps = function
   | Program (info, blocks) ->
-      let after = Hashtbl.create (module String) in
-      let rec build_after = function
-        | [] | [_] -> ()
-        | (a, _) :: (b, _) :: rest -> Hashtbl.set after a b; build_after rest
+      let rec loop cfg blocks =
+        let after = Hashtbl.create (module String) in
+        let rec build_after = function
+          | [] | [_] -> ()
+          | (a, _) :: (b, _) :: rest ->
+              Hashtbl.set after a b; build_after rest
+        in
+        build_after blocks;
+        let blocks' = Hashtbl.of_alist_exn (module String) blocks in
+        let merged = Hash_set.create (module String) in
+        let merge_info info info' =
+          {live_after= List.drop_last_exn info.live_after @ info'.live_after}
+        in
+        let blocks =
+          List.filter_map blocks
+            ~f:(fun ((label, Block (_, info, instrs)) as b) ->
+              if Hash_set.mem merged label then None
+              else
+                match Hashtbl.find after label with
+                | None -> Some b
+                | Some label' -> (
+                  match List.last_exn instrs with
+                  | JMP label'' when String.equal label' label'' ->
+                      if Cfg.in_degree cfg label' = 1 then (
+                        let (Block (_, info', instrs')) =
+                          Hashtbl.find_exn blocks' label'
+                        in
+                        let instrs = List.drop_last_exn instrs @ instrs' in
+                        Hash_set.add merged label';
+                        Some
+                          ( label
+                          , Block (label, merge_info info info', instrs) ) )
+                      else Some b
+                  | _ -> Some b ))
+        in
+        let cfg =
+          Hash_set.fold merged ~init:cfg ~f:(fun cfg l ->
+              Cfg.remove_vertex cfg l)
+        in
+        if Hash_set.is_empty merged then (cfg, blocks) else loop cfg blocks
       in
-      build_after blocks;
-      let blocks' = Hashtbl.of_alist_exn (module String) blocks in
-      let merged = Hash_set.create (module String) in
-      let merge_info info info' =
-        {live_after= List.drop_last_exn info.live_after @ info'.live_after}
-      in
-      let cfg = info.cfg in
-      let blocks =
-        List.filter_map blocks
-          ~f:(fun ((label, Block (_, info, instrs)) as b) ->
-            if Hash_set.mem merged label then None
-            else
-              match Hashtbl.find after label with
-              | None -> Some b
-              | Some label' -> (
-                match List.last_exn instrs with
-                | JMP label'' when String.equal label' label'' ->
-                    if Cfg.in_degree cfg label' = 1 then (
-                      let (Block (_, info', instrs')) =
-                        Hashtbl.find_exn blocks' label'
-                      in
-                      let instrs = List.drop_last_exn instrs @ instrs' in
-                      Hash_set.add merged label';
-                      Some
-                        (label, Block (label, merge_info info info', instrs))
-                      )
-                    else Some b
-                | _ -> Some b ))
-      in
-      let cfg =
-        Hash_set.fold merged ~init:cfg ~f:(fun cfg l ->
-            Cfg.remove_vertex cfg l)
-      in
+      let cfg, blocks = loop info.cfg blocks in
       Program ({info with cfg}, blocks)
