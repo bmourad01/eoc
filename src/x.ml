@@ -401,7 +401,7 @@ and select_instruction_exp a p =
   | C.(Prim (Ge _)) -> assert false
   (* not *)
   | C.(Prim (Not (Bool b))) -> if b then [XOR (a, a)] else [MOV (a, Imm 1)]
-  | C.(Prim (Not (Var v))) -> [MOV (a, Var v); NOT a]
+  | C.(Prim (Not (Var v))) -> [MOV (a, Var v); XOR (a, Imm 1)]
   | C.(Prim (Not _)) -> assert false
 
 let is_temp_var_name = String.is_prefix ~prefix:"%"
