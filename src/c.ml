@@ -354,12 +354,12 @@ and remove_jumps_erase cfg tails =
                   if String.equal label label' then g
                   else
                     match Hashtbl.find singles label' with
-                    | None -> g
-                    | Some label'' ->
+                    | Some label'' when not (String.equal label' label'') ->
                         cfg := Cfg.remove_vertex !cfg label';
                         cfg := Cfg.add_edge !cfg label label'';
                         changed := true;
-                        Goto label'' )
+                        Goto label''
+                    | _ -> g )
               | If (cmp, lt, lf) as i ->
                   if String.(equal label lt || equal label lf) then i
                   else
