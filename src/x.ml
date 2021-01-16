@@ -784,7 +784,7 @@ let allocatable_regs =
 
 let num_regs = Array.length allocatable_regs
 
-let color_graph g =
+let color_graph ?(bias = Interference_graph.empty) g =
   let cmp (_, n) (_, m) = Int.compare m n in
   let q = Pairing_heap.create ~cmp () in
   Interference_graph.iter_vertex
@@ -804,11 +804,27 @@ let color_graph g =
                 | Some c -> Set.add assigned c)
               g u Int.Set.empty
           in
-          let c = ref 0 in
-          while Set.mem assigned !c do
-            incr c
-          done;
-          loop (Map.set colors u !c)
+          let bias_colors =
+            try
+              Interference_graph.succ bias u
+              |> List.filter_map ~f:(fun v ->
+                     Option.(
+                       Map.find colors v
+                       >>= fun c -> some_if (not (Set.mem assigned c)) c))
+              |> Int.Set.of_list
+            with Invalid_argument _ -> Int.Set.empty
+          in
+          let c =
+            match Set.min_elt bias_colors with
+            | Some c -> c
+            | None ->
+                let c = ref 0 in
+                while Set.mem assigned !c do
+                  incr c
+                done;
+                !c
+          in
+          loop (Map.set colors u c)
       | _ -> loop colors )
   in
   (* registers which we will not select *)
@@ -840,7 +856,17 @@ let rec allocate_registers = function
        * is very simple (all values are word-sized),
        * we don't need to carry any type information
        * for this pass to work properly. *)
-      let colors = color_graph info.conflicts in
+      let bias =
+        let init = Interference_graph.empty in
+        List.fold blocks ~init ~f:(fun init (_, Block (_, _, instrs)) ->
+            List.fold instrs ~init ~f:(fun bias instr ->
+                match instr with
+                | MOV ((Arg.Var v1 as d), (Arg.Var v2 as s))
+                  when is_temp_var_name v1 && is_temp_var_name v2 ->
+                    Interference_graph.add_edge bias d s
+                | _ -> bias))
+      in
+      let colors = color_graph info.conflicts ~bias in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
             (label, allocate_registers_block colors block))

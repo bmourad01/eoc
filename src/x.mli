@@ -135,7 +135,8 @@ val build_interference : t -> t
 
 (* use the greedy saturation algorithm on the interference graph *)
 
-val color_graph : Interference_graph.t -> int Arg_map.t
+val color_graph :
+  ?bias:Interference_graph.t -> Interference_graph.t -> int Arg_map.t
 
 (* perform register allocation *)
 
