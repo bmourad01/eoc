@@ -720,12 +720,12 @@ and uncover_live_cfg blocks cfg la_map lb_map = function
         List.fold_right instrs
           ~init:([], [live_before])
           ~f:(fun instr (live_after, live_before) ->
-            let live_before' = List.hd_exn live_before in
-            let live_after' = live_before' in
-            let w = write_set instr in
-            let r = read_set instr in
-            let live_before'' = Set.(union (diff live_after' w) r) in
-            (live_after' :: live_after, live_before'' :: live_before))
+            let live_after' = List.hd_exn live_before in
+            let live_before' =
+              Set.(
+                union (diff live_after' (write_set instr)) (read_set instr))
+            in
+            (live_after' :: live_after, live_before' :: live_before))
       in
       Hashtbl.set la_map label live_after;
       Hashtbl.set lb_map label (List.hd_exn live_before);
