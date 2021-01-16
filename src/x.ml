@@ -816,8 +816,8 @@ let color_graph ?(bias = Interference_graph.empty) g =
           in
           let c =
             match Set.min_elt bias_colors with
-            | Some c -> c
-            | None ->
+            | Some c when c < num_regs -> c
+            | _ ->
                 let c = ref 0 in
                 while Set.mem assigned !c do
                   incr c
