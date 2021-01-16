@@ -17,7 +17,10 @@ let parse filename =
           failwith
             (Printf.sprintf "R: %s parse error: %s" filename
                (file_pos lexbuf))
-      | Invalid_argument _ as x -> raise x
+      | Invalid_argument msg ->
+          failwith
+            (Printf.sprintf "R: %s invalid arg (%s): %s" filename msg
+               (file_pos lexbuf))
       | _ ->
           failwith
             (Printf.sprintf "R: %s unknown parser error: %s" filename
