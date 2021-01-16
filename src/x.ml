@@ -607,7 +607,10 @@ let function_epilogue typ label stack_space w instrs =
           | C.Type.Boolean -> print_bool
         in
         List.rev acc
-        @ [MOV (Reg RDI, Reg RAX); CALL (print, 1)]
+        @ [ PUSH (Reg RAX)
+          ; MOV (Reg RDI, Reg RAX)
+          ; CALL (print, 1)
+          ; POP (Reg RAX) ]
         @ epilogue @ [RET]
     | instr :: rest -> aux (instr :: acc) rest
   in
