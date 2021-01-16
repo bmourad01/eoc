@@ -9,7 +9,7 @@ val empty_label_map : 'a label_map
 val word_size : int
 
 module Cc : sig
-  type t = E | L | LE | G | GE
+  type t = E | NE | L | LE | G | GE
 
   val to_string : t -> string
 end
@@ -99,6 +99,7 @@ and instr =
   | NOT of arg
   | XOR of arg * arg
   | CMP of arg * arg
+  | TEST of arg * arg
   | SETCC of Cc.t * arg
   | MOVZX of arg * arg
   | JCC of Cc.t * label

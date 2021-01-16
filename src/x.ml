@@ -9,10 +9,11 @@ let empty_label_map = C.empty_label_map
 let word_size = 8
 
 module Cc = struct
-  type t = E | L | LE | G | GE
+  type t = E | NE | L | LE | G | GE
 
   let to_string = function
     | E -> "e"
+    | NE -> "ne"
     | L -> "l"
     | LE -> "le"
     | G -> "g"
@@ -155,6 +156,7 @@ and instr =
   | NOT of arg
   | XOR of arg * arg
   | CMP of arg * arg
+  | TEST of arg * arg
   | SETCC of Cc.t * arg
   | MOVZX of arg * arg
   | JCC of Cc.t * label
@@ -211,6 +213,8 @@ and string_of_instr = function
       Printf.sprintf "xor %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | CMP (a1, a2) ->
       Printf.sprintf "cmp %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | TEST (a1, a2) ->
+      Printf.sprintf "test %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | SETCC (cc, a) ->
       Printf.sprintf "set%s %s" (Cc.to_string cc) (Arg.to_string a)
   | MOVZX (a1, a2) ->
@@ -264,13 +268,12 @@ and select_instructions_tail tails t =
   | C.If ((cmp, Int i, Var v), lt, lf) ->
       let cc = Cc.of_c_cmp_swap cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
-  | C.If ((cmp, Var v, Bool b), lt, lf) -> (
+  | C.If ((cmp, Var v, Bool b), lt, lf) | C.If ((cmp, Bool b, Var v), lt, lf)
+    -> (
     match cmp with
-    | Eq -> [CMP (Var v, Imm (Bool.to_int b)); JCC (Cc.E, lt); JMP lf]
-    | _ -> assert false )
-  | C.If ((cmp, Bool b, Var v), lt, lf) -> (
-    match cmp with
-    | Eq -> [CMP (Var v, Imm (Bool.to_int b)); JCC (Cc.E, lt); JMP lf]
+    | Eq ->
+        let lt, lf = if not b then (lt, lf) else (lf, lt) in
+        [TEST (Var v, Var v); JCC (Cc.E, lt); JMP lf]
     | _ -> assert false )
   | C.If ((cmp, Var v1, Var v2), lt, lf) when String.equal v1 v2 -> (
     match cmp with
@@ -336,6 +339,9 @@ and select_instruction_exp a p =
       if Bool.equal b1 b2 then [MOV (a, Imm 1)] else [XOR (a, a)]
   | C.(Prim (Eq (Var v, Int i))) | C.(Prim (Eq (Int i, Var v))) ->
       [CMP (Var v, Imm i); SETCC (Cc.E, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Eq (Var v, Bool b))) | C.(Prim (Eq (Bool b, Var v))) ->
+      let cc = if not b then Cc.E else Cc.NE in
+      [TEST (Var v, Var v); SETCC (cc, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Eq (Var v1, Var v2))) ->
       if String.equal v1 v2 then [MOV (a, Imm 1)]
       else
@@ -436,7 +442,7 @@ let write_set instr =
     | CALL _ -> Set.add caller_save_set (Reg RSP)
     | PUSH _ | RET -> Args.singleton (Reg RSP)
     | POP a -> Args.of_list [a; Reg RSP]
-    | JMP _ | JCC _ | CMP _ -> Args.empty
+    | JMP _ | JCC _ | CMP _ | TEST _ -> Args.empty
   in
   aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
 
@@ -449,7 +455,8 @@ let read_set instr =
      |SUB (a1, a2)
      |IMUL (a1, a2)
      |XOR (a1, a2)
-     |CMP (a1, a2) -> Args.of_list [a1; a2]
+     |CMP (a1, a2)
+     |TEST (a1, a2) -> Args.of_list [a1; a2]
     | NEG a | MOV (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a) ->
         Args.singleton a
     | CALL (_, arity) ->
@@ -783,6 +790,10 @@ and allocate_registers_instr colors = function
       let a1 = color_arg colors a1 in
       let a2 = color_arg colors a2 in
       CMP (a1, a2)
+  | TEST (a1, a2) ->
+      let a1 = color_arg colors a1 in
+      let a2 = color_arg colors a2 in
+      TEST (a1, a2)
   | SETCC _ as s -> s
   | MOVZX (a1, a2) ->
       let a1 = color_arg colors a1 in
