@@ -141,3 +141,7 @@ val color_graph :
 (* perform register allocation *)
 
 val allocate_registers : t -> t
+
+(* remove unnecessary jumps *)
+
+val remove_jumps : t -> t

@@ -9,7 +9,8 @@
         select_instructions
         uncover_live
         color_graph
-        allocate_registers)
+        allocate_registers
+        print_x86)
  (flags -w -33)
  (modes byte native)
  (libraries core_kernel eoc))
