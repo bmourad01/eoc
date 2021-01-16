@@ -971,8 +971,6 @@ let rec remove_jumps = function
       Program ({info with cfg}, blocks)
 
 and remove_jumps_aux cfg blocks =
-  (* find blocks that are sequentially adjacent and
-   * merge them if it doesn't break any dependencies *)
   let after = Hashtbl.create (module Label) in
   let before = Hashtbl.create (module Label) in
   let rec build_maps = function

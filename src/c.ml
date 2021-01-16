@@ -223,7 +223,6 @@ let rec explicate_control = function
             aux tail)
       in
       let tails = Map.to_alist tails |> List.rev in
-      let cfg, tails = remove_jumps cfg tails in
       Program ({info with cfg}, tails)
 
 and explicate_tail tails n = function
@@ -322,9 +321,12 @@ and fresh_label n =
 
 and add_tail tails l t = tails := Map.set !tails l t
 
-and remove_jumps cfg tails =
-  (* find each tail with a single goto and
-   * redirect its predecessors to its successor *)
+let rec optimize_jumps = function
+  | Program (info, tails) ->
+      let cfg, tails = optimize_jumps_aux info.cfg tails in
+      Program ({info with cfg}, tails)
+
+and optimize_jumps_aux cfg tails =
   let singles =
     List.filter_map tails ~f:(fun (label, tail) ->
         match tail with
@@ -379,4 +381,4 @@ and remove_jumps cfg tails =
           (!cfg, (label, tail) :: tails, !changed))
   in
   let tails = List.rev tails in
-  if changed then remove_jumps cfg tails else (cfg, tails)
+  if changed then optimize_jumps_aux cfg tails else (cfg, tails)

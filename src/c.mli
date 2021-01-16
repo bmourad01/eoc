@@ -61,3 +61,7 @@ val interp : ?read:int option -> t -> answer
 (* compile an R_anf program to a C program *)
 
 val explicate_control : R_anf.t -> t
+
+(* collapse sequences of jumps through trivial blocks *)
+
+val optimize_jumps : t -> t

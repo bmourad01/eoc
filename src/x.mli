@@ -136,6 +136,6 @@ val color_graph :
 
 val allocate_registers : t -> t
 
-(* remove unnecessary jumps *)
+(* merge sequentially-adjacent blocks wherever possible *)
 
 val remove_jumps : t -> t
