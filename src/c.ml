@@ -229,7 +229,9 @@ let rec explicate_control = function
             in
             aux tail)
       in
-      Program ({info with cfg}, Map.to_alist tails |> List.rev)
+      let tails = Map.to_alist tails |> List.rev in
+      let cfg, tails = remove_jumps_erase cfg tails in
+      Program ({info with cfg}, tails)
 
 and explicate_tail tails n = function
   | R_anf.(Atom a) -> Return (Atom a)
@@ -326,3 +328,65 @@ and fresh_label n =
   incr n; l
 
 and add_tail tails l t = tails := Map.set !tails l t
+
+and remove_jumps_erase cfg tails =
+  (* find each tail with a single goto and
+   * redirect its predecessors to its successor *)
+  let rec loop cfg tails =
+    let singles =
+      List.filter_map tails ~f:(fun (label, tail) ->
+          match tail with
+          | Goto label' -> Some (label, label')
+          | _ -> None)
+      |> Hashtbl.of_alist_exn (module String)
+    in
+    let cfg, tails, changed =
+      List.fold tails ~init:(cfg, [], false)
+        ~f:(fun (cfg, tails, changed) (label, tail) ->
+          if not (Cfg.mem_vertex cfg label) then (cfg, tails, changed)
+          else
+            let cfg = ref cfg in
+            let changed = ref changed in
+            let rec aux = function
+              | Return _ as r -> r
+              | Seq (s, t) -> Seq (s, aux t)
+              | Goto label' as g -> (
+                  if String.equal label label' then g
+                  else
+                    match Hashtbl.find singles label' with
+                    | None -> g
+                    | Some label'' ->
+                        cfg := Cfg.remove_vertex !cfg label';
+                        cfg := Cfg.add_edge !cfg label label'';
+                        changed := true;
+                        Goto label'' )
+              | If (cmp, lt, lf) as i ->
+                  if String.(equal label lt || equal label lf) then i
+                  else
+                    let lt' =
+                      match Hashtbl.find singles lt with
+                      | None -> lt
+                      | Some lt' -> lt'
+                    in
+                    let lf' =
+                      match Hashtbl.find singles lf with
+                      | None -> lf
+                      | Some lf' -> lf'
+                    in
+                    if not (String.equal lt lt') then (
+                      cfg := Cfg.remove_vertex !cfg lt;
+                      cfg := Cfg.add_edge !cfg label lt';
+                      changed := true );
+                    if not (String.equal lf lf') then (
+                      cfg := Cfg.remove_vertex !cfg lf;
+                      cfg := Cfg.add_edge !cfg label lf';
+                      changed := true );
+                    If (cmp, lt', lf')
+            in
+            let tail = aux tail in
+            (!cfg, (label, tail) :: tails, !changed))
+    in
+    let tails = List.rev tails in
+    if changed then loop cfg tails else (cfg, tails)
+  in
+  loop cfg tails

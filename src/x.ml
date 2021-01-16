@@ -963,11 +963,11 @@ and color_arg colors = function
 let rec remove_jumps = function
   | Program (info, blocks) ->
       let cfg, blocks = remove_jumps_merge info.cfg blocks in
-      let cfg, blocks = remove_jumps_erase cfg blocks in
       Program ({info with cfg}, blocks)
 
 and remove_jumps_merge cfg blocks =
-  (* find blocks that are sequentially adjacent and try to merge them *)
+  (* find blocks that are sequentially adjacent and
+   * merge them if it doesn't break any dependencies *)
   let rec loop cfg blocks =
     let after = Hashtbl.create (module String) in
     let before = Hashtbl.create (module String) in
@@ -1012,42 +1012,5 @@ and remove_jumps_merge cfg blocks =
           Cfg.remove_vertex cfg l)
     in
     if Hash_set.is_empty merged then (cfg, blocks) else loop cfg blocks
-  in
-  loop cfg blocks
-
-and remove_jumps_erase cfg blocks =
-  (* find each block with a single unconditional jump
-   * and redirect its predecessors to its successor *)
-  let rec loop cfg blocks =
-    let singles =
-      List.filter_map blocks ~f:(fun (label, Block (_, _, instrs)) ->
-          match instrs with
-          | [JMP label'] -> Some (label, label')
-          | _ -> None)
-      |> Hashtbl.of_alist_exn (module String)
-    in
-    let cfg, blocks, changed =
-      List.fold blocks ~init:(cfg, [], false)
-        ~f:(fun
-             (cfg, blocks', changed)
-             ((label, Block (_, info, instrs)) as b)
-           ->
-          if not (Cfg.mem_vertex cfg label) then (cfg, blocks', changed)
-          else
-            match List.last_exn instrs with
-            (* future: do the same for JCC instructions *)
-            | JMP label' when not (String.equal label label') -> (
-              match Hashtbl.find singles label' with
-              | None -> (cfg, b :: blocks', changed)
-              | Some label'' ->
-                  let instrs = List.drop_last_exn instrs @ [JMP label''] in
-                  let block = (label, Block (label, info, instrs)) in
-                  let cfg = Cfg.remove_vertex cfg label' in
-                  let cfg = Cfg.add_edge cfg label label'' in
-                  (cfg, block :: blocks', true) )
-            | _ -> (cfg, b :: blocks', changed))
-    in
-    let blocks = List.rev blocks in
-    if changed then loop cfg blocks else (cfg, blocks)
   in
   loop cfg blocks
