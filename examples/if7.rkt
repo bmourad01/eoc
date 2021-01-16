@@ -1,0 +1,5 @@
+(let ([x (read)])
+  (let ([y (>= x 5)])
+    (let ([z (not y)])
+      (let ([z (eq? z #t)])
+        (if z (* x 2) (- x 2))))))
