@@ -37,6 +37,10 @@ prog:
       Program ({typ= type_check_exp empty_var_env $1}, $1)
     }
 
+let_arg:
+  | LSQUARE v = VAR e = exp RSQUARE
+    { (v, e) }
+
 exp:
   | INT
     { Int $1 }
@@ -48,8 +52,11 @@ exp:
     { Prim $1 }
   | VAR
     { Var $1 }
-  | LPAREN LET LPAREN LSQUARE v = VAR e1 = exp RSQUARE RPAREN e2 = exp RPAREN
-    { Let (v, e1, e2) }
+  | LPAREN LET LPAREN args = nonempty_list(let_arg) RPAREN body = exp RPAREN
+    {
+      let open Core_kernel in
+      List.fold_right args ~init:body ~f:(fun (v, e) acc -> Let (v, e, acc))
+    }
   | LPAREN IF exp exp exp RPAREN
     { If ($3, $4, $5) }
 
