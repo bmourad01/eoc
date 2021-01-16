@@ -235,7 +235,7 @@ let rec select_instructions = function
   | C.Program (info, tails) ->
       let blocks =
         let block_info = {live_after= []} in
-        List.fold tails ~init:[] ~f:(fun blocks (label, tail) ->
+        List.fold_right tails ~init:[] ~f:(fun (label, tail) blocks ->
             let instrs = select_instructions_tail tails tail in
             (label, Block (label, block_info, instrs)) :: blocks)
       in
@@ -246,12 +246,12 @@ let rec select_instructions = function
         ; typ= info.typ
         ; cfg= info.cfg }
       in
-      Program (info, blocks |> List.rev)
+      Program (info, blocks)
 
 and select_instructions_tail tails t =
   let open Arg in
   match t with
-  | C.Return e -> select_instruction_exp (Reg RAX) e @ [RET]
+  | C.Return e -> select_instructions_exp (Reg RAX) e @ [RET]
   | C.Seq (s, t) ->
       let s = select_instructions_stmt s in
       let t = select_instructions_tail tails t in
@@ -295,9 +295,9 @@ and select_instructions_tail tails t =
 and select_instructions_stmt s =
   let open Arg in
   match s with
-  | C.Assign (v, e) -> select_instruction_exp (Var v) e
+  | C.Assign (v, e) -> select_instructions_exp (Var v) e
 
-and select_instruction_exp a p =
+and select_instructions_exp a p =
   let open Arg in
   match p with
   (* atom *)
