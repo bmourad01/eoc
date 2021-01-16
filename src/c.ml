@@ -320,7 +320,7 @@ and do_assign e x cont =
   | Return (Atom a) -> Seq (Assign (x, Atom a), cont)
   | Return (Prim p) -> Seq (Assign (x, Prim p), cont)
   | Seq (s, t) -> Seq (s, do_assign t x cont)
-  | _ -> failwith ("C.do_assign: unhandled case " ^ string_of_tail e)
+  | _ -> assert false
 
 and fresh_label n =
   (* in the future, this will be the name of the current function *)
