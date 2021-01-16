@@ -448,9 +448,12 @@ let write_set instr =
 
 let read_set instr =
   let aux = function
-    (* special case, it DOES read the source register,
-     * but in effect it's just zeroing the destination. *)
-    | XOR (a1, a2) when Arg.equal a1 a2 -> Args.empty
+    | XOR (a1, a2) when Arg.equal a1 a2 ->
+        (* special case: it DOES read the source register,
+         * in order to compute the result,  but in effect
+         * it's just zeroing the destination, so we should
+         * treat it as if it's not actually reading anything. *)
+        Args.empty
     | ADD (a1, a2)
      |SUB (a1, a2)
      |IMUL (a1, a2)
@@ -468,7 +471,7 @@ let read_set instr =
     | POP _ | RET -> Args.singleton (Reg RSP)
     | JMP _ | SETCC _ | JCC _ -> Args.empty
   in
-  aux instr |> filter_non_locations
+  aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
 
 let function_prologue stack_space w =
   let setup_frame =
@@ -502,8 +505,7 @@ let function_epilogue typ label stack_space w instrs =
   let rec aux acc = function
     | [] ->
         failwith
-          ( "X.insert_function_epilogue: block " ^ label
-          ^ " is not well-formed" )
+          ("X.function_epilogue: block " ^ label ^ " is not well-formed")
     | RET :: _ ->
         let print =
           match typ with
@@ -656,7 +658,7 @@ and build_interference_block g = function
                      else Interference_graph.add_edge g v d
                  | XOR (d, s) when Arg.(equal d s) ->
                      (* special case, treat this like a MOV *)
-                     if Arg.(equal v d || equal v s) then g
+                     if Arg.(equal v d) then g
                      else Interference_graph.add_edge g v d
                  | _ ->
                      Set.fold w ~init:g ~f:(fun g d ->
