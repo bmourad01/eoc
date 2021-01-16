@@ -1,5 +1,19 @@
 %{
     open R
+
+    let lassoc e1 e2 es ~f =
+      let open Core_kernel in
+      match List.fold (e2 :: es) ~init:e1 ~f:(fun acc e -> Prim (f acc e)) with
+      | Prim p -> p
+      | _ -> assert false
+
+    let rassoc e1 e2 es ~f =
+      let open Core_kernel in
+      let (init, l) =
+        let l = List.rev es in
+        (List.hd_exn l, List.drop l 1 |> List.rev)
+      in
+      f e1 (List.fold_right (e2 :: l) ~init ~f:(fun e acc -> Prim (f e acc)))
 %}
 
 %token EOF
@@ -46,10 +60,16 @@ prim:
     { Minus $3 }
   | LPAREN PLUS exp exp RPAREN
     { Plus ($3, $4) }
+  | LPAREN PLUS exp exp nonempty_list(exp) RPAREN
+    { lassoc $3 $4 $5 ~f:(fun e1 e2 -> Plus (e1, e2)) }
   | LPAREN MINUS exp exp RPAREN
     { Subtract ($3, $4) }
+  | LPAREN MINUS exp exp nonempty_list(exp) RPAREN
+    { lassoc $3 $4 $5 ~f:(fun e1 e2 -> Subtract (e1, e2)) }
   | LPAREN STAR exp exp RPAREN
     { Mult ($3, $4) }
+  | LPAREN STAR exp exp nonempty_list(exp) RPAREN
+    { lassoc $3 $4 $5 ~f:(fun e1 e2 -> Mult (e1, e2)) }
   | LPAREN EQ exp exp RPAREN
     { Eq ($3, $4) }
   | LPAREN LT exp exp RPAREN
@@ -64,5 +84,9 @@ prim:
     { Not $3 }
   | LPAREN AND exp exp RPAREN
     { And ($3, $4) }
+  | LPAREN AND exp exp nonempty_list(exp) RPAREN
+    { rassoc $3 $4 $5 ~f:(fun e1 e2 -> And (e1, e2)) }
   | LPAREN OR exp exp RPAREN
     { Or ($3, $4) }
+  | LPAREN OR exp exp nonempty_list(exp) RPAREN
+    { rassoc $3 $4 $5 ~f:(fun e1 e2 -> Or (e1, e2)) }
