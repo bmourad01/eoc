@@ -829,6 +829,14 @@ let color_graph g =
 
 let rec allocate_registers = function
   | Program (info, blocks) ->
+      (* this pass actually subsumes the assign-homes and
+       * uncover-locals passes described in the book.
+       * since every local var has been colored, its
+       * color will either correspond to a register or
+       * a stack offset, and since our memory layout
+       * is very simple (all values are word-sized),
+       * we don't need to carry any type information
+       * for this pass to work properly. *)
       let colors = color_graph info.conflicts in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
