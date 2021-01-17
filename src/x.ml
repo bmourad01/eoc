@@ -790,47 +790,48 @@ let allocatable_regs =
 let num_regs = Array.length allocatable_regs
 
 let color_graph ?(bias = Interference_graph.empty) g =
-  let cmp (_, n) (_, m) = Int.compare m n in
-  let q = Pairing_heap.create ~cmp () in
+  let q =
+    Pairing_heap.create ~cmp:(fun (_, n) (_, m) -> Int.compare m n) ()
+  in
   Interference_graph.iter_vertex
-    (fun v -> Pairing_heap.add q (v, Interference_graph.in_degree g v))
+    (function
+      | Arg.Var v as var when is_temp_var_name v ->
+          Pairing_heap.add q (var, Interference_graph.in_degree g var)
+      | _ -> ())
     g;
   let rec loop colors =
     match Pairing_heap.pop q with
     | None -> colors
-    | Some (u, _) -> (
-      match u with
-      | Arg.Var _ ->
-          let assigned =
-            Interference_graph.fold_succ
-              (fun v assigned ->
-                match Map.find colors v with
-                | None -> assigned
-                | Some c -> Set.add assigned c)
-              g u Int.Set.empty
-          in
-          let bias_colors =
-            try
-              Interference_graph.succ bias u
-              |> List.filter_map ~f:(fun v ->
-                     Option.(
-                       Map.find colors v
-                       >>= fun c -> some_if (not (Set.mem assigned c)) c))
-              |> Int.Set.of_list
-            with Invalid_argument _ -> Int.Set.empty
-          in
-          let c =
-            match Set.min_elt bias_colors with
-            | Some c when c < num_regs -> c
-            | _ ->
-                let c = ref 0 in
-                while Set.mem assigned !c do
-                  incr c
-                done;
-                !c
-          in
-          loop (Map.set colors u c)
-      | _ -> loop colors )
+    | Some (u, _) ->
+        let assigned =
+          Interference_graph.fold_succ
+            (fun v assigned ->
+              match Map.find colors v with
+              | None -> assigned
+              | Some c -> Set.add assigned c)
+            g u Int.Set.empty
+        in
+        let bias_colors =
+          try
+            Interference_graph.succ bias u
+            |> List.filter_map ~f:(fun v ->
+                   Option.(
+                     Map.find colors v
+                     >>= fun c -> some_if (not (Set.mem assigned c)) c))
+            |> Int.Set.of_list
+          with Invalid_argument _ -> Int.Set.empty
+        in
+        let c =
+          match Set.min_elt bias_colors with
+          | Some c when c < num_regs -> c
+          | _ ->
+              let c = ref 0 in
+              while Set.mem assigned !c do
+                incr c
+              done;
+              !c
+        in
+        loop (Map.set colors u c)
   in
   (* registers which we will not select *)
   let colors =
