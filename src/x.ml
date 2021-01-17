@@ -831,7 +831,7 @@ let color_graph ?(bias = Interference_graph.empty) g =
               done;
               !c
         in
-        loop (Map.set colors u c)
+        Map.set colors u c |> loop
   in
   (* registers which we will not select *)
   let colors =
