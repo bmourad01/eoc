@@ -19,3 +19,14 @@ Additionally, the following OCaml packages are required:
 - ppx_hash
 - ppx_let
 - ppx_sexp_conv
+
+## Instructions
+
+For building the project, run `dune build`. To compile a program, run `./compile <program>.rkt`. To execute the compiled program, run `./output/<program>`.
+
+## Features
+
+- Integers, booleans
+- Basic arithmetic and bitwise operations
+- Let-binding
+- If-then-else expressions
