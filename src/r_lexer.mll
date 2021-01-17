@@ -13,7 +13,7 @@
 let space = [' ' '\t' '\n' '\r']
 let digit = ['0'-'9']
 let alpha = ['a'-'z' 'A'-'Z']
-let ident = ['a'-'z'] (alpha | '_' | '-' | '\'' | digit)*
+let ident = ['a'-'z'] (alpha | '-' | '\'' | digit)*
 let integer = digit+
 
 rule token = parse

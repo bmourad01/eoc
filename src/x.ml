@@ -160,11 +160,11 @@ and instr =
 
 and arg = Arg.t
 
-let read_int = "read_int"
+let read_int = "_read_int"
 
-let print_int = "print_int"
+let print_int = "_print_int"
 
-let print_bool = "print_bool"
+let print_bool = "_print_bool"
 
 let externs = [read_int; print_int; print_bool]
 
