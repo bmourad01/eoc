@@ -24,9 +24,10 @@ Additionally, the following OCaml packages are required:
 
 For building the project, run `dune build`. To compile a program, run `./compile <program>.rkt`. To execute the compiled program, run `./output/<program>`.
 
-## Features
+## Features Implemented
 
 - Integers, booleans
 - Basic arithmetic and bitwise operations
 - Let-binding
 - If-then-else expressions
+- Register allocation with move biasing
