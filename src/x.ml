@@ -668,7 +668,8 @@ let function_prologue rootstack_spills stack_space w =
   in
   let init =
     [ MOV (Reg RDI, Imm 0x4000)
-    ; MOV (Reg RSI, Imm 0x4000)
+      (* let's use a very small number to trigger the GC *)
+    ; MOV (Reg RSI, Imm 16)
     ; CALL (Extern.initialize, 2)
     ; MOV (Reg R15, Var Extern.rootstack_begin)
     ; MOV (Deref (R15, 0), Imm 0)
