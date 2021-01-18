@@ -8,6 +8,10 @@ type type_env = R_typed.type_env
 
 type info = {typ: Type.t; nvars: int}
 
+val free_ptr : string
+
+val fromspace_end : string
+
 (* same as the R_typed language, but with
  * special operators for allocating objects. *)
 

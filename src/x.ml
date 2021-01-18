@@ -160,13 +160,101 @@ and instr =
 
 and arg = Arg.t
 
-let read_int = "_read_int"
+let is_temp_var_name = String.is_prefix ~prefix:"%"
 
-let print_int = "_print_int"
+let filter_non_locations =
+  Set.filter ~f:(function
+    | Arg.Imm _ -> false
+    | _ -> true)
 
-let print_bool = "_print_bool"
+let caller_save_set =
+  List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
 
-let externs = [read_int; print_int; print_bool]
+let convert_bytereg = function
+  | Arg.Bytereg AL -> Arg.Reg RAX
+  | Arg.Bytereg BL -> Arg.Reg RBX
+  | Arg.Bytereg CL -> Arg.Reg RCX
+  | Arg.Bytereg DL -> Arg.Reg RDX
+  | a -> a
+
+let write_set instr =
+  let aux = function
+    | ADD (a, _)
+     |SUB (a, _)
+     |NEG a
+     |MOV (a, _)
+     |IMUL (a, _)
+     |IMULi (a, _, _)
+     |NOT a
+     |XOR (a, _)
+     |AND (a, _)
+     |OR (a, _)
+     |SETCC (_, a)
+     |MOVZX (a, _) -> Args.singleton a
+    | IDIV _ -> Args.of_list [Reg RAX; Reg RDX]
+    | CALL _ -> Set.add caller_save_set (Reg RSP)
+    | PUSH _ | RET -> Args.singleton (Reg RSP)
+    | POP a -> Args.of_list [a; Reg RSP]
+    | JMP _ | JCC _ | CMP _ | TEST _ -> Args.empty
+  in
+  aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
+
+let read_set instr =
+  let aux = function
+    | XOR (a1, a2) when Arg.equal a1 a2 ->
+        (* special case: it DOES read the source register
+         * in order to compute the result, but in effect
+         * it's just zeroing the destination, so we should
+         * treat it as if it's not actually reading anything. *)
+        Args.empty
+    | ADD (a1, a2)
+     |SUB (a1, a2)
+     |IMUL (a1, a2)
+     |XOR (a1, a2)
+     |AND (a1, a2)
+     |OR (a1, a2)
+     |CMP (a1, a2)
+     |TEST (a1, a2) -> Args.of_list [a1; a2]
+    | IDIV a -> Args.of_list [a; Reg RAX; Reg RDX]
+    | NEG a | MOV (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a) ->
+        Args.singleton a
+    | CALL (_, arity) ->
+        List.take Reg.arg_passing arity
+        |> List.map ~f:(fun r -> Arg.Reg r)
+        |> List.append [Arg.Reg RSP]
+        |> Args.of_list
+    | PUSH a -> Args.of_list [a; Reg RSP]
+    | POP _ | RET -> Args.singleton (Reg RSP)
+    | JMP _ | SETCC _ | JCC _ -> Args.empty
+  in
+  aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
+
+module Extern = struct
+  let read_int = "_read_int"
+
+  let print_int = "_print_int"
+
+  let print_bool = "_print_bool"
+
+  let print_void = "_print_void"
+
+  let print_vector = "_print_vector"
+
+  let initialize = "_initialize"
+
+  let collect = "_collect"
+
+  let extern_fns =
+    [read_int; print_int; print_bool; print_void; initialize; collect]
+
+  let free_ptr = R_alloc.free_ptr
+
+  let fromspace_end = R_alloc.fromspace_end
+
+  let rootstack_begin = "_rootstack_begin"
+
+  let extern_vars = [free_ptr; fromspace_end; rootstack_begin]
+end
 
 let rec to_string = function
   | Program (info, blocks) ->
@@ -175,12 +263,16 @@ let rec to_string = function
         |> List.map ~f:string_of_block
         |> String.concat ~sep:"\n"
       in
-      let externs =
-        List.map externs ~f:(fun x -> "extern " ^ x)
+      let extern_fns =
+        List.map Extern.extern_fns ~f:(fun x -> "extern " ^ x)
         |> String.concat ~sep:"\n"
       in
-      Printf.sprintf "global %s\n\n%s\n\nsection .text\n%s" info.main externs
-        blks
+      let extern_vars =
+        List.map Extern.extern_vars ~f:(fun x -> "extern " ^ x)
+        |> String.concat ~sep:"\n"
+      in
+      Printf.sprintf "global %s\n\n%s\n\n%s\n\nsection .text\n%s" info.main
+        extern_fns extern_vars blks
 
 and string_of_block = function
   | Block (l, _, is) ->
@@ -291,7 +383,8 @@ and select_instructions_stmt s =
   let open Arg in
   match s with
   | C.Assign (v, e) -> select_instructions_exp (Var v) e
-  | _ -> assert false
+  | C.Collect n ->
+      [MOV (Reg RDI, Reg R15); MOV (Reg RSI, Imm n); CALL (Extern.collect, 2)]
 
 and select_instructions_exp a p =
   let open Arg in
@@ -300,9 +393,10 @@ and select_instructions_exp a p =
   | C.(Atom (Int i)) -> if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Atom (Bool b)) -> if not b then [XOR (a, a)] else [MOV (a, Imm 1)]
   | C.(Atom (Var (v, _))) -> [MOV (a, Var v)]
+  | C.(Atom Void) -> [XOR (a, a)]
   (* read *)
   | C.(Prim (Read, _)) -> (
-      let c = CALL (read_int, 0) in
+      let c = CALL (Extern.read_int, 0) in
       match a with
       | Arg.Reg RAX -> [c]
       | _ -> [c; MOV (a, Reg RAX)] )
@@ -507,76 +601,46 @@ and select_instructions_exp a p =
   | C.(Prim (Not (Bool b), _)) -> if b then [XOR (a, a)] else [MOV (a, Imm 1)]
   | C.(Prim (Not (Var (v, _)), _)) -> [MOV (a, Var v); XOR (a, Imm 1)]
   | C.(Prim (Not _, _)) -> assert false
-  | _ -> assert false
-
-let is_temp_var_name = String.is_prefix ~prefix:"%"
-
-let filter_non_locations =
-  Set.filter ~f:(function
-    | Arg.Imm _ -> false
-    | _ -> true)
-
-let caller_save_set =
-  List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
-
-let convert_bytereg = function
-  | Arg.Bytereg AL -> Arg.Reg RAX
-  | Arg.Bytereg BL -> Arg.Reg RBX
-  | Arg.Bytereg CL -> Arg.Reg RCX
-  | Arg.Bytereg DL -> Arg.Reg RDX
-  | a -> a
-
-let write_set instr =
-  let aux = function
-    | ADD (a, _)
-     |SUB (a, _)
-     |NEG a
-     |MOV (a, _)
-     |IMUL (a, _)
-     |IMULi (a, _, _)
-     |NOT a
-     |XOR (a, _)
-     |AND (a, _)
-     |OR (a, _)
-     |SETCC (_, a)
-     |MOVZX (a, _) -> Args.singleton a
-    | IDIV _ -> Args.of_list [Reg RAX; Reg RDX]
-    | CALL _ -> Set.add caller_save_set (Reg RSP)
-    | PUSH _ | RET -> Args.singleton (Reg RSP)
-    | POP a -> Args.of_list [a; Reg RSP]
-    | JMP _ | JCC _ | CMP _ | TEST _ -> Args.empty
-  in
-  aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
-
-let read_set instr =
-  let aux = function
-    | XOR (a1, a2) when Arg.equal a1 a2 ->
-        (* special case: it DOES read the source register
-         * in order to compute the result, but in effect
-         * it's just zeroing the destination, so we should
-         * treat it as if it's not actually reading anything. *)
-        Args.empty
-    | ADD (a1, a2)
-     |SUB (a1, a2)
-     |IMUL (a1, a2)
-     |XOR (a1, a2)
-     |AND (a1, a2)
-     |OR (a1, a2)
-     |CMP (a1, a2)
-     |TEST (a1, a2) -> Args.of_list [a1; a2]
-    | IDIV a -> Args.of_list [a; Reg RAX; Reg RDX]
-    | NEG a | MOV (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a) ->
-        Args.singleton a
-    | CALL (_, arity) ->
-        List.take Reg.arg_passing arity
-        |> List.map ~f:(fun r -> Arg.Reg r)
-        |> List.append [Arg.Reg RSP]
-        |> Args.of_list
-    | PUSH a -> Args.of_list [a; Reg RSP]
-    | POP _ | RET -> Args.singleton (Reg RSP)
-    | JMP _ | SETCC _ | JCC _ -> Args.empty
-  in
-  aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
+  (* vector-length *)
+  | C.(Prim (Vectorlength (Var (_, Type.Vector ts)), _)) ->
+      let len = List.length ts in
+      if Int.(len = 0) then [XOR (a, a)] else [MOV (a, Imm len)]
+  | C.(Prim (Vectorlength _, _)) -> assert false
+  (* vector-ref *)
+  | C.(Prim (Vectorref (Var (v, _), i), _)) ->
+      [MOV (Reg R11, Var v); MOV (a, Deref (Reg.R11, (i + 1) * word_size))]
+  | C.(Prim (Vectorref _, _)) -> assert false
+  (* vector-set *)
+  | C.(Prim (Vectorset (Var (v1, _), i, Var (v2, _)), _)) ->
+      [ MOV (Reg R11, Var v1)
+      ; MOV (Deref (Reg.R11, (i + 1) * word_size), Var v2)
+      ; XOR (a, a) ]
+  | C.(Prim (Vectorset _, _)) -> assert false
+  (* allocate *)
+  | C.(Allocate (n, Type.Vector ts)) ->
+      let tag =
+        let ptr_mask =
+          List.foldi ts ~init:0 ~f:(fun i acc t ->
+              match t with
+              | C.Type.Vector _ -> (1 lsl i) lor acc
+              | _ -> acc)
+        in
+        let len = List.length ts in
+        let forwarding =
+          List.exists ts ~f:(function
+            | C.Type.Vector _ -> true
+            | _ -> false)
+          |> Bool.to_int
+        in
+        Imm ((ptr_mask lsl 7) lor (len lsl 1) lor forwarding)
+      in
+      [ MOV (Reg R11, Var Extern.free_ptr)
+      ; ADD (Var Extern.free_ptr, Imm ((n + 1) * word_size))
+      ; MOV (Deref (Reg.R11, 0), tag)
+      ; MOV (a, Reg R11) ]
+  | C.(Allocate _) -> assert false
+  (* global-value *)
+  | C.Globalvalue (v, _) -> [MOV (a, Var v)]
 
 let function_prologue stack_space w =
   let setup_frame =
@@ -593,7 +657,13 @@ let function_prologue stack_space w =
       if adj <> 0 then [] else [SUB (Reg RSP, Imm word_size)]
     else [SUB (Reg RSP, Imm (stack_space + (word_size * adj)))]
   in
-  setup_frame @ callee_save_in_use @ adj_sp
+  let init =
+    [ MOV (Reg RDI, Imm 0x4000)
+    ; MOV (Reg RSI, Imm 0x4000)
+    ; CALL (Extern.initialize, 2)
+    ; MOV (Reg R15, Var Extern.rootstack_begin) ]
+  in
+  setup_frame @ callee_save_in_use @ adj_sp @ init
 
 let function_epilogue typ label stack_space w instrs =
   let callee_save_in_use =
@@ -614,16 +684,25 @@ let function_epilogue typ label stack_space w instrs =
     | RET :: _ ->
         let print =
           match typ with
-          | C.Type.Integer -> print_int
-          | C.Type.Boolean -> print_bool
-          | _ -> assert false
+          | C.Type.Integer ->
+              [ PUSH (Reg RAX)
+              ; MOV (Reg RDI, Reg RAX)
+              ; CALL (Extern.print_int, 1)
+              ; POP (Reg RAX) ]
+          | C.Type.Boolean ->
+              [ PUSH (Reg RAX)
+              ; MOV (Reg RDI, Reg RAX)
+              ; CALL (Extern.print_bool, 1)
+              ; POP (Reg RAX) ]
+          | C.Type.Void ->
+              [PUSH (Reg RAX); CALL (Extern.print_void, 0); POP (Reg RAX)]
+          | C.Type.Vector _ ->
+              [ PUSH (Reg RAX)
+              ; MOV (Reg RDI, Reg RAX)
+              ; CALL (Extern.print_vector, 1)
+              ; POP (Reg RAX) ]
         in
-        List.rev acc
-        @ [ PUSH (Reg RAX)
-          ; MOV (Reg RDI, Reg RAX)
-          ; CALL (print, 1)
-          ; POP (Reg RAX) ]
-        @ epilogue @ [RET]
+        List.rev acc @ print @ epilogue @ [RET]
     | instr :: rest -> aux (instr :: acc) rest
   in
   aux [] instrs
@@ -650,6 +729,7 @@ let rec patch_instructions = function
                      | Arg.Reg r -> Reg.is_callee_save r
                      | _ -> false)))
       in
+      let w = Set.add w (Arg.Reg R15) in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
             (label, patch_instructions_block w info block))
@@ -798,12 +878,10 @@ let allocatable_regs =
    ; Arg.Reg R8
    ; Arg.Reg R9
    ; Arg.Reg R10
-   ; Arg.Reg R11
    ; Arg.Reg RBX
    ; Arg.Reg R12
    ; Arg.Reg R13
-   ; Arg.Reg R14
-   ; Arg.Reg R15 |]
+   ; Arg.Reg R14 |]
 
 let num_regs = Array.length allocatable_regs
 
