@@ -204,19 +204,32 @@ and expand_alloc n t ts es =
     in
     (* hardcode the idiom that allocates the vector triggering
      * the GC beforehand if there is not enough space *)
-    Let
-      ( newvar n
-      , If
-          ( Prim
-              (Lt
-                 ( Prim
-                     (Plus
-                        ( Hastype (Globalvalue free_ptr, Type.Integer)
-                        , Int (len lsl 3) ))
-                 , Hastype (Globalvalue fromspace_end, Type.Integer) ))
-          , Void
-          , Collect (len lsl 3) )
-      , Let (v, Allocate (len, t), base) )
+    Hastype
+      ( Let
+          ( newvar n
+          , Hastype
+              ( If
+                  ( Hastype
+                      ( Prim
+                          (Lt
+                             ( Hastype
+                                 ( Prim
+                                     (Plus
+                                        ( Hastype
+                                            ( Globalvalue free_ptr
+                                            , Type.Integer )
+                                        , Hastype
+                                            (Int (len lsl 3), Type.Integer)
+                                        ))
+                                 , Type.Integer )
+                             , Hastype (Globalvalue fromspace_end, Integer)
+                             ))
+                      , Type.Boolean )
+                  , Hastype (Void, Type.Void)
+                  , Hastype (Collect (len lsl 3), Type.Void) )
+              , Type.Void )
+          , Hastype (Let (v, Allocate (len, t), base), t) )
+      , t )
   in
   (* evaluate the arguments before allocating *)
   List.zip_exn vs es |> expand alloc t
