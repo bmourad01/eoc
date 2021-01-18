@@ -89,6 +89,8 @@ module Reg = struct
   let is_arg_passing = List.mem arg_passing ~equal
 end
 
+let is_temp_var_name = String.is_prefix ~prefix:"%"
+
 module Arg = struct
   module T = struct
     type t =
@@ -108,7 +110,8 @@ module Arg = struct
           else if i < 0 then
             Printf.sprintf "qword [%s - %d]" (Reg.to_string r) (-i)
           else Printf.sprintf "qword [%s + %d]" (Reg.to_string r) i
-      | Var v -> v
+      | Var v when is_temp_var_name v -> v
+      | Var v -> Printf.sprintf "qword [%s]" v
   end
 
   include T
@@ -159,8 +162,6 @@ and instr =
   | JCC of Cc.t * Label.t
 
 and arg = Arg.t
-
-let is_temp_var_name = String.is_prefix ~prefix:"%"
 
 let filter_non_locations =
   Set.filter ~f:(function
@@ -271,7 +272,8 @@ let rec to_string = function
         List.map Extern.extern_vars ~f:(fun x -> "extern " ^ x)
         |> String.concat ~sep:"\n"
       in
-      Printf.sprintf "global %s\n\n%s\n\n%s\n\nsection .text\n%s" info.main
+      Printf.sprintf
+        "DEFAULT REL\n\nglobal %s\n\n%s\n\n%s\n\nsection .text\n%s" info.main
         extern_fns extern_vars blks
 
 and string_of_block = function

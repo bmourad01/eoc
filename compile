@@ -13,5 +13,5 @@ RUNTIMEOBJ="${DIR}runtime.o"
 mkdir -p $DIR
 dune exec bin/print_x86.exe $1 > $ASMFILE
 nasm -f elf64 -o $OBJFILE $ASMFILE
-gcc -no-pie -c runtime/runtime.c -o $RUNTIMEOBJ
-gcc -no-pie -o "${DIR}$PROGNAME" $OBJFILE $RUNTIMEOBJ
+gcc -c runtime/runtime.c -o $RUNTIMEOBJ
+gcc -o "${DIR}$PROGNAME" $OBJFILE $RUNTIMEOBJ
