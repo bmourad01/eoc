@@ -31,3 +31,4 @@ For building the project, run `dune build`. To compile a program, run `./compile
 - Let-binding
 - If-then-else expressions
 - Register allocation with move biasing
+- Tuples & garbage collection
