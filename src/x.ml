@@ -620,6 +620,18 @@ and select_instructions_exp a p =
       [MOV (Reg R11, Var v); MOV (a, Deref (Reg.R11, (i + 1) * word_size))]
   | C.(Prim (Vectorref _, _)) -> assert false
   (* vector-set *)
+  | C.(Prim (Vectorset (Var (v1, _), i, Int n), _)) ->
+      [ MOV (Reg R11, Var v1)
+      ; MOV (Deref (Reg.R11, (i + 1) * word_size), Imm n)
+      ; XOR (a, a) ]
+  | C.(Prim (Vectorset (Var (v1, _), i, Bool b), _)) ->
+      [ MOV (Reg R11, Var v1)
+      ; MOV (Deref (Reg.R11, (i + 1) * word_size), Imm (Bool.to_int b))
+      ; XOR (a, a) ]
+  | C.(Prim (Vectorset (Var (v1, _), i, Void), _)) ->
+      [ MOV (Reg R11, Var v1)
+      ; MOV (Deref (Reg.R11, (i + 1) * word_size), Imm 0)
+      ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Var (v2, _)), _)) ->
       [ MOV (Reg R11, Var v1)
       ; MOV (Deref (Reg.R11, (i + 1) * word_size), Var v2)
@@ -1109,6 +1121,14 @@ let rec remove_jumps = function
       Program ({info with cfg}, blocks)
 
 and remove_jumps_aux cfg blocks =
+  let afters = Hashtbl.create (module Label) in
+  let rec interleave_pairs = function
+    | [] -> []
+    | (x, _) :: (y, b) :: rest -> (x, y) :: interleave_pairs ((y, b) :: rest)
+    | [x] -> []
+  in
+  List.iter (interleave_pairs blocks) ~f:(fun (x, y) ->
+      Hashtbl.set afters x y);
   let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
   let merged = Hashtbl.create (module Label) in
   let merge_info info info' =
@@ -1119,7 +1139,7 @@ and remove_jumps_aux cfg blocks =
         if Hashtbl.mem merged label then None
         else
           match List.last_exn instrs with
-          | JMP label' when not (Label.equal label label') ->
+          | JMP label' when not (Label.equal label label') -> (
               if Cfg.in_degree cfg label' = 1 then (
                 let (Block (_, info', instrs')) =
                   Hashtbl.find_exn blocks' label'
@@ -1127,7 +1147,17 @@ and remove_jumps_aux cfg blocks =
                 let instrs = List.drop_last_exn instrs @ instrs' in
                 Hashtbl.set merged label' label;
                 Some (label, Block (label, merge_info info info', instrs)) )
-              else Some b
+              else
+                match Hashtbl.find afters label with
+                | Some label'' when Label.equal label' label'' -> (
+                  match List.drop_last instrs with
+                  | None -> Some b
+                  | Some instrs ->
+                      let info =
+                        {live_after= List.drop_last_exn info.live_after}
+                      in
+                      Some (label, Block (label, info, instrs)) )
+                | _ -> Some b )
           | _ -> Some b)
   in
   let cfg =
