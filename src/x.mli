@@ -66,7 +66,8 @@ type info =
   ; conflicts: Interference_graph.t
   ; typ: C.Type.t
   ; cfg: Cfg.t
-  ; locals_types: C.type_env }
+  ; locals_types: C.type_env
+  ; rootstack_spills: int }
 
 (* the X language, representing a subset of x86-64 programs.
  * X programs are printed in NASM syntax. *)

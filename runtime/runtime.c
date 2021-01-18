@@ -39,6 +39,7 @@ void _print_vector(int64_t* vec) {
 void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _fromspace_begin = malloc(heap_size);
   _fromspace_end = (int64_t*)((uint64_t)_fromspace_begin + (heap_size >> 1));
+  _free_ptr = _fromspace_begin;
   _tospace_begin = _fromspace_end;
   _tospace_end = (int64_t*)((uint64_t)_fromspace_begin + heap_size);
   _rootstack_begin = (int64_t**)malloc(rootstack_size);

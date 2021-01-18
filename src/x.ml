@@ -129,7 +129,8 @@ type info =
   ; conflicts: Interference_graph.t
   ; typ: C.Type.t
   ; cfg: Cfg.t
-  ; locals_types: C.type_env }
+  ; locals_types: C.type_env
+  ; rootstack_spills: int }
 
 type t = Program of info * blocks
 
@@ -171,6 +172,9 @@ let filter_non_locations =
 
 let caller_save_set =
   List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
+
+let callee_save_set =
+  List.map Reg.callee_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
 
 let convert_bytereg = function
   | Arg.Bytereg AL -> Arg.Reg RAX
@@ -334,7 +338,8 @@ let rec select_instructions = function
         ; conflicts= Interference_graph.empty
         ; typ= info.typ
         ; cfg= info.cfg
-        ; locals_types= info.locals_types }
+        ; locals_types= info.locals_types
+        ; rootstack_spills= 0 }
       in
       Program (info, blocks)
 
@@ -646,7 +651,7 @@ and select_instructions_exp a p =
   (* global-value *)
   | C.Globalvalue (v, _) -> [MOV (a, Var v)]
 
-let function_prologue stack_space w =
+let function_prologue rootstack_spills stack_space w =
   let setup_frame =
     if stack_space <= 0 then [] else [PUSH (Reg RBP); MOV (Reg RBP, Reg RSP)]
   in
@@ -665,14 +670,17 @@ let function_prologue stack_space w =
     [ MOV (Reg RDI, Imm 0x4000)
     ; MOV (Reg RSI, Imm 0x4000)
     ; CALL (Extern.initialize, 2)
-    ; MOV (Reg R15, Var Extern.rootstack_begin) ]
+    ; MOV (Reg R15, Var Extern.rootstack_begin)
+    ; MOV (Deref (R15, 0), Imm 0)
+    ; ADD (Reg R15, Imm (rootstack_spills * word_size)) ]
   in
   setup_frame @ callee_save_in_use @ adj_sp @ init
 
-let function_epilogue typ label stack_space w instrs =
+let function_epilogue rootstack_spills typ label stack_space w instrs =
   let callee_save_in_use =
     Set.fold w ~init:[] ~f:(fun acc a -> POP a :: acc)
   in
+  let adj_rootstk = [SUB (Reg R15, Imm (rootstack_spills * word_size))] in
   let adj_sp =
     let adj = List.length callee_save_in_use mod 2 in
     if stack_space <= 0 then
@@ -680,7 +688,7 @@ let function_epilogue typ label stack_space w instrs =
     else [ADD (Reg RSP, Imm (stack_space + (word_size * adj)))]
   in
   let restore_frame = if stack_space <= 0 then [] else [POP (Reg RBP)] in
-  let epilogue = adj_sp @ callee_save_in_use @ restore_frame in
+  let epilogue = adj_rootstk @ adj_sp @ callee_save_in_use @ restore_frame in
   let rec aux acc = function
     | [] ->
         failwith
@@ -733,7 +741,6 @@ let rec patch_instructions = function
                      | Arg.Reg r -> Reg.is_callee_save r
                      | _ -> false)))
       in
-      let w = Set.add w (Arg.Reg R15) in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
             (label, patch_instructions_block w info block))
@@ -744,12 +751,14 @@ and patch_instructions_block w info = function
   | Block (label, block_info, instrs) ->
       let instrs =
         if Label.equal label info.main then
-          function_prologue info.stack_space w @ instrs
+          function_prologue info.rootstack_spills info.stack_space w @ instrs
         else instrs
       in
       let instrs =
         match List.last_exn instrs with
-        | RET -> function_epilogue info.typ label info.stack_space w instrs
+        | RET ->
+            function_epilogue info.rootstack_spills info.typ label
+              info.stack_space w instrs
         | _ -> instrs
       in
       Block (label, block_info, instrs)
@@ -850,16 +859,21 @@ let rec build_interference = function
       let conflicts =
         let init = Interference_graph.empty in
         List.fold blocks ~init ~f:(fun g (_, block) ->
-            build_interference_block g block)
+            build_interference_block info.locals_types g block)
       in
       Program ({info with conflicts}, blocks)
 
-and build_interference_block g = function
+and build_interference_block locals_types g = function
   | Block (_, info, instrs) ->
       List.zip_exn info.live_after instrs
       |> List.fold ~init:g ~f:(fun g (la, instr) ->
              let w = write_set instr in
              Set.fold la ~init:g ~f:(fun g v ->
+                 let default () =
+                   Set.fold w ~init:g ~f:(fun g d ->
+                       if Arg.equal v d then g
+                       else Interference_graph.add_edge g v d)
+                 in
                  match instr with
                  | MOV (d, s) | MOVZX (d, s) ->
                      if Arg.(equal v d || equal v s) then g
@@ -868,10 +882,17 @@ and build_interference_block g = function
                      (* special case, treat this like a MOV *)
                      if Arg.(equal v d) then g
                      else Interference_graph.add_edge g v d
-                 | _ ->
-                     Set.fold w ~init:g ~f:(fun g d ->
-                         if Arg.equal v d then g
-                         else Interference_graph.add_edge g v d)))
+                 | CALL (l, _) when String.equal l Extern.collect -> (
+                   match v with
+                   | Arg.Var v' when is_temp_var_name v' -> (
+                     match Map.find_exn locals_types v' with
+                     | C.Type.Vector _ ->
+                         let g = default () in
+                         Set.fold callee_save_set ~init:g ~f:(fun g d ->
+                             Interference_graph.add_edge g v d)
+                     | _ -> default () )
+                   | _ -> default () )
+                 | _ -> default ()))
 
 let allocatable_regs =
   (* prioritize caller-save registers over callee-save registers *)
@@ -973,97 +994,118 @@ let rec allocate_registers = function
                 | _ -> bias))
       in
       let colors = color_graph info.conflicts ~bias in
+      let rootstack_spills = Hash_set.create (module String) in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
-            (label, allocate_registers_block colors block))
+            ( label
+            , allocate_registers_block rootstack_spills info.locals_types
+                colors block ))
       in
       let stack_space =
+        let colors =
+          Map.filter_keys colors ~f:(function
+            | Arg.Var v -> not (Hash_set.mem rootstack_spills v)
+            | _ -> true)
+        in
         match Map.data colors |> Int.Set.of_list |> Set.max_elt with
         | None -> 0
         | Some c -> max (c - num_regs + 1) 0 * word_size
       in
-      Program ({info with stack_space}, blocks)
+      Program
+        ( { info with
+            stack_space
+          ; rootstack_spills= Hash_set.length rootstack_spills }
+        , blocks )
 
-and allocate_registers_block colors = function
+and allocate_registers_block rootstack_spills locals_types colors = function
   | Block (label, info, instrs) ->
-      let instrs = List.map instrs ~f:(allocate_registers_instr colors) in
+      let instrs =
+        List.map instrs
+          ~f:(allocate_registers_instr rootstack_spills locals_types colors)
+      in
       Block (label, info, instrs)
 
-and allocate_registers_instr colors = function
+and allocate_registers_instr rootstack_spills locals_types colors instr =
+  let color = color_arg rootstack_spills locals_types colors in
+  match instr with
   | ADD (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       ADD (a1, a2)
   | SUB (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       SUB (a1, a2)
   | IMUL (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       IMUL (a1, a2)
   | IMULi (a1, a2, a3) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       IMULi (a1, a2, a3)
   | IDIV a ->
-      let a = color_arg colors a in
+      let a = color a in
       IDIV a
   | NEG a ->
-      let a = color_arg colors a in
+      let a = color a in
       NEG a
   | MOV (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       MOV (a1, a2)
   | CALL _ as c -> c
   | PUSH a ->
-      let a = color_arg colors a in
+      let a = color a in
       PUSH a
   | POP a ->
-      let a = color_arg colors a in
+      let a = color a in
       POP a
   | RET -> RET
   | JMP _ as j -> j
   | NOT a ->
-      let a = color_arg colors a in
+      let a = color a in
       NOT a
   | XOR (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       XOR (a1, a2)
   | AND (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       AND (a1, a2)
   | OR (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       OR (a1, a2)
   | CMP (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       CMP (a1, a2)
   | TEST (a1, a2) ->
-      let a1 = color_arg colors a1 in
-      let a2 = color_arg colors a2 in
+      let a1 = color a1 in
+      let a2 = color a2 in
       TEST (a1, a2)
   | SETCC _ as s -> s
   | MOVZX (a1, a2) ->
-      let a1 = color_arg colors a1 in
+      let a1 = color a1 in
       MOVZX (a1, a2)
   | JCC _ as j -> j
 
-and color_arg colors = function
+and color_arg rootstack_spills locals_types colors = function
   | Arg.Var v as a when is_temp_var_name v -> (
     match Map.find colors a with
     | None -> failwith ("X.color_arg: var " ^ v ^ " was not colored")
-    | Some c ->
+    | Some c -> (
         assert (c >= 0);
         if c < num_regs then allocatable_regs.(c)
         else
           let offset = (c - num_regs + 1) * word_size in
-          Deref (RBP, -offset) )
+          match Map.find_exn locals_types v with
+          | C.Type.Vector _ ->
+              Hash_set.add rootstack_spills v;
+              Deref (R15, offset)
+          | _ -> Deref (RBP, -offset) ) )
   | a -> a
 
 let rec remove_jumps = function
