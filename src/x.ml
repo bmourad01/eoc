@@ -635,13 +635,7 @@ and select_instructions_exp a p =
               | _ -> acc)
         in
         let len = List.length ts in
-        let forwarding =
-          List.exists ts ~f:(function
-            | C.Type.Vector _ -> true
-            | _ -> false)
-          |> Bool.to_int
-        in
-        Imm ((ptr_mask lsl 7) lor (len lsl 1) lor forwarding)
+        Imm ((ptr_mask lsl 7) lor (len lsl 1) lor 1)
       in
       [ MOV (Reg R11, Var Extern.free_ptr)
       ; ADD (Var Extern.free_ptr, Imm ((n + 1) * word_size))
@@ -1105,7 +1099,7 @@ and color_arg rootstack_spills locals_types colors = function
           match Map.find_exn locals_types v with
           | C.Type.Vector _ ->
               Hash_set.add rootstack_spills v;
-              Deref (R15, offset)
+              Deref (R15, offset - word_size)
           | _ -> Deref (RBP, -offset) ) )
   | a -> a
 

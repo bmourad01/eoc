@@ -4,10 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+// #define ENABLE_DEBUG
+
 #ifdef ENABLE_DEBUG
-#define DBGPRINT(x) fprintf(stderr, x)
+#define DBGPRINT(x...) fprintf(stderr, x)
 #else
-#define DBGPRINT(x, ...)
+#define DBGPRINT(x...)
 #endif
 
 #define LENGTH_BITS 6
@@ -85,7 +87,7 @@ static int64_t *_collect_copy(int64_t *obj) {
 }
 
 void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
-  int64_t *p, *tmp, *scan_ptr, *obj;
+  int64_t *p, **r, *tmp, *scan_ptr, *obj;
   uint64_t i, length, size, mask;
 
   // swap fromspace with tospace
@@ -102,8 +104,8 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   DBGPRINT("GC: copying roots\n");
   
   // copy all roots first
-  while ((p = *rootstack_ptr)) {
-    *rootstack_ptr-- = _collect_copy(p);
+  for (r = rootstack_ptr; (p = *r); ) {
+    *r-- = _collect_copy(p);
   }
 
   DBGPRINT("GC: copying reachable objects\n");
@@ -121,7 +123,7 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
     scan_ptr = (int64_t *)((uint64_t)scan_ptr + (length << 3));
   }
 
-  DBGPRINT("checking for sufficient room\n");
+  DBGPRINT("GC: checking for sufficient space\n");
   
   // check if we need to resize the heap
   if (((uint64_t)_free_ptr + bytes) >= (uint64_t)_fromspace_end) {
