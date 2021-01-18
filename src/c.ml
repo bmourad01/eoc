@@ -358,8 +358,12 @@ and explicate_assign tails n e x cont =
       let cont = explicate_assign tails n e2 x cont in
       explicate_assign tails n e1 v cont
   | R_anf.(If (e1, e2, e3, _)) ->
-      let tt = explicate_assign tails n e2 x cont in
-      let tf = explicate_assign tails n e3 x cont in
+      (* avoid duplicating code; do the assignments
+       * and then go to the continuation *)
+      let l = fresh_label n in
+      add_tail tails l cont;
+      let tt = explicate_assign tails n e2 x (Goto l) in
+      let tf = explicate_assign tails n e3 x (Goto l) in
       explicate_pred tails n e1 tt tf
   | _ ->
       let t = explicate_tail tails n e in
