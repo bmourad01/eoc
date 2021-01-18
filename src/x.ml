@@ -128,7 +128,8 @@ type info =
   ; stack_space: int
   ; conflicts: Interference_graph.t
   ; typ: C.Type.t
-  ; cfg: Cfg.t }
+  ; cfg: Cfg.t
+  ; locals_types: C.type_env }
 
 type t = Program of info * blocks
 
@@ -332,7 +333,8 @@ let rec select_instructions = function
         ; stack_space= 0
         ; conflicts= Interference_graph.empty
         ; typ= info.typ
-        ; cfg= info.cfg }
+        ; cfg= info.cfg
+        ; locals_types= info.locals_types }
       in
       Program (info, blocks)
 

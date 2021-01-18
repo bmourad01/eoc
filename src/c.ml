@@ -5,7 +5,7 @@ type type_env = R_anf.type_env
 
 module Cfg = Graph.Persistent.Digraph.Concrete (Label)
 
-type info = {main: Label.t; typ: Type.t; cfg: Cfg.t}
+type info = {main: Label.t; typ: Type.t; cfg: Cfg.t; locals_types: type_env}
 
 type var = R.var
 
@@ -63,6 +63,15 @@ and prim =
   | Vectorset of atom * int * atom
 
 and cmp = Cmp.t * atom * atom
+
+let typeof_exp = function
+  | Atom (Int _) -> Type.Integer
+  | Atom (Bool _) -> Type.Boolean
+  | Atom (Var (_, t)) -> t
+  | Atom Void -> Type.Void
+  | Prim (_, t) -> t
+  | Allocate (_, t) -> t
+  | Globalvalue (_, t) -> t
 
 let rec to_string = function
   | Program (_, tails) ->
@@ -288,7 +297,12 @@ let start_label = "main"
 let rec explicate_control = function
   | R_anf.Program (info, e) ->
       let cfg = Cfg.(add_vertex empty start_label) in
-      let info = {main= start_label; typ= info.typ; cfg} in
+      let info =
+        { main= start_label
+        ; typ= info.typ
+        ; cfg
+        ; locals_types= String.Map.empty }
+      in
       (* we're not using a Hashtbl here because we 
        * want a specific ordering for each block *)
       let tails = ref Label.Map.empty in
@@ -306,7 +320,21 @@ let rec explicate_control = function
             aux tail)
       in
       let tails = Map.to_alist tails |> List.rev in
-      Program ({info with cfg}, tails)
+      let locals_types =
+        List.fold tails ~init:info.locals_types
+          ~f:(fun locals_types (_, tail) ->
+            let rec aux_tail env = function
+              | Return e -> env
+              | Seq (s, t) -> aux_tail (aux_stmt env s) t
+              | Goto _ -> env
+              | If _ -> env
+            and aux_stmt env = function
+              | Assign (v, e) -> Map.set env v (typeof_exp e)
+              | Collect _ -> env
+            in
+            aux_tail locals_types tail)
+      in
+      Program ({info with cfg; locals_types}, tails)
 
 and explicate_tail tails n = function
   | R_anf.(Atom a) -> Return (Atom (translate_atom a))

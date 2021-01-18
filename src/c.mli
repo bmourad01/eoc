@@ -6,7 +6,7 @@ type type_env = R_anf.type_env
 
 module Cfg : module type of Graph.Persistent.Digraph.Concrete (Label)
 
-type info = {main: Label.t; typ: Type.t; cfg: Cfg.t}
+type info = {main: Label.t; typ: Type.t; cfg: Cfg.t; locals_types: type_env}
 
 type var = R.var
 
