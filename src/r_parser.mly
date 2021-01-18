@@ -27,7 +27,7 @@
 %token EQ LT LE GT GE NOT AND OR IF
 
 %start prog
-%type <R.t> prog
+%type <R_typed.t> prog
 
 %%
 
@@ -35,8 +35,7 @@ prog:
   | exp EOF
     {
       let open Core_kernel in
-      let typ, e = type_check_exp empty_var_env $1 in
-      Program ({typ}, e)
+      R_typed.type_check (Program ((), $1))
     }
 
 let_arg:

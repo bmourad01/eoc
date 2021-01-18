@@ -1,13 +1,15 @@
 open Core_kernel
 
-type var = R.var
+type var = R_typed.var
 
-module Type : module type of R.Type
+module Type : module type of R_typed.Type
+
+type type_env = R_typed.type_env
 
 type info = {typ: Type.t; nvars: int}
 
-(* same as the R language, but with special
- * operators for allocating objects. *)
+(* same as the R_typed language, but with
+ * special operators for allocating objects. *)
 
 type t = Program of info * exp
 
@@ -15,14 +17,13 @@ and exp =
   | Int of int
   | Bool of bool
   | Void
-  | Prim of prim
-  | Var of var
-  | Let of var * exp * exp
-  | If of exp * exp * exp
-  | Hastype of exp * Type.t
+  | Prim of prim * Type.t
+  | Var of var * Type.t
+  | Let of var * exp * exp * Type.t
+  | If of exp * exp * exp * Type.t
   | Collect of int
   | Allocate of int * Type.t
-  | Globalvalue of string
+  | Globalvalue of string * Type.t
 
 and prim =
   | Read
@@ -48,9 +49,9 @@ and prim =
   | Vectorref of exp * int
   | Vectorset of exp * int * exp
 
-val to_string : ?has_type:bool -> t -> string
+val to_string : t -> string
 
 (* expand vector creation into calls to collect/allocate,
  * then initialize elements of the vector with vector-set! *)
 
-val expose_allocation : R.t -> t
+val expose_allocation : R_typed.t -> t

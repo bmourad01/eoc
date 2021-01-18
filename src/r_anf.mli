@@ -1,8 +1,10 @@
 open Core_kernel
 
-type var = R.var
+type var = R_alloc.var
 
 module Type : module type of R_alloc.Type
+
+type type_env = R_alloc.type_env
 
 type info = {typ: Type.t}
 
@@ -18,19 +20,14 @@ type t = Program of info * exp
 
 and exp =
   | Atom of atom
-  | Prim of prim
-  | Let of var * exp * exp
-  | If of exp * exp * exp
+  | Prim of prim * Type.t
+  | Let of var * exp * exp * Type.t
+  | If of exp * exp * exp * Type.t
   | Collect of int
   | Allocate of int * Type.t
-  | Globalvalue of string
+  | Globalvalue of string * Type.t
 
-and atom =
-  | Int of int
-  | Bool of bool
-  | Var of var
-  | Void
-  | Hastype of exp * Type.t
+and atom = Int of int | Bool of bool | Var of var * Type.t | Void
 
 and prim =
   | Read
@@ -54,13 +51,13 @@ and prim =
   | Vectorref of atom * int
   | Vectorset of atom * int * atom
 
-val to_string : ?has_type:bool -> t -> string
+val to_string : t -> string
 
-val string_of_exp : ?has_type:bool -> exp -> string
+val string_of_exp : exp -> string
 
-val string_of_atom : ?has_type:bool -> atom -> string
+val string_of_atom : atom -> string
 
-val string_of_prim : ?has_type:bool -> prim -> string
+val string_of_prim : prim -> string
 
 (* compile an R_alloc program to an R_anf program *)
 

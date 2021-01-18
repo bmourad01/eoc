@@ -2,21 +2,9 @@ open Core_kernel
 
 type var = string [@@deriving equal, compare, hash, sexp]
 
-type 'a var_env = 'a String.Map.t
+type info = unit
 
-val empty_var_env : 'a var_env
-
-module Type : sig
-  type t = Integer | Boolean | Vector of t list | Void [@@deriving equal]
-
-  val to_string : t -> string
-end
-
-type type_env = Type.t var_env
-
-type info = {typ: Type.t}
-
-(* the R language: a subset of Racket *)
+(* the R language: an untyped subset of Racket *)
 
 type t = Program of info * exp
 
@@ -28,7 +16,6 @@ and exp =
   | Var of var
   | Let of var * exp * exp
   | If of exp * exp * exp
-  | Hastype of exp * Type.t
 
 and prim =
   | Read
@@ -55,32 +42,8 @@ and prim =
   | Vectorref of exp * int
   | Vectorset of exp * int * exp
 
-val to_string : ?has_type:bool -> t -> string
+val to_string : t -> string
 
-val string_of_exp : ?has_type:bool -> exp -> string
+val string_of_exp : exp -> string
 
-val string_of_prim : ?has_type:bool -> prim -> string
-
-val type_check : t -> t
-
-val type_check_exp : Type.t var_env -> exp -> Type.t * exp
-
-type answer = [`Int of int | `Bool of bool | `Vector of answer array | `Void]
-
-val string_of_answer : answer -> string
-
-(* optimize an R program *)
-
-val opt : t -> t
-
-(* interpret an R program *)
-
-val interp : ?read:int option -> t -> answer
-
-(* make all let-bindings unique *)
-
-val uniquify : t -> t
-
-(* strip out has-type nodes for easier reading *)
-
-val strip_has_type : t -> t
+val string_of_prim : prim -> string

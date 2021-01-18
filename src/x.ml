@@ -264,24 +264,25 @@ and select_instructions_tail tails t =
     match cmp with
     | Eq -> if Bool.equal b1 b2 then [JMP lt] else [JMP lf]
     | _ -> assert false )
-  | C.If ((cmp, Var v, Int i), lt, lf) ->
+  | C.If ((cmp, Var (v, _), Int i), lt, lf) ->
       let cc = Cc.of_c_cmp cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
-  | C.If ((cmp, Int i, Var v), lt, lf) ->
+  | C.If ((cmp, Int i, Var (v, _)), lt, lf) ->
       let cc = Cc.of_c_cmp_swap cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
-  | C.If ((cmp, Var v, Bool b), lt, lf) | C.If ((cmp, Bool b, Var v), lt, lf)
-    -> (
+  | C.If ((cmp, Var (v, _), Bool b), lt, lf)
+   |C.If ((cmp, Bool b, Var (v, _)), lt, lf) -> (
     match cmp with
     | Eq ->
         let lt, lf = if not b then (lt, lf) else (lf, lt) in
         [TEST (Var v, Var v); JCC (Cc.E, lt); JMP lf]
     | _ -> assert false )
-  | C.If ((cmp, Var v1, Var v2), lt, lf) when String.equal v1 v2 -> (
+  | C.If ((cmp, Var (v1, _), Var (v2, _)), lt, lf) when String.equal v1 v2
+    -> (
     match cmp with
     | Eq -> [JMP lt]
     | _ -> [JMP lf] )
-  | C.If ((cmp, Var v1, Var v2), lt, lf) ->
+  | C.If ((cmp, Var (v1, _), Var (v2, _)), lt, lf) ->
       let cc = Cc.of_c_cmp cmp in
       [CMP (Var v1, Var v2); JCC (cc, lt); JMP lf]
   | C.If _ -> assert false
@@ -298,200 +299,214 @@ and select_instructions_exp a p =
   (* atom *)
   | C.(Atom (Int i)) -> if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Atom (Bool b)) -> if not b then [XOR (a, a)] else [MOV (a, Imm 1)]
-  | C.(Atom (Var v)) -> [MOV (a, Var v)]
+  | C.(Atom (Var (v, _))) -> [MOV (a, Var v)]
   (* read *)
-  | C.(Prim Read) -> (
+  | C.(Prim (Read, _)) -> (
       let c = CALL (read_int, 0) in
       match a with
       | Arg.Reg RAX -> [c]
       | _ -> [c; MOV (a, Reg RAX)] )
   (* minus *)
-  | C.(Prim (Minus (Int i))) -> [MOV (a, Imm (-i))]
-  | C.(Prim (Minus (Var v))) -> [MOV (a, Var v); NEG a]
-  | C.(Prim (Minus _)) -> assert false
+  | C.(Prim (Minus (Int i), _)) -> [MOV (a, Imm (-i))]
+  | C.(Prim (Minus (Var (v, t)), _)) -> [MOV (a, Var v); NEG a]
+  | C.(Prim (Minus _, _)) -> assert false
   (* plus *)
-  | C.(Prim (Plus (Int i1, Int i2))) ->
+  | C.(Prim (Plus (Int i1, Int i2), _)) ->
       let i = i1 + i2 in
       if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
-  | C.(Prim (Plus (Var v, Int i))) | C.(Prim (Plus (Int i, Var v))) ->
-      [MOV (a, Var v); ADD (a, Imm i)]
-  | C.(Prim (Plus (Var v1, Var v2))) -> [MOV (a, Var v1); ADD (a, Var v2)]
-  | C.(Prim (Plus _)) -> assert false
+  | C.(Prim (Plus (Var (v, t), Int i), _))
+   |C.(Prim (Plus (Int i, Var (v, t)), _)) -> [MOV (a, Var v); ADD (a, Imm i)]
+  | C.(Prim (Plus (Var (v1, _), Var (v2, _)), _)) ->
+      [MOV (a, Var v1); ADD (a, Var v2)]
+  | C.(Prim (Plus _, _)) -> assert false
   (* subtract *)
-  | C.(Prim (Subtract (Int i1, Int i2))) ->
+  | C.(Prim (Subtract (Int i1, Int i2), _)) ->
       let i = i1 - i2 in
       if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm (i1 - i2))]
-  | C.(Prim (Subtract (Var v, Int i))) -> [MOV (a, Var v); SUB (a, Imm i)]
-  | C.(Prim (Subtract (Int i, Var v))) -> [MOV (a, Imm i); SUB (a, Var v)]
-  | C.(Prim (Subtract (Var v1, Var v2))) -> [MOV (a, Var v1); SUB (a, Var v2)]
-  | C.(Prim (Subtract _)) -> assert false
+  | C.(Prim (Subtract (Var (v, _), Int i), _)) ->
+      [MOV (a, Var v); SUB (a, Imm i)]
+  | C.(Prim (Subtract (Int i, Var (v, _)), _)) ->
+      [MOV (a, Imm i); SUB (a, Var v)]
+  | C.(Prim (Subtract (Var (v1, _), Var (v2, _)), _)) ->
+      [MOV (a, Var v1); SUB (a, Var v2)]
+  | C.(Prim (Subtract _, _)) -> assert false
   (* mult *)
-  | C.(Prim (Mult (_, Int 0))) | C.(Prim (Mult (Int 0, _))) -> [XOR (a, a)]
-  | C.(Prim (Mult (Int i1, Int i2))) ->
+  | C.(Prim (Mult (_, Int 0), _)) | C.(Prim (Mult (Int 0, _), _)) ->
+      [XOR (a, a)]
+  | C.(Prim (Mult (Int i1, Int i2), _)) ->
       let i = i1 * i2 in
       if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
-  | C.(Prim (Mult (Var v, Int i))) | C.(Prim (Mult (Int i, Var v))) ->
+  | C.(Prim (Mult (Var (v, _), Int i), _))
+   |C.(Prim (Mult (Int i, Var (v, _)), _)) ->
       if fits_int32 i then [IMULi (a, Var v, Imm i)]
       else [MOV (a, Imm i); IMUL (a, Var v)]
-  | C.(Prim (Mult (Var v1, Var v2))) -> [MOV (a, Var v1); IMUL (a, Var v2)]
-  | C.(Prim (Mult _)) -> assert false
+  | C.(Prim (Mult (Var (v1, _), Var (v2, _)), _)) ->
+      [MOV (a, Var v1); IMUL (a, Var v2)]
+  | C.(Prim (Mult _, _)) -> assert false
   (* div *)
-  | C.(Prim (Div (Int 0, _))) -> [XOR (a, a)]
-  | C.(Prim (Div (Int i1, Int i2))) ->
+  | C.(Prim (Div (Int 0, _), _)) -> [XOR (a, a)]
+  | C.(Prim (Div (Int i1, Int i2), _)) ->
       let i = i1 / i2 in
       if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
-  | C.(Prim (Div (Var v, Int i))) ->
+  | C.(Prim (Div (Var (v, _), Int i), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Var v)
       ; MOV (Reg RCX, Imm i)
       ; IDIV (Reg RCX)
       ; MOV (a, Reg RAX) ]
-  | C.(Prim (Div (Int i, Var v))) ->
+  | C.(Prim (Div (Int i, Var (v, _)), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Imm i)
       ; IDIV (Var v)
       ; MOV (a, Reg RAX) ]
-  | C.(Prim (Div (Var v1, Var v2))) ->
+  | C.(Prim (Div (Var (v1, _), Var (v2, _)), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Var v1)
       ; IDIV (Var v2)
       ; MOV (a, Reg RAX) ]
-  | C.(Prim (Div _)) -> assert false
+  | C.(Prim (Div _, _)) -> assert false
   (* rem *)
-  | C.(Prim (Rem (Int 0, _))) -> [XOR (a, a)]
-  | C.(Prim (Rem (Int i1, Int i2))) ->
+  | C.(Prim (Rem (Int 0, _), _)) -> [XOR (a, a)]
+  | C.(Prim (Rem (Int i1, Int i2), _)) ->
       let i = i1 mod i2 in
       if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
-  | C.(Prim (Rem (Var v, Int i))) ->
+  | C.(Prim (Rem (Var (v, _), Int i), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Var v)
       ; MOV (Reg RCX, Imm i)
       ; IDIV (Reg RCX)
       ; MOV (a, Reg RDX) ]
-  | C.(Prim (Rem (Int i, Var v))) ->
+  | C.(Prim (Rem (Int i, Var (v, _)), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Imm i)
       ; IDIV (Var v)
       ; MOV (a, Reg RDX) ]
-  | C.(Prim (Rem (Var v1, Var v2))) ->
+  | C.(Prim (Rem (Var (v1, _), Var (v2, _)), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Var v1)
       ; IDIV (Var v2)
       ; MOV (a, Reg RDX) ]
-  | C.(Prim (Rem _)) -> assert false
+  | C.(Prim (Rem _, _)) -> assert false
   (* land *)
-  | C.(Prim (Land (Int 0, _))) | C.(Prim (Land (_, Int 0))) -> [XOR (a, a)]
-  | C.(Prim (Land (Int i1, Int i2))) ->
+  | C.(Prim (Land (Int 0, _), _)) | C.(Prim (Land (_, Int 0), _)) ->
+      [XOR (a, a)]
+  | C.(Prim (Land (Int i1, Int i2), _)) ->
       let i = i1 land i2 in
       if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
-  | C.(Prim (Land (Var v, Int i))) | C.(Prim (Land (Int i, Var v))) ->
-      [MOV (a, Var v); AND (a, Imm i)]
-  | C.(Prim (Land (Var v1, Var v2))) when String.equal v1 v2 ->
+  | C.(Prim (Land (Var (v, _), Int i), _))
+   |C.(Prim (Land (Int i, Var (v, _)), _)) -> [MOV (a, Var v); AND (a, Imm i)]
+  | C.(Prim (Land (Var (v1, _), Var (v2, _)), _)) when String.equal v1 v2 ->
       [MOV (a, Var v1)]
-  | C.(Prim (Land (Var v1, Var v2))) -> [MOV (a, Var v1); AND (a, Var v2)]
-  | C.(Prim (Land _)) -> assert false
+  | C.(Prim (Land (Var (v1, _), Var (v2, _)), _)) ->
+      [MOV (a, Var v1); AND (a, Var v2)]
+  | C.(Prim (Land _, _)) -> assert false
   (* lor *)
-  | C.(Prim (Lor (Int i1, Int i2))) ->
+  | C.(Prim (Lor (Int i1, Int i2), _)) ->
       let i = i1 land i2 in
       if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm (i1 lor i2))]
-  | C.(Prim (Lor (Var v, Int 0))) | C.(Prim (Lor (Int 0, Var v))) ->
-      [MOV (a, Var v)]
-  | C.(Prim (Lor (Var v, Int i))) | C.(Prim (Lor (Int i, Var v))) ->
-      [MOV (a, Var v); OR (a, Imm i)]
-  | C.(Prim (Lor (Var v1, Var v2))) when String.equal v1 v2 ->
+  | C.(Prim (Lor (Var (v, _), Int 0), _))
+   |C.(Prim (Lor (Int 0, Var (v, _)), _)) -> [MOV (a, Var v)]
+  | C.(Prim (Lor (Var (v, _), Int i), _))
+   |C.(Prim (Lor (Int i, Var (v, _)), _)) -> [MOV (a, Var v); OR (a, Imm i)]
+  | C.(Prim (Lor (Var (v1, _), Var (v2, _)), _)) when String.equal v1 v2 ->
       [MOV (a, Var v1)]
-  | C.(Prim (Lor (Var v1, Var v2))) -> [MOV (a, Var v1); OR (a, Var v2)]
-  | C.(Prim (Lor _)) -> assert false
+  | C.(Prim (Lor (Var (v1, _), Var (v2, _)), _)) ->
+      [MOV (a, Var v1); OR (a, Var v2)]
+  | C.(Prim (Lor _, _)) -> assert false
   (* lxor *)
-  | C.(Prim (Lxor (Int i1, Int i2))) ->
+  | C.(Prim (Lxor (Int i1, Int i2), _)) ->
       let i = i1 lxor i2 in
       if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
-  | C.(Prim (Lxor (Var v, Int i))) | C.(Prim (Lxor (Int i, Var v))) ->
-      [MOV (a, Var v); XOR (a, Imm i)]
-  | C.(Prim (Lxor (Var v1, Var v2))) when String.equal v1 v2 -> [XOR (a, a)]
-  | C.(Prim (Lxor (Var v1, Var v2))) -> [MOV (a, Var v1); XOR (a, Var v2)]
-  | C.(Prim (Lxor _)) -> assert false
+  | C.(Prim (Lxor (Var (v, _), Int i), _))
+   |C.(Prim (Lxor (Int i, Var (v, _)), _)) -> [MOV (a, Var v); XOR (a, Imm i)]
+  | C.(Prim (Lxor (Var (v1, _), Var (v2, _)), _)) when String.equal v1 v2 ->
+      [XOR (a, a)]
+  | C.(Prim (Lxor (Var (v1, _), Var (v2, _)), _)) ->
+      [MOV (a, Var v1); XOR (a, Var v2)]
+  | C.(Prim (Lxor _, _)) -> assert false
   (* lnot *)
-  | C.(Prim (Lnot (Int i))) -> [MOV (a, Imm (lnot i))]
-  | C.(Prim (Lnot (Var v))) -> [MOV (a, Var v); NOT a]
-  | C.(Prim (Lnot _)) -> assert false
+  | C.(Prim (Lnot (Int i), _)) -> [MOV (a, Imm (lnot i))]
+  | C.(Prim (Lnot (Var (v, _)), _)) -> [MOV (a, Var v); NOT a]
+  | C.(Prim (Lnot _, _)) -> assert false
   (* eq *)
-  | C.(Prim (Eq (Int i1, Int i2))) ->
+  | C.(Prim (Eq (Int i1, Int i2), _)) ->
       if Int.(i1 = i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
-  | C.(Prim (Eq (Bool b1, Bool b2))) ->
+  | C.(Prim (Eq (Bool b1, Bool b2), _)) ->
       if Bool.equal b1 b2 then [MOV (a, Imm 1)] else [XOR (a, a)]
-  | C.(Prim (Eq (Var v, Int i))) | C.(Prim (Eq (Int i, Var v))) ->
+  | C.(Prim (Eq (Var (v, _), Int i), _))
+   |C.(Prim (Eq (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.E, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Eq (Var v, Bool b))) | C.(Prim (Eq (Bool b, Var v))) ->
+  | C.(Prim (Eq (Var (v, _), Bool b), _))
+   |C.(Prim (Eq (Bool b, Var (v, _)), _)) ->
       let cc = if not b then Cc.E else Cc.NE in
       [TEST (Var v, Var v); SETCC (cc, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Eq (Var v1, Var v2))) ->
+  | C.(Prim (Eq (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.E, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
-  | C.(Prim (Eq _)) -> assert false
+  | C.(Prim (Eq _, _)) -> assert false
   (* lt *)
-  | C.(Prim (Lt (Int i1, Int i2))) ->
+  | C.(Prim (Lt (Int i1, Int i2), _)) ->
       if Int.(i1 < i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
-  | C.(Prim (Lt (Var v, Int i))) ->
+  | C.(Prim (Lt (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Lt (Int i, Var v))) ->
+  | C.(Prim (Lt (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Lt (Var v1, Var v2))) ->
+  | C.(Prim (Lt (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.L, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
-  | C.(Prim (Lt _)) -> assert false
+  | C.(Prim (Lt _, _)) -> assert false
   (* le *)
-  | C.(Prim (Le (Int i1, Int i2))) ->
+  | C.(Prim (Le (Int i1, Int i2), _)) ->
       if Int.(i1 <= i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
-  | C.(Prim (Le (Var v, Int i))) ->
+  | C.(Prim (Le (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.LE, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Le (Int i, Var v))) ->
+  | C.(Prim (Le (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.GE, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Le (Var v1, Var v2))) ->
+  | C.(Prim (Le (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.LE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
-  | C.(Prim (Le _)) -> assert false
+  | C.(Prim (Le _, _)) -> assert false
   (* gt *)
-  | C.(Prim (Gt (Int i1, Int i2))) ->
+  | C.(Prim (Gt (Int i1, Int i2), _)) ->
       if Int.(i1 > i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
-  | C.(Prim (Gt (Var v, Int i))) ->
+  | C.(Prim (Gt (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Gt (Int i, Var v))) ->
+  | C.(Prim (Gt (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Gt (Var v1, Var v2))) ->
+  | C.(Prim (Gt (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.G, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
-  | C.(Prim (Gt _)) -> assert false
+  | C.(Prim (Gt _, _)) -> assert false
   (* ge *)
-  | C.(Prim (Ge (Int i1, Int i2))) ->
+  | C.(Prim (Ge (Int i1, Int i2), _)) ->
       if Int.(i1 >= i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
-  | C.(Prim (Ge (Var v, Int i))) ->
+  | C.(Prim (Ge (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.GE, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Ge (Int i, Var v))) ->
+  | C.(Prim (Ge (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.LE, Bytereg AL); MOVZX (a, Bytereg AL)]
-  | C.(Prim (Ge (Var v1, Var v2))) ->
+  | C.(Prim (Ge (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.GE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
-  | C.(Prim (Ge _)) -> assert false
+  | C.(Prim (Ge _, _)) -> assert false
   (* not *)
-  | C.(Prim (Not (Bool b))) -> if b then [XOR (a, a)] else [MOV (a, Imm 1)]
-  | C.(Prim (Not (Var v))) -> [MOV (a, Var v); XOR (a, Imm 1)]
-  | C.(Prim (Not _)) -> assert false
+  | C.(Prim (Not (Bool b), _)) -> if b then [XOR (a, a)] else [MOV (a, Imm 1)]
+  | C.(Prim (Not (Var (v, _)), _)) -> [MOV (a, Var v); XOR (a, Imm 1)]
+  | C.(Prim (Not _, _)) -> assert false
   | _ -> assert false
 
 let is_temp_var_name = String.is_prefix ~prefix:"%"

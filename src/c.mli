@@ -1,8 +1,8 @@
 open Core_kernel
 
-module Type : module type of R.Type
+module Type : module type of R_anf.Type
 
-type type_env = R.type_env
+type type_env = R_anf.type_env
 
 module Cfg : module type of Graph.Persistent.Digraph.Concrete (Label)
 
@@ -32,16 +32,11 @@ and stmt = Assign of var * exp | Collect of int
 
 and exp =
   | Atom of atom
-  | Prim of prim
+  | Prim of prim * Type.t
   | Allocate of int * Type.t
-  | Globalvalue of string
+  | Globalvalue of string * Type.t
 
-and atom =
-  | Int of int
-  | Bool of bool
-  | Var of var
-  | Void
-  | Hastype of exp * Type.t
+and atom = Int of int | Bool of bool | Var of var * Type.t | Void
 
 and prim =
   | Read
@@ -67,23 +62,23 @@ and prim =
 
 and cmp = Cmp.t * atom * atom
 
-val to_string : ?has_type:bool -> t -> string
+val to_string : t -> string
 
-val string_of_tail : ?has_type:bool -> tail -> string
+val string_of_tail : tail -> string
 
-val string_of_stmt : ?has_type:bool -> stmt -> string
+val string_of_stmt : stmt -> string
 
-val string_of_exp : ?has_type:bool -> exp -> string
+val string_of_exp : exp -> string
 
-val string_of_atom : ?has_type:bool -> atom -> string
+val string_of_atom : atom -> string
 
-val string_of_prim : ?has_type:bool -> prim -> string
+val string_of_prim : prim -> string
 
-val string_of_cmp : ?has_type:bool -> cmp -> string
+val string_of_cmp : cmp -> string
 
 (* interpret a C program *)
 
-type answer = R.answer
+type answer = R_typed.answer
 
 val interp : ?read:int option -> t -> answer
 
