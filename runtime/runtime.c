@@ -79,7 +79,7 @@ static int64_t *_collect_copy(int64_t *obj) {
     // to where the tag used to be. we can do this because
     // it will set the least significant bit to 0 since all
     // of our pointers are aligned to even addresses.
-    assert (!((uint64_t)new_obj & 1));
+    assert(!((uint64_t)new_obj & 1));
     *obj = (int64_t)new_obj;
   } else {
     new_obj = (int64_t *)*obj;
