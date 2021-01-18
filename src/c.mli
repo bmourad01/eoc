@@ -28,29 +28,58 @@ and tail =
   | Goto of Label.t
   | If of cmp * Label.t * Label.t
 
-and stmt = Assign of var * exp
+and stmt = Assign of var * exp | Collect of int
 
-and exp = Atom of atom | Prim of prim
+and exp =
+  | Atom of atom
+  | Prim of prim
+  | Allocate of int * Type.t
+  | Globalvalue of string
 
-and atom = R_anf.atom
+and atom =
+  | Int of int
+  | Bool of bool
+  | Var of var
+  | Void
+  | Hastype of exp * Type.t
 
-and prim = R_anf.prim
+and prim =
+  | Read
+  | Minus of atom
+  | Plus of atom * atom
+  | Subtract of atom * atom
+  | Mult of atom * atom
+  | Div of atom * atom
+  | Rem of atom * atom
+  | Land of atom * atom
+  | Lor of atom * atom
+  | Lxor of atom * atom
+  | Lnot of atom
+  | Eq of atom * atom
+  | Lt of atom * atom
+  | Le of atom * atom
+  | Gt of atom * atom
+  | Ge of atom * atom
+  | Not of atom
+  | Vectorlength of atom
+  | Vectorref of atom * int
+  | Vectorset of atom * int * atom
 
 and cmp = Cmp.t * atom * atom
 
-val to_string : t -> string
+val to_string : ?has_type:bool -> t -> string
 
-val string_of_tail : tail -> string
+val string_of_tail : ?has_type:bool -> tail -> string
 
-val string_of_stmt : stmt -> string
+val string_of_stmt : ?has_type:bool -> stmt -> string
 
-val string_of_exp : exp -> string
+val string_of_exp : ?has_type:bool -> exp -> string
 
-val string_of_atom : atom -> string
+val string_of_atom : ?has_type:bool -> atom -> string
 
-val string_of_prim : prim -> string
+val string_of_prim : ?has_type:bool -> prim -> string
 
-val string_of_cmp : cmp -> string
+val string_of_cmp : ?has_type:bool -> cmp -> string
 
 (* interpret a C program *)
 

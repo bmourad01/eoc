@@ -45,6 +45,11 @@ rule token = parse
   | "and" { AND }
   | "or" { OR }
   | "if" { IF }
+  | "vector" { VECTOR }
+  | "vector-length" { VECTORLENGTH }
+  | "vector-ref" { VECTORREF }
+  | "vector-set!" { VECTORSETBANG }
+  | "void" { VOID }
   | eof { EOF }
   | integer as n { INT (int_of_string n) }
   | ident as id { VAR id }

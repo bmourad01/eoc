@@ -30,47 +30,160 @@ and tail =
   | Goto of Label.t
   | If of cmp * Label.t * Label.t
 
-and stmt = Assign of var * exp
+and stmt = Assign of var * exp | Collect of int
 
-and exp = Atom of atom | Prim of prim
+and exp =
+  | Atom of atom
+  | Prim of prim
+  | Allocate of int * Type.t
+  | Globalvalue of string
 
-and atom = R_anf.atom
+and atom =
+  | Int of int
+  | Bool of bool
+  | Var of var
+  | Void
+  | Hastype of exp * Type.t
 
-and prim = R_anf.prim
+and prim =
+  | Read
+  | Minus of atom
+  | Plus of atom * atom
+  | Subtract of atom * atom
+  | Mult of atom * atom
+  | Div of atom * atom
+  | Rem of atom * atom
+  | Land of atom * atom
+  | Lor of atom * atom
+  | Lxor of atom * atom
+  | Lnot of atom
+  | Eq of atom * atom
+  | Lt of atom * atom
+  | Le of atom * atom
+  | Gt of atom * atom
+  | Ge of atom * atom
+  | Not of atom
+  | Vectorlength of atom
+  | Vectorref of atom * int
+  | Vectorset of atom * int * atom
 
 and cmp = Cmp.t * atom * atom
 
-let rec to_string = function
+let rec to_string ?(has_type = false) = function
   | Program (_, tails) ->
       let tls =
         List.map tails ~f:(fun (l, t) ->
-            Printf.sprintf "(%s:\n  %s)" l (string_of_tail t))
+            Printf.sprintf "(%s:\n  %s)" l (string_of_tail t ~has_type))
         |> String.concat ~sep:"\n "
       in
       Printf.sprintf "(%s)" tls
 
-and string_of_tail = function
-  | Return e -> Printf.sprintf "(return %s)" (string_of_exp e)
+and string_of_tail ?(has_type = false) = function
+  | Return e -> Printf.sprintf "(return %s)" (string_of_exp e ~has_type)
   | Seq (s, t) ->
-      Printf.sprintf "%s\n  %s" (string_of_stmt s) (string_of_tail t)
+      Printf.sprintf "%s\n  %s"
+        (string_of_stmt s ~has_type)
+        (string_of_tail t ~has_type)
   | Goto l -> Printf.sprintf "(goto %s)" l
   | If (cmp, lt, lf) ->
-      Printf.sprintf "(if %s (goto %s) (goto %s))" (string_of_cmp cmp) lt lf
+      Printf.sprintf "(if %s (goto %s) (goto %s))"
+        (string_of_cmp cmp ~has_type)
+        lt lf
 
-and string_of_stmt = function
-  | Assign (v, e) -> Printf.sprintf "(set! %s %s)" v (string_of_exp e)
+and string_of_stmt ?(has_type = false) = function
+  | Assign (v, e) ->
+      Printf.sprintf "(set! %s %s)" v (string_of_exp e ~has_type)
+  | Collect n -> Printf.sprintf "(collect %d)" n
 
-and string_of_exp = function
-  | Atom a -> string_of_atom a
-  | Prim p -> string_of_prim p
+and string_of_exp ?(has_type = false) = function
+  | Atom a -> string_of_atom a ~has_type
+  | Prim p -> string_of_prim p ~has_type
+  | Allocate (n, t) -> Printf.sprintf "(allocate %d %s)" n (Type.to_string t)
+  | Globalvalue v -> Printf.sprintf "(global-value '%s)" v
 
-and string_of_atom = R_anf.string_of_atom
+and string_of_atom ?(has_type = false) = function
+  | Int i -> Int.to_string i
+  | Bool b -> if b then "#t" else "#f"
+  | Var v -> v
+  | Void -> "(void)"
+  | Hastype (e, t) ->
+      if has_type then
+        Printf.sprintf "(has-type %s %s)"
+          (string_of_exp e ~has_type)
+          (Type.to_string t)
+      else string_of_exp e ~has_type
 
-and string_of_prim = R_anf.string_of_prim
+and string_of_prim ?(has_type = false) = function
+  | Read -> "(read)"
+  | Minus a -> Printf.sprintf "(- %s)" (string_of_atom a ~has_type)
+  | Plus (a1, a2) ->
+      Printf.sprintf "(+ %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Subtract (a1, a2) ->
+      Printf.sprintf "(- %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Mult (a1, a2) ->
+      Printf.sprintf "(* %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Div (a1, a2) ->
+      Printf.sprintf "(/ %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Rem (a1, a2) ->
+      Printf.sprintf "(rem %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Land (a1, a2) ->
+      Printf.sprintf "(land %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Lor (a1, a2) ->
+      Printf.sprintf "(lor %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Lxor (a1, a2) ->
+      Printf.sprintf "(lxor %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Lnot a -> Printf.sprintf "(lnot %s)" (string_of_atom a ~has_type)
+  | Eq (a1, a2) ->
+      Printf.sprintf "(eq? %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Lt (a1, a2) ->
+      Printf.sprintf "(< %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Le (a1, a2) ->
+      Printf.sprintf "(<= %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Gt (a1, a2) ->
+      Printf.sprintf "(> %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Ge (a1, a2) ->
+      Printf.sprintf "(>= %s %s)"
+        (string_of_atom a1 ~has_type)
+        (string_of_atom a2 ~has_type)
+  | Not a -> Printf.sprintf "(not %s)" (string_of_atom a ~has_type)
+  | Vectorlength a ->
+      Printf.sprintf "(vector-length %s)" (string_of_atom a ~has_type)
+  | Vectorref (a, i) ->
+      Printf.sprintf "(vector-ref %s %d)" (string_of_atom a ~has_type) i
+  | Vectorset (a1, i, a2) ->
+      Printf.sprintf "(vector-set! %s %d %s)"
+        (string_of_atom a1 ~has_type)
+        i
+        (string_of_atom a2 ~has_type)
 
-and string_of_cmp (cmp, a1, a2) =
-  Printf.sprintf "(%s %s %s)" (Cmp.to_string cmp) (string_of_atom a1)
-    (string_of_atom a2)
+and string_of_cmp ?(has_type = false) (cmp, a1, a2) =
+  Printf.sprintf "(%s %s %s)" (Cmp.to_string cmp)
+    (string_of_atom a1 ~has_type)
+    (string_of_atom a2 ~has_type)
 
 let read_int () =
   Out_channel.(flush stdout);
@@ -105,18 +218,23 @@ and interp_stmt ?(read = None) env = function
   | Assign (v, e) ->
       let e = interp_exp env e ~read in
       Map.set env v e
+  | Collect _ -> env
 
 and interp_exp ?(read = None) env = function
   | Atom a -> interp_atom env a
   | Prim p -> interp_prim env p ~read
+  | Allocate (n, _) -> `Vector (Array.init n ~f:(fun _ -> `Void))
+  | Globalvalue _ -> `Int 0
 
-and interp_atom env = function
+and interp_atom ?(read = None) env = function
   | Int i -> `Int i
   | Bool b -> `Bool b
   | Var v -> (
     match Map.find env v with
     | None -> failwith ("C.interp_atom: var " ^ v ^ " is unbound")
     | Some i -> i )
+  | Void -> `Void
+  | Hastype (e, _) -> interp_exp env e ~read
 
 and interp_prim ?(read = None) env = function
   | Read -> (
@@ -188,6 +306,18 @@ and interp_prim ?(read = None) env = function
     match interp_atom env a with
     | `Bool b -> `Bool (not b)
     | _ -> assert false )
+  | Vectorlength a -> (
+    match interp_atom env a with
+    | `Vector v -> `Int (Array.length v)
+    | _ -> assert false )
+  | Vectorref (a, i) -> (
+    match interp_atom env a with
+    | `Vector v -> v.(i)
+    | _ -> assert false )
+  | Vectorset (a1, i, a2) -> (
+    match (interp_atom env a1, interp_atom env a2) with
+    | `Vector v, v' -> v.(i) <- v'; `Void
+    | _ -> assert false )
 
 and interp_cmp ?(read = None) env (cmp, a1, a2) =
   let e =
@@ -226,8 +356,13 @@ let rec explicate_control = function
       Program ({info with cfg}, tails)
 
 and explicate_tail tails n = function
-  | R_anf.(Atom a) -> Return (Atom a)
-  | R_anf.(Prim p) -> Return (Prim p)
+  | R_anf.(Atom (Hastype (Atom a, t))) ->
+      Return (Atom (Hastype (Atom (translate_atom a), t)))
+  | R_anf.(Atom (Hastype (Prim p, t))) ->
+      Return (Atom (Hastype (Prim (translate_prim p), t)))
+  | R_anf.(Atom (Hastype (e, t))) -> explicate_tail tails n e
+  | R_anf.(Atom a) -> Return (Atom (translate_atom a))
+  | R_anf.(Prim p) -> Return (Prim (translate_prim p))
   | R_anf.(Let (v, e1, e2)) ->
       let cont = explicate_tail tails n e2 in
       explicate_assign tails n e1 v cont
@@ -235,6 +370,40 @@ and explicate_tail tails n = function
       let tt = explicate_tail tails n e2 in
       let tf = explicate_tail tails n e3 in
       explicate_pred tails n e1 tt tf
+  | R_anf.Collect n -> Seq (Collect n, Return (Atom Void))
+  | R_anf.Allocate (n, t) -> Return (Allocate (n, t))
+  | R_anf.Globalvalue v -> Return (Globalvalue v)
+
+and translate_atom = function
+  | R_anf.Int i -> Int i
+  | R_anf.Bool b -> Bool b
+  | R_anf.Var v -> Var v
+  | R_anf.Void -> Void
+  | _ -> assert false
+
+and translate_prim p =
+  let tr = translate_atom in
+  match p with
+  | R_anf.Read -> Read
+  | R_anf.Minus a -> Minus (tr a)
+  | R_anf.Plus (a1, a2) -> Plus (tr a1, tr a2)
+  | R_anf.Subtract (a1, a2) -> Subtract (tr a1, tr a2)
+  | R_anf.Mult (a1, a2) -> Mult (tr a1, tr a2)
+  | R_anf.Div (a1, a2) -> Div (tr a1, tr a2)
+  | R_anf.Rem (a1, a2) -> Rem (tr a1, tr a2)
+  | R_anf.Land (a1, a2) -> Land (tr a1, tr a2)
+  | R_anf.Lor (a1, a2) -> Lor (tr a1, tr a2)
+  | R_anf.Lxor (a1, a2) -> Lxor (tr a1, tr a2)
+  | R_anf.Lnot a -> Lnot (tr a)
+  | R_anf.Eq (a1, a2) -> Eq (tr a1, tr a2)
+  | R_anf.Lt (a1, a2) -> Lt (tr a1, tr a2)
+  | R_anf.Le (a1, a2) -> Le (tr a1, tr a2)
+  | R_anf.Gt (a1, a2) -> Gt (tr a1, tr a2)
+  | R_anf.Ge (a1, a2) -> Ge (tr a1, tr a2)
+  | R_anf.Not a -> Not (tr a)
+  | R_anf.Vectorlength a -> Vectorlength (tr a)
+  | R_anf.Vectorref (a, i) -> Vectorref (tr a, i)
+  | R_anf.Vectorset (a1, i, a2) -> Vectorset (tr a1, i, tr a2)
 
 and explicate_assign tails n e x cont =
   match e with
@@ -250,6 +419,7 @@ and explicate_assign tails n e x cont =
       do_assign t x cont
 
 and explicate_pred tails n cnd thn els =
+  let tr = translate_atom in
   match cnd with
   | R_anf.(Atom (Bool b)) -> if b then thn else els
   | R_anf.(Atom (Var x)) ->
@@ -258,42 +428,50 @@ and explicate_pred tails n cnd thn els =
       add_tail tails lt thn;
       add_tail tails lf els;
       If ((Cmp.Eq, Var x, Bool true), lt, lf)
+  | R_anf.(Atom (Hastype (Atom (Bool b), _))) -> if b then thn else els
+  | R_anf.(Atom (Hastype (Atom (Var x), t))) ->
+      let lt = fresh_label n in
+      let lf = fresh_label n in
+      add_tail tails lt thn;
+      add_tail tails lf els;
+      If ((Cmp.Eq, Hastype (Atom (Var x), t), Bool true), lt, lf)
+  | R_anf.(Atom (Hastype (e, _))) -> explicate_pred tails n e thn els
   | R_anf.(Prim (Not a)) ->
       let lt = fresh_label n in
       let lf = fresh_label n in
       add_tail tails lt thn;
       add_tail tails lf els;
-      If ((Cmp.Eq, a, Bool false), lt, lf)
+      If ((Cmp.Eq, tr a, Bool false), lt, lf)
   | R_anf.(Prim (Eq (a1, a2))) ->
       let lt = fresh_label n in
       let lf = fresh_label n in
       add_tail tails lt thn;
       add_tail tails lf els;
-      If ((Cmp.Eq, a1, a2), lt, lf)
+      If ((Cmp.Eq, tr a1, tr a2), lt, lf)
   | R_anf.(Prim (Lt (a1, a2))) ->
       let lt = fresh_label n in
       let lf = fresh_label n in
       add_tail tails lt thn;
       add_tail tails lf els;
-      If ((Cmp.Lt, a1, a2), lt, lf)
+      If ((Cmp.Lt, tr a1, tr a2), lt, lf)
   | R_anf.(Prim (Le (a1, a2))) ->
       let lt = fresh_label n in
       let lf = fresh_label n in
       add_tail tails lt thn;
       add_tail tails lf els;
-      If ((Cmp.Le, a1, a2), lt, lf)
+      If ((Cmp.Le, tr a1, tr a2), lt, lf)
   | R_anf.(Prim (Gt (a1, a2))) ->
       let lt = fresh_label n in
       let lf = fresh_label n in
       add_tail tails lt thn;
       add_tail tails lf els;
-      If ((Cmp.Gt, a1, a2), lt, lf)
+      If ((Cmp.Gt, tr a1, tr a2), lt, lf)
   | R_anf.(Prim (Ge (a1, a2))) ->
       let lt = fresh_label n in
       let lf = fresh_label n in
       add_tail tails lt thn;
       add_tail tails lf els;
-      If ((Cmp.Ge, a1, a2), lt, lf)
+      If ((Cmp.Ge, tr a1, tr a2), lt, lf)
   | R_anf.(Let (x, e1, e2)) ->
       let t = explicate_pred tails n e2 thn els in
       explicate_assign tails n e1 x t
@@ -311,6 +489,8 @@ and do_assign e x cont =
   match e with
   | Return (Atom a) -> Seq (Assign (x, Atom a), cont)
   | Return (Prim p) -> Seq (Assign (x, Prim p), cont)
+  | Return (Allocate (n, t)) -> Seq (Assign (x, Allocate (n, t)), cont)
+  | Return (Globalvalue v) -> Seq (Assign (x, Globalvalue v), cont)
   | Seq (s, t) -> Seq (s, do_assign t x cont)
   | _ -> assert false
 

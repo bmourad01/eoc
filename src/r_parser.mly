@@ -19,7 +19,8 @@
 %token EOF
 %token <int> INT
 %token <string> VAR
-%token PLUS MINUS STAR FSLASH REM LAND LOR LXOR LNOT
+%token PLUS MINUS STAR FSLASH REM LAND LOR LXOR LNOT 
+%token VECTOR VECTORLENGTH VECTORREF VECTORSETBANG VOID
 %token LPAREN RPAREN LSQUARE RSQUARE
 %token READ LET
 %token TRUE FALSE
@@ -34,7 +35,8 @@ prog:
   | exp EOF
     {
       let open Core_kernel in
-      Program ({typ= type_check_exp empty_var_env $1}, $1)
+      let typ, e = type_check_exp empty_var_env $1 in
+      Program ({typ}, e)
     }
 
 let_arg:
@@ -48,6 +50,8 @@ exp:
     { Bool true }
   | FALSE
     { Bool false }
+  | LPAREN VOID RPAREN
+    { Void }
   | prim
     { Prim $1 }
   | VAR
@@ -129,3 +133,11 @@ prim:
     { Or ($3, $4) }
   | LPAREN OR exp exp nonempty_list(exp) RPAREN
     { rassoc_prim $3 $4 $5 ~f:(fun e1 e2 -> Or (e1, e2)) }
+  | LPAREN VECTOR list(exp) RPAREN
+    { Vector $3 }
+  | LPAREN VECTORLENGTH exp RPAREN
+    { Vectorlength $3 }
+  | LPAREN VECTORREF exp INT RPAREN
+    { Vectorref ($3, $4) }
+  | LPAREN VECTORSETBANG exp INT exp RPAREN
+    { Vectorset ($3, $4, $5) }

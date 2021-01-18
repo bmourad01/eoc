@@ -290,6 +290,7 @@ and select_instructions_stmt s =
   let open Arg in
   match s with
   | C.Assign (v, e) -> select_instructions_exp (Var v) e
+  | _ -> assert false
 
 and select_instructions_exp a p =
   let open Arg in
@@ -491,6 +492,7 @@ and select_instructions_exp a p =
   | C.(Prim (Not (Bool b))) -> if b then [XOR (a, a)] else [MOV (a, Imm 1)]
   | C.(Prim (Not (Var v))) -> [MOV (a, Var v); XOR (a, Imm 1)]
   | C.(Prim (Not _)) -> assert false
+  | _ -> assert false
 
 let is_temp_var_name = String.is_prefix ~prefix:"%"
 
@@ -599,6 +601,7 @@ let function_epilogue typ label stack_space w instrs =
           match typ with
           | C.Type.Integer -> print_int
           | C.Type.Boolean -> print_bool
+          | _ -> assert false
         in
         List.rev acc
         @ [ PUSH (Reg RAX)

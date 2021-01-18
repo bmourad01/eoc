@@ -1,15 +1,13 @@
 open Core_kernel
 
 let () =
-  let prog = Eoc.Parse_r.parse Sys.argv.(1) in
-  let Eoc.X.(Program (info, blocks)) =
-    Eoc.(
-      X.(
-        build_interference
-          (uncover_live
-             (select_instructions
-                (C.explicate_control
-                   (R_anf.resolve_complex R.(uniquify prog)))))))
+  let Eoc.X.(Program (info, _)) =
+    Eoc.Parse_r.parse Sys.argv.(1)
+    |> Eoc.R.strip_has_type |> Eoc.R.uniquify
+    |> Eoc.R_alloc.expose_allocation |> Eoc.R_anf.resolve_complex
+    |> Eoc.C.explicate_control |> Eoc.C.optimize_jumps
+    |> Eoc.X.select_instructions |> Eoc.X.uncover_live
+    |> Eoc.X.build_interference
   in
   let colors = Eoc.X.(color_graph info.conflicts) in
   Map.iteri colors ~f:(fun ~key ~data ->
