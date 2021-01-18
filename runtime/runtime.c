@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -76,8 +77,9 @@ static int64_t *_collect_copy(int64_t *obj) {
     _free_ptr = (int64_t *)((uint64_t)_free_ptr + size);
     // mark it as being copied by storing the forwarding address
     // to where the tag used to be. we can do this because
-    // it will set the least significant bit to 0, and all of
-    // our pointers are aligned to even addresses.
+    // it will set the least significant bit to 0 since all
+    // of our pointers are aligned to even addresses.
+    assert (!((uint64_t)new_obj & 1));
     *obj = (int64_t)new_obj;
   } else {
     new_obj = (int64_t *)*obj;
