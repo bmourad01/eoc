@@ -102,9 +102,9 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   scan_ptr = _free_ptr;
 
   DBGPRINT("GC: copying roots\n");
-  
+
   // copy all roots first
-  for (r = rootstack_ptr; (p = *r); ) {
+  for (r = rootstack_ptr; (p = *r);) {
     *r-- = _collect_copy(p);
   }
 
@@ -124,10 +124,11 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   }
 
   DBGPRINT("GC: checking for sufficient space\n");
-  
+
   // check if we need to resize the heap
   if (((uint64_t)_free_ptr + bytes) >= (uint64_t)_fromspace_end) {
-    DBGPRINT("GC: resizing the heap from %ld to %ld bytes\n", _heap_size, _heap_size << 1);
+    DBGPRINT("GC: resizing the heap from %ld to %ld bytes\n", _heap_size,
+             _heap_size << 1);
     // double the current size
     _heap_size <<= 1;
     // allocate a new heap and copy over the current fromspace
