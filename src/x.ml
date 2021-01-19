@@ -1018,22 +1018,19 @@ let color_graph ?(bias = Interference_graph.empty) g =
     match Pairing_heap.pop q with
     | None -> !colors
     | Some u ->
-        let sat = saturation u in
         let c =
+          let sat = saturation u in
           let bias_colors =
             try
               Interference_graph.succ bias u
-              |> List.filter_map ~f:(fun v ->
-                     Option.(
-                       Map.find !colors v
-                       >>= fun c -> some_if (not (Set.mem sat c)) c))
+              |> List.filter_map ~f:(Map.find !colors)
               |> Int.Set.of_list
             with Invalid_argument _ -> Int.Set.empty
           in
           (* find the appropriate color *)
           let rec loop' c =
-            if Set.mem bias_colors c then c
-            else if Set.mem sat c then loop' (succ c)
+            if Set.mem sat c then loop' (succ c)
+            else if Set.mem bias_colors c then c
             else c
           in
           loop' 0
