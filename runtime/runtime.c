@@ -37,6 +37,7 @@ int64_t *_fromspace_end;
 static int64_t *_tospace_begin;
 static int64_t *_tospace_end;
 int64_t **_rootstack_begin;
+static int64_t **_rootstack_end;
 
 int64_t _read_int() {
   char buf[64];
@@ -111,6 +112,7 @@ void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _tospace_end = (int64_t *)((uint64_t)_fromspace_begin + heap_size);
   _rootstack_begin = (int64_t **)malloc(rootstack_size);
   assert(_rootstack_begin);
+  _rootstack_end = (int64_t **)((uint64_t)_rootstack_begin + rootstack_size);
 }
 
 static int64_t *collect_copy(int64_t *obj) {
@@ -141,6 +143,8 @@ static int64_t *collect_copy(int64_t *obj) {
 static void cheney(int64_t **rootstack_ptr) {
   int64_t *p, **r, *tmp, *scan_ptr, *obj;
   uint64_t i, length, ptr_mask;
+
+  assert(rootstack_ptr >= _rootstack_begin && rootstack_ptr < _rootstack_end);
 
   // swap fromspace with tospace
   tmp = _fromspace_begin;
