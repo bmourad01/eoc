@@ -789,9 +789,6 @@ let rec patch_instructions = function
                      | Arg.Reg r -> Reg.is_callee_save r
                      | _ -> false)))
       in
-      let w =
-        if info.rootstack_spills > 0 then Set.add w (Arg.Reg R15) else w
-      in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
             (label, patch_instructions_block w info block))
