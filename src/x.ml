@@ -1099,18 +1099,18 @@ let rec allocate_registers = function
         , blocks )
 
 and compute_locations ?(vector = false) colors locals_types =
+  let ok v =
+    match Map.find_exn locals_types v with
+    | C.Type.Vector _ -> vector
+    | _ -> not vector
+  in
   let stack_colors =
     Map.fold colors ~init:Int.Set.empty ~f:(fun ~key ~data acc ->
         if data < num_regs then acc
         else
           match key with
           | Arg.Var v when is_temp_var_name v ->
-              let ok =
-                match Map.find_exn locals_types v with
-                | C.Type.Vector _ -> vector
-                | _ -> not vector
-              in
-              if ok then Set.add acc data else acc
+              if ok v then Set.add acc data else acc
           | _ -> acc)
   in
   if Set.is_empty stack_colors then Arg_map.empty
@@ -1122,12 +1122,7 @@ and compute_locations ?(vector = false) colors locals_types =
     Map.filter_mapi colors ~f:(fun ~key ~data ->
         match key with
         | Arg.Var v when is_temp_var_name v ->
-            let ok =
-              match Map.find_exn locals_types v with
-              | C.Type.Vector _ -> vector
-              | _ -> not vector
-            in
-            if ok then Map.find color_map data else None
+            if ok v then Map.find color_map data else None
         | _ -> None)
 
 and allocate_registers_block colors stack_locs vector_locs = function
