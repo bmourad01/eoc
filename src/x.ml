@@ -1098,6 +1098,10 @@ let rec allocate_registers = function
         ( {info with stack_space; rootstack_spills= Map.length vector_locs}
         , blocks )
 
+(* since we may have spilled variables both to the regular stack
+ * and the root stack, we need to normalize the colors of each
+ * variable such that they correspond to contiguous offsets
+ * from a base address (i.e. RBP or R15). *)
 and compute_locations ?(vector = false) colors locals_types =
   let ok v =
     match Map.find_exn locals_types v with
