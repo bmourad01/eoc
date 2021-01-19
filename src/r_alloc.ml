@@ -12,7 +12,7 @@ let fromspace_end = "_fromspace_end"
 
 let word_size = 8
 
-let tag_offset = 1
+let total_tag_offset = 4
 
 type info = {typ: Type.t; nvars: int}
 
@@ -163,7 +163,7 @@ and expand_alloc n t ts es =
     in
     (* hardcode the idiom that allocates the vector triggering
      * the GC beforehand if there is not enough space *)
-    let bytes = (len + tag_offset) * word_size in
+    let bytes = (len + total_tag_offset) * word_size in
     Let
       ( newvar n
       , If

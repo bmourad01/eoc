@@ -14,7 +14,7 @@ val fromspace_end : string
 
 val word_size : int
 
-val tag_offset : int
+val total_tag_offset : int
 
 (* same as the R_typed language, but with
  * special operators for allocating objects. *)

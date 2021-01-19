@@ -68,6 +68,8 @@ val opt : t -> t
 
 (* take an untyped R program and produce an R_typed program *)
 
+exception Type_error of string
+
 val type_check : R.t -> t
 
 (* the result of evaluating a program *)

@@ -242,6 +242,10 @@ and opt_exp env = function
     | Bool false -> opt_exp env e3
     | e1 -> If (e1, e2, e3, t) )
 
+exception Type_error of string
+
+let typeerr msg = raise (Type_error msg)
+
 let rec type_check = function
   | R.Program (_, exp) ->
       let typ, exp = type_check_exp empty_var_env exp in
@@ -256,7 +260,7 @@ and type_check_exp env = function
       (t, Prim (p, t))
   | R.Var v -> (
     match Map.find env v with
-    | None -> failwith ("R.type_check_exp: var " ^ v ^ " is not bound")
+    | None -> typeerr ("R.type_check_exp: var " ^ v ^ " is not bound")
     | Some t -> (t, Var (v, t)) )
   | R.Let (v, e1, e2) ->
       let t1, e1 = type_check_exp env e1 in
@@ -269,12 +273,12 @@ and type_check_exp env = function
         let t2, e3' = type_check_exp env e3 in
         if Type.equal t1 t2 then (t1, If (e1', e2', e3', t1))
         else
-          failwith
+          typeerr
             ( "R.type_check_exp: if branches " ^ R.string_of_exp e2 ^ " ("
             ^ Type.to_string t1 ^ ") and " ^ R.string_of_exp e3 ^ " ("
             ^ Type.to_string t2 ^ ") are not the same type" )
     | t, _ ->
-        failwith
+        typeerr
           ( "R.type_check_exp: if condition " ^ R.string_of_exp e1
           ^ " is of type " ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
@@ -285,7 +289,7 @@ and type_check_prim env = function
     match type_check_exp env e with
     | Type.Integer, e' -> (Type.Integer, Minus e')
     | t, _ ->
-        failwith
+        typeerr
           ( "R.type_check_prim: minus exp " ^ R.string_of_exp e
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" ) )
@@ -294,17 +298,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Plus (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: plus exp " ^ R.string_of_exp e1
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: plus exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: plus exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -314,17 +318,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Subtract (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: subtract exp " ^ R.string_of_exp e1
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: subtract exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: subtract exps " ^ R.string_of_exp e1
           ^ " and " ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1
           ^ " and " ^ Type.to_string t2
@@ -334,17 +338,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Mult (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: mult exp " ^ R.string_of_exp e1
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: mult exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: mult exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -354,17 +358,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Div (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: div exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: div exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: div exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -374,17 +378,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Rem (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: rem exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: rem exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: rem exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -394,17 +398,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Land (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: land exp " ^ R.string_of_exp e1
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: land exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: land exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -414,17 +418,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Lor (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: lor exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: lor exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: lor exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -434,17 +438,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Lxor (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: lxor exp " ^ R.string_of_exp e1
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: lxor exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: lxor exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -453,7 +457,7 @@ and type_check_prim env = function
     match type_check_exp env e with
     | Type.Integer, e' -> (Type.Integer, Lnot e')
     | t, _ ->
-        failwith
+        typeerr
           ( "R.type_check_prim: lnot exp " ^ R.string_of_exp e ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" ) )
@@ -462,7 +466,7 @@ and type_check_prim env = function
       let t2, e2' = type_check_exp env e2 in
       if Type.equal t1 t2 then (Type.Boolean, Eq (e1', e2'))
       else
-        failwith
+        typeerr
           ( "R.type_check_prim: eq? exps " ^ R.string_of_exp e1 ^ " ("
           ^ Type.to_string t1 ^ ") and " ^ R.string_of_exp e2 ^ " ("
           ^ Type.to_string t2 ^ ") are not the same type" )
@@ -471,17 +475,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Boolean, Lt (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: < exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: < exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: < exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -491,17 +495,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Boolean, Le (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: <= exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: <= exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: <= exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -511,17 +515,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Boolean, Gt (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: > exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: > exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: > exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -531,17 +535,17 @@ and type_check_prim env = function
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Boolean, Ge (e1', e2'))
     | (t, _), (Type.Integer, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: >= exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (Type.Integer, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: >= exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: >= exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -550,7 +554,7 @@ and type_check_prim env = function
     match type_check_exp env e with
     | Type.Boolean, e' -> (Type.Boolean, Not e')
     | t, _ ->
-        failwith
+        typeerr
           ( "R.type_check_prim: minus exp " ^ R.string_of_exp e
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
@@ -559,17 +563,17 @@ and type_check_prim env = function
     | (Type.Boolean, e1'), (Type.Boolean, e2') ->
         (Type.Boolean, And (e1', e2'))
     | (t, _), (Type.Boolean, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: and exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" )
     | (Type.Boolean, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: and exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: and exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -579,17 +583,17 @@ and type_check_prim env = function
     | (Type.Boolean, e1'), (Type.Boolean, e2') ->
         (Type.Boolean, Or (e1', e2'))
     | (t, _), (Type.Boolean, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: or exp " ^ R.string_of_exp e1 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" )
     | (Type.Boolean, _), (t, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: or exp " ^ R.string_of_exp e2 ^ " has type "
           ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" )
     | (t1, _), (t2, _) ->
-        failwith
+        typeerr
           ( "R.type_check_prim: or exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
@@ -601,7 +605,7 @@ and type_check_prim env = function
     match type_check_exp env e with
     | Type.Vector _, e' -> (Type.Integer, Vectorlength e')
     | t, _ ->
-        failwith
+        typeerr
           ( "R.type_check_prim: vector-length of " ^ R.string_of_exp e
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Vector was expected" ) )
@@ -611,11 +615,11 @@ and type_check_prim env = function
       match List.nth ts i with
       | Some t -> (t, Vectorref (e', i))
       | None ->
-          failwith
+          typeerr
             ( "R.type_check_prim: vector-ref of " ^ R.string_of_exp e
             ^ ", index " ^ Int.to_string i ^ " out of bounds" ) )
     | t, _ ->
-        failwith
+        typeerr
           ( "R.type_check_prim: vector-ref of " ^ R.string_of_exp e
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Vector was expected" ) )
@@ -624,20 +628,20 @@ and type_check_prim env = function
     | (Type.Vector ts, e1'), (t2, e2') -> (
       match List.nth ts i with
       | None ->
-          failwith
+          typeerr
             ( "R.type_check_prim: vector-set of " ^ R.string_of_exp e1
             ^ ", index " ^ Int.to_string i ^ " out of bounds" )
       | Some t ->
           if Type.equal t t2 then (t, Vectorset (e1', i, e2'))
           else
-            failwith
+            typeerr
               ( "R.type_check_prim: vector-set of " ^ R.string_of_exp e1
               ^ " at index " ^ Int.to_string i ^ ", expression "
               ^ R.string_of_exp e2 ^ " has type " ^ Type.to_string t2
               ^ " but an expression of type " ^ Type.to_string t
               ^ " was expected" ) )
     | (t, _), _ ->
-        failwith
+        typeerr
           ( "R.type_check_prim: vector-set of " ^ R.string_of_exp e1
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Vector was expected" ) )

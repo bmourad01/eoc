@@ -21,6 +21,8 @@ let parse filename =
           failwith
             (Printf.sprintf "R: %s invalid arg (%s): %s" filename msg
                (file_pos lexbuf))
+      | R_typed.Type_error msg ->
+          failwith (Printf.sprintf "R: %s type error: %s" filename msg)
       | _ ->
           failwith
             (Printf.sprintf "R: %s unknown parser error: %s" filename

@@ -2,7 +2,15 @@ open Core_kernel
 
 let word_size = R_alloc.word_size
 
-let tag_offset = R_alloc.tag_offset
+let total_tag_offset = R_alloc.total_tag_offset
+
+let tag_offset = 0
+
+let int_mask_offset = 1
+
+let bool_mask_offset = 2
+
+let void_mask_offset = 3
 
 module Cc = struct
   type t = E | NE | L | LE | G | GE
@@ -253,7 +261,13 @@ module Extern = struct
   let collect = "_collect"
 
   let extern_fns =
-    [read_int; print_int; print_bool; print_void; initialize; collect]
+    [ read_int
+    ; print_int
+    ; print_bool
+    ; print_void
+    ; print_vector
+    ; initialize
+    ; collect ]
 
   let free_ptr = R_alloc.free_ptr
 
@@ -620,30 +634,31 @@ and select_instructions_exp a p =
   (* vector-ref *)
   | C.(Prim (Vectorref (Var (v, _), i), _)) ->
       [ MOV (Reg R11, Var v)
-      ; MOV (a, Deref (Reg.R11, (i + tag_offset) * word_size)) ]
+      ; MOV (a, Deref (Reg.R11, (i + total_tag_offset) * word_size)) ]
   | C.(Prim (Vectorref _, _)) -> assert false
   (* vector-set *)
   | C.(Prim (Vectorset (Var (v1, _), i, Int n), _)) ->
       [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + tag_offset) * word_size), Imm n)
+      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm n)
       ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Bool b), _)) ->
       [ MOV (Reg R11, Var v1)
       ; MOV
-          (Deref (Reg.R11, (i + tag_offset) * word_size), Imm (Bool.to_int b))
+          ( Deref (Reg.R11, (i + total_tag_offset) * word_size)
+          , Imm (Bool.to_int b) )
       ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Void), _)) ->
       [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + tag_offset) * word_size), Imm 0)
+      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm 0)
       ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Var (v2, _)), _)) ->
       [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + tag_offset) * word_size), Var v2)
+      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2)
       ; XOR (a, a) ]
   | C.(Prim (Vectorset _, _)) -> assert false
   (* allocate *)
   | C.(Allocate (n, Type.Vector ts)) ->
-      let tag =
+      let vec_tag =
         let ptr_mask =
           List.foldi ts ~init:0 ~f:(fun i acc t ->
               match t with
@@ -651,11 +666,23 @@ and select_instructions_exp a p =
               | _ -> acc)
         in
         let len = List.length ts in
-        Imm ((ptr_mask lsl 7) lor (len lsl 1) lor 1)
+        (ptr_mask lsl 7) lor (len lsl 1) lor 1
+      in
+      let int_mask, bool_mask, void_mask =
+        List.foldi ts ~init:(0, 0, 0)
+          ~f:(fun i ((int_mask, bool_mask, void_mask) as acc) t ->
+            match t with
+            | C.Type.Integer -> ((1 lsl i) lor int_mask, bool_mask, void_mask)
+            | C.Type.Boolean -> (int_mask, (1 lsl i) lor bool_mask, void_mask)
+            | C.Type.Void -> (int_mask, bool_mask, (1 lsl i) lor void_mask)
+            | _ -> acc)
       in
       [ MOV (Reg R11, Var Extern.free_ptr)
-      ; ADD (Var Extern.free_ptr, Imm ((n + tag_offset) * word_size))
-      ; MOV (Deref (Reg.R11, 0), tag)
+      ; ADD (Var Extern.free_ptr, Imm ((n + total_tag_offset) * word_size))
+      ; MOV (Deref (Reg.R11, tag_offset * word_size), Imm vec_tag)
+      ; MOV (Deref (Reg.R11, int_mask_offset * word_size), Imm int_mask)
+      ; MOV (Deref (Reg.R11, bool_mask_offset * word_size), Imm bool_mask)
+      ; MOV (Deref (Reg.R11, void_mask_offset * word_size), Imm void_mask)
       ; MOV (a, Reg R11) ]
   | C.(Allocate _) -> assert false
   (* global-value *)
@@ -1114,8 +1141,10 @@ and color_arg rootstack_spills locals_types colors = function
           let offset = (c - num_regs + 1) * word_size in
           match Map.find_exn locals_types v with
           | C.Type.Vector _ ->
+              (* R15 points to the "bottom" of the root
+               * stack, so we have to increment downwards *)
               Hash_set.add rootstack_spills v;
-              Deref (R15, offset - word_size)
+              Deref (R15, -(offset - word_size))
           | _ -> Deref (RBP, -offset) ) )
   | a -> a
 

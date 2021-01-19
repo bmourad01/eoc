@@ -13,7 +13,12 @@
 #define DBGPRINT(x...)
 #endif
 
-#define TAG_OFFSET 1
+#define TOTAL_TAG_OFFSET 4
+#define TAG_OFFSET 0
+#define INT_MASK_OFFSET 1
+#define BOOL_MASK_OFFSET 2
+#define VOID_MASK_OFFSET 3
+
 #define LENGTH_BITS 6
 #define PTRMASK_BITS 50
 
@@ -48,10 +53,50 @@ void _print_bool(int64_t i) {
 
 void _print_void() { printf("#<void>\n"); }
 
+static void _print_vector_aux(int64_t *vec, bool nested) {
+  int64_t tag, ptr_mask, int_mask, bool_mask, void_mask, val;
+  uint64_t i, length, bit;
+
+  tag = vec[TAG_OFFSET];
+  length = LENGTH(tag);
+  ptr_mask = PTRMASK(tag);
+  int_mask = vec[INT_MASK_OFFSET];
+  bool_mask = vec[BOOL_MASK_OFFSET];
+  void_mask = vec[VOID_MASK_OFFSET];
+
+  if (!nested) {
+    printf("'");
+  }
+
+  printf("#(");
+
+  for (i = 0; i < length; ++i) {
+    val = vec[i + TOTAL_TAG_OFFSET];
+    bit = 1 << i;
+    if (bit & ptr_mask) {
+      _print_vector_aux((int64_t *)val, true);
+    } else if (bit & int_mask) {
+      printf("%ld", val);
+    } else if (bit & bool_mask) {
+      if (val) {
+        printf("#t");
+      } else {
+        printf("#f");
+      }
+    } else if (bit & void_mask) {
+      printf("#<void>");
+    }
+    
+    if (i < (length - 1)) {
+      printf(" ");
+    }
+  }
+  printf(")");
+}
+
 void _print_vector(int64_t *vec) {
-  // TODO: we need type information about whether
-  // an element is a boolean or an integer
-  printf("_print_vector: 0x%016lX\n", (uint64_t)vec);
+  _print_vector_aux(vec, false);
+  printf("\n");
 }
 
 void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
@@ -70,7 +115,8 @@ static int64_t *_collect_copy(int64_t *obj) {
 
   // has the object been copied yet?
   if (FORWARDING(*obj)) {
-    size = (LENGTH(*obj) + TAG_OFFSET) << 3;
+    size = (LENGTH(*obj) + TOTAL_TAG_OFFSET) << 3;
+    DBGPRINT("copy %p, size %ld, length %016LX\n", obj, size, LENGTH(*obj));
     // copy the object
     new_obj = _free_ptr;
     memcpy(new_obj, obj, size);
@@ -91,7 +137,7 @@ static int64_t *_collect_copy(int64_t *obj) {
 
 void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   int64_t *p, **r, *tmp, *scan_ptr, *obj;
-  uint64_t i, length, size, mask;
+  uint64_t i, length, size, ptr_mask;
 
   // swap fromspace with tospace
   tmp = _fromspace_begin;
@@ -116,14 +162,16 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   // do a breadth-first search for all objects reachable from the root stack
   while (scan_ptr < _free_ptr) {
     obj = scan_ptr;
-    length = LENGTH(*obj) + TAG_OFFSET;
-    mask = PTRMASK(*obj);
-    for (i = 1; i < length; ++i) {
-      if (mask & (1 << (i - 1))) {
-        obj[i] = (int64_t)_collect_copy((int64_t *)obj[i]);
+    length = LENGTH(*obj);
+    ptr_mask = PTRMASK(*obj);
+    for (i = 0; i < length; ++i) {
+      if (ptr_mask & (1 << i)) {
+        obj[i + TOTAL_TAG_OFFSET] =
+            (int64_t)_collect_copy((int64_t *)obj[i + TOTAL_TAG_OFFSET]);
       }
     }
-    scan_ptr = (int64_t *)((uint64_t)scan_ptr + (length << 3));
+    scan_ptr =
+        (int64_t *)((uint64_t)scan_ptr + ((length + TOTAL_TAG_OFFSET) << 3));
   }
 
   DBGPRINT("GC: checking for sufficient space\n");
