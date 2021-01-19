@@ -103,12 +103,14 @@ void _print_vector(int64_t *vec) {
 void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _heap_size = heap_size;
   _heap_base = malloc(heap_size);
+  assert(_heap_base);
   _fromspace_begin = (int64_t *)_heap_base;
   _fromspace_end = (int64_t *)((uint64_t)_fromspace_begin + (heap_size >> 1));
   _free_ptr = _fromspace_begin;
   _tospace_begin = _fromspace_end;
   _tospace_end = (int64_t *)((uint64_t)_fromspace_begin + heap_size);
   _rootstack_begin = (int64_t **)malloc(rootstack_size);
+  assert(_rootstack_begin);
 }
 
 static int64_t *collect_copy(int64_t *obj) {
@@ -191,6 +193,7 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
     _heap_size <<= 1;
     // allocate a new heap and copy over the current fromspace
     tmp = (int64_t *)malloc(_heap_size);
+    assert(tmp);
     size = (uint64_t)_fromspace_end - (uint64_t)_fromspace_begin;
     memcpy(tmp, _fromspace_begin, size);
     // update the new pointers
