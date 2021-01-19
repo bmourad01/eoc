@@ -18,7 +18,7 @@ enum {
   INT_MASK_OFFSET,
   BOOL_MASK_OFFSET,
   VOID_MASK_OFFSET,
-  
+
   TOTAL_TAG_OFFSET
 };
 
@@ -147,9 +147,7 @@ static void cheney(int64_t **rootstack_ptr) {
   tmp = _fromspace_end;
   _fromspace_end = _tospace_end;
   _tospace_end = tmp;
-
   _free_ptr = _fromspace_begin;
-  scan_ptr = _free_ptr;
 
   DBGPRINT("GC: copying roots\n");
 
@@ -163,7 +161,7 @@ static void cheney(int64_t **rootstack_ptr) {
   DBGPRINT("GC: copying reachable objects\n");
 
   // do a breadth-first search for all objects reachable from the root stack
-  while (scan_ptr < _free_ptr) {
+  for (scan_ptr = _fromspace_begin; scan_ptr < _free_ptr;) {
     obj = scan_ptr;
     length = LENGTH(*obj);
     ptr_mask = PTRMASK(*obj);
