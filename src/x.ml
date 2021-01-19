@@ -857,9 +857,7 @@ and uncover_live_cfg blocks cfg la_map lb_map = function
         let lb =
           match Hashtbl.find lb_map label with
           | None ->
-              if Cfg.out_degree cfg label = 0 then
-                (* these registers are always live after an exit node *)
-                Args.of_list [Reg RAX; Reg RSP; Reg RBP]
+              if Cfg.out_degree cfg label = 0 then exit_live_set
               else Args.empty
           | Some lb -> lb
         in
@@ -891,6 +889,8 @@ and uncover_live_cfg blocks cfg la_map lb_map = function
           uncover_live_cfg blocks cfg la_map lb_map
             (Hashtbl.find_exn blocks l))
         cfg label
+
+and exit_live_set = Args.of_list [Reg RAX; Reg RSP; Reg RBP]
 
 let rec build_interference = function
   | Program (info, blocks) ->
