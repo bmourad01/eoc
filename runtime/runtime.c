@@ -13,11 +13,14 @@
 #define DBGPRINT(x...)
 #endif
 
-#define TOTAL_TAG_OFFSET 4
-#define TAG_OFFSET 0
-#define INT_MASK_OFFSET 1
-#define BOOL_MASK_OFFSET 2
-#define VOID_MASK_OFFSET 3
+enum {
+  TAG_OFFSET = 0,
+  INT_MASK_OFFSET,
+  BOOL_MASK_OFFSET,
+  VOID_MASK_OFFSET,
+  
+  TOTAL_TAG_OFFSET
+};
 
 #define LENGTH_BITS 6
 #define PTRMASK_BITS 50
