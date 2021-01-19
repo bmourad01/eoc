@@ -959,49 +959,6 @@ let allocatable_regs =
 let num_regs = Array.length allocatable_regs
 
 let color_graph ?(bias = Interference_graph.empty) g =
-  let q =
-    Pairing_heap.create ~cmp:(fun (_, n) (_, m) -> Int.compare m n) ()
-  in
-  Interference_graph.iter_vertex
-    (function
-      | Arg.Var v as var when is_temp_var_name v ->
-          Pairing_heap.add q (var, Interference_graph.in_degree g var)
-      | _ -> ())
-    g;
-  let rec loop colors =
-    match Pairing_heap.pop q with
-    | None -> colors
-    | Some (u, _) ->
-        let assigned =
-          Interference_graph.fold_succ
-            (fun v assigned ->
-              match Map.find colors v with
-              | None -> assigned
-              | Some c -> Set.add assigned c)
-            g u Int.Set.empty
-        in
-        let bias_colors =
-          try
-            Interference_graph.succ bias u
-            |> List.filter_map ~f:(fun v ->
-                   Option.(
-                     Map.find colors v
-                     >>= fun c -> some_if (not (Set.mem assigned c)) c))
-            |> Int.Set.of_list
-          with Invalid_argument _ -> Int.Set.empty
-        in
-        let c =
-          match Set.min_elt bias_colors with
-          | Some c when c < num_regs -> c
-          | _ ->
-              let c = ref 0 in
-              while Set.mem assigned !c do
-                incr c
-              done;
-              !c
-        in
-        Map.set colors u c |> loop
-  in
   (* registers which we will not select *)
   let colors =
     Interference_graph.fold_vertex
@@ -1010,6 +967,8 @@ let color_graph ?(bias = Interference_graph.empty) g =
         | Reg RAX -> Map.set colors v (-1)
         | Reg RSP -> Map.set colors v (-2)
         | Reg RBP -> Map.set colors v (-3)
+        | Reg R11 -> Map.set colors v (-4)
+        | Reg R15 -> Map.set colors v (-5)
         | _ -> colors)
       g Arg_map.empty
   in
@@ -1019,7 +978,79 @@ let color_graph ?(bias = Interference_graph.empty) g =
         if Interference_graph.mem_vertex g a then Map.set colors a i
         else colors)
   in
-  loop colors
+  let colors = ref colors in
+  let saturation u =
+    Interference_graph.fold_succ
+      (fun v acc ->
+        match Map.find !colors v with
+        | None -> acc
+        | Some c -> Set.add acc c)
+      g u Int.Set.empty
+  in
+  (* create a priority queue for processing vertices *)
+  let q =
+    Pairing_heap.create
+      ~cmp:(fun u v ->
+        (* choose highest degree of saturation first *)
+        let su = Set.length (saturation u) in
+        let sv = Set.length (saturation v) in
+        if su > sv then -1
+        else if su < sv then 1
+        else
+          (* break ties by choosing the highest in-degree *)
+          let du = Interference_graph.in_degree g u in
+          let dv = Interference_graph.in_degree g v in
+          Int.compare dv du)
+      ()
+  in
+  (* map from vertices to their handles in the heap *)
+  let tokens =
+    Interference_graph.fold_vertex
+      (fun u acc ->
+        match u with
+        | Arg.Var v when is_temp_var_name v ->
+            Map.set acc u (Pairing_heap.add_removable q u)
+        | _ -> acc)
+      g Arg_map.empty
+    |> ref
+  in
+  let rec loop () =
+    match Pairing_heap.pop q with
+    | None -> !colors
+    | Some u ->
+        let sat = saturation u in
+        let c =
+          let bias_colors =
+            try
+              Interference_graph.succ bias u
+              |> List.filter_map ~f:(fun v ->
+                     Option.(
+                       Map.find !colors v
+                       >>= fun c -> some_if (not (Set.mem sat c)) c))
+              |> Int.Set.of_list
+            with Invalid_argument _ -> Int.Set.empty
+          in
+          (* find the appropriate color *)
+          let rec loop' c =
+            if Set.mem bias_colors c then c
+            else if Set.mem sat c then loop' (succ c)
+            else c
+          in
+          loop' 0
+        in
+        (* assign the color and then update the queue *)
+        colors := Map.set !colors u c;
+        Interference_graph.iter_succ
+          (function
+            | Arg.Var var as v when is_temp_var_name var ->
+                if not (Map.mem !colors v) then
+                  let token = Map.find_exn !tokens v in
+                  tokens := Map.set !tokens v (Pairing_heap.update q token v)
+            | _ -> ())
+          g u;
+        loop ()
+  in
+  loop ()
 
 let rec allocate_registers = function
   | Program (info, blocks) ->
@@ -1028,9 +1059,7 @@ let rec allocate_registers = function
         List.fold blocks ~init ~f:(fun init (_, Block (_, _, instrs)) ->
             List.fold instrs ~init ~f:(fun bias instr ->
                 match instr with
-                | MOV ((Arg.Var v1 as d), (Arg.Var v2 as s))
-                  when is_temp_var_name v1 && is_temp_var_name v2 ->
-                    Interference_graph.add_edge bias d s
+                | MOV (d, s) -> Interference_graph.add_edge bias d s
                 | _ -> bias))
       in
       let colors = color_graph info.conflicts ~bias in
