@@ -76,7 +76,7 @@ val type_check : R.t -> t
 
 type answer = [`Int of int | `Bool of bool | `Vector of answer array | `Void]
 
-val string_of_answer : answer -> string
+val string_of_answer : ?nested:bool -> answer -> string
 
 (* interpret a program *)
 

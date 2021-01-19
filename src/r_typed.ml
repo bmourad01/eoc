@@ -652,14 +652,17 @@ let read_int () =
 
 type answer = [`Int of int | `Bool of bool | `Vector of answer array | `Void]
 
-let rec string_of_answer = function
+let rec string_of_answer ?(nested = false) = function
   | `Int i -> Int.to_string i
   | `Bool false -> "#f"
   | `Bool true -> "#t"
   | `Vector as' ->
-      Printf.sprintf "'#(%s)"
-        ( Array.map as' ~f:string_of_answer
-        |> Array.to_list |> String.concat ~sep:" " )
+      let s =
+        Printf.sprintf "#(%s)"
+          ( Array.map as' ~f:(string_of_answer ~nested:true)
+          |> Array.to_list |> String.concat ~sep:" " )
+      in
+      if nested then s else "'" ^ s
   | `Void -> "#<void>"
 
 let rec interp ?(read = None) = function
