@@ -1235,7 +1235,10 @@ and remove_jumps_aux cfg blocks =
         else
           match List.last_exn instrs with
           | JMP label' when not (Label.equal label label') -> (
-              if Cfg.in_degree cfg label' = 1 then (
+              if
+                (* if the in-degree is 1 then we can safely merge the blocks *)
+                Cfg.in_degree cfg label' = 1
+              then (
                 let (Block (_, info', instrs')) =
                   Hashtbl.find_exn blocks' label'
                 in
@@ -1243,6 +1246,8 @@ and remove_jumps_aux cfg blocks =
                 Hashtbl.set merged label' label;
                 Some (label, Block (label, merge_info info info', instrs)) )
               else
+                (* if we're jumping to the immediate next block then
+                 * remove the jump in favor of an implicit fallthrough *)
                 match Hashtbl.find afters label with
                 | Some label'' when Label.equal label' label'' -> (
                   match List.drop_last instrs with
