@@ -10,6 +10,10 @@ let free_ptr = "_free_ptr"
 
 let fromspace_end = "_fromspace_end"
 
+let word_size = 8
+
+let tag_offset = 1
+
 type info = {typ: Type.t; nvars: int}
 
 type t = Program of info * exp
@@ -159,20 +163,19 @@ and expand_alloc n t ts es =
     in
     (* hardcode the idiom that allocates the vector triggering
      * the GC beforehand if there is not enough space *)
+    let bytes = (len + tag_offset) * word_size in
     Let
       ( newvar n
       , If
           ( Prim
               ( Lt
                   ( Prim
-                      ( Plus
-                          ( Globalvalue (free_ptr, Type.Integer)
-                          , Int (len lsl 3) )
+                      ( Plus (Globalvalue (free_ptr, Type.Integer), Int bytes)
                       , Type.Integer )
                   , Globalvalue (fromspace_end, Type.Integer) )
               , Type.Boolean )
           , Void
-          , Collect (len lsl 3)
+          , Collect bytes
           , Type.Void )
       , Let (v, Allocate (len, t), base, t)
       , t )

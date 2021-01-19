@@ -1,6 +1,8 @@
 open Core_kernel
 
-let word_size = 8
+let word_size = R_alloc.word_size
+
+let tag_offset = R_alloc.tag_offset
 
 module Cc = struct
   type t = E | NE | L | LE | G | GE
@@ -617,24 +619,26 @@ and select_instructions_exp a p =
   | C.(Prim (Vectorlength _, _)) -> assert false
   (* vector-ref *)
   | C.(Prim (Vectorref (Var (v, _), i), _)) ->
-      [MOV (Reg R11, Var v); MOV (a, Deref (Reg.R11, (i + 1) * word_size))]
+      [ MOV (Reg R11, Var v)
+      ; MOV (a, Deref (Reg.R11, (i + tag_offset) * word_size)) ]
   | C.(Prim (Vectorref _, _)) -> assert false
   (* vector-set *)
   | C.(Prim (Vectorset (Var (v1, _), i, Int n), _)) ->
       [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + 1) * word_size), Imm n)
+      ; MOV (Deref (Reg.R11, (i + tag_offset) * word_size), Imm n)
       ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Bool b), _)) ->
       [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + 1) * word_size), Imm (Bool.to_int b))
+      ; MOV
+          (Deref (Reg.R11, (i + tag_offset) * word_size), Imm (Bool.to_int b))
       ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Void), _)) ->
       [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + 1) * word_size), Imm 0)
+      ; MOV (Deref (Reg.R11, (i + tag_offset) * word_size), Imm 0)
       ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Var (v2, _)), _)) ->
       [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + 1) * word_size), Var v2)
+      ; MOV (Deref (Reg.R11, (i + tag_offset) * word_size), Var v2)
       ; XOR (a, a) ]
   | C.(Prim (Vectorset _, _)) -> assert false
   (* allocate *)
@@ -650,7 +654,7 @@ and select_instructions_exp a p =
         Imm ((ptr_mask lsl 7) lor (len lsl 1) lor 1)
       in
       [ MOV (Reg R11, Var Extern.free_ptr)
-      ; ADD (Var Extern.free_ptr, Imm ((n + 1) * word_size))
+      ; ADD (Var Extern.free_ptr, Imm ((n + tag_offset) * word_size))
       ; MOV (Deref (Reg.R11, 0), tag)
       ; MOV (a, Reg R11) ]
   | C.(Allocate _) -> assert false

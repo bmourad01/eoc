@@ -13,6 +13,7 @@
 #define DBGPRINT(x...)
 #endif
 
+#define TAG_OFFSET 1
 #define LENGTH_BITS 6
 #define PTRMASK_BITS 50
 
@@ -69,7 +70,7 @@ static int64_t *_collect_copy(int64_t *obj) {
 
   // has the object been copied yet?
   if (FORWARDING(*obj)) {
-    size = (LENGTH(*obj) + 1) << 3;
+    size = (LENGTH(*obj) + TAG_OFFSET) << 3;
     // copy the object
     new_obj = _free_ptr;
     memcpy(new_obj, obj, size);
@@ -115,7 +116,7 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   // do a breadth-first search for all objects reachable from the root stack
   while (scan_ptr < _free_ptr) {
     obj = scan_ptr;
-    length = LENGTH(*obj) + 1;
+    length = LENGTH(*obj) + TAG_OFFSET;
     mask = PTRMASK(*obj);
     for (i = 1; i < length; ++i) {
       if (mask & (1 << (i - 1))) {

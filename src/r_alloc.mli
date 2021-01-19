@@ -12,6 +12,10 @@ val free_ptr : string
 
 val fromspace_end : string
 
+val word_size : int
+
+val tag_offset : int
+
 (* same as the R_typed language, but with
  * special operators for allocating objects. *)
 
