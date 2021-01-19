@@ -1072,8 +1072,7 @@ let rec allocate_registers = function
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
             ( label
-            , allocate_registers_block info.locals_types colors stack_locs
-                vector_locs block ))
+            , allocate_registers_block colors stack_locs vector_locs block ))
       in
       let stack_space =
         match Map.data stack_locs |> Int.Set.of_list |> Set.min_elt with
@@ -1116,20 +1115,16 @@ and compute_locations ?(vector = false) colors locals_types =
             if ok then Map.find color_map data else None
         | _ -> None)
 
-and allocate_registers_block locals_types colors stack_locs vector_locs =
-  function
+and allocate_registers_block colors stack_locs vector_locs = function
   | Block (label, info, instrs) ->
       let instrs =
         List.map instrs
-          ~f:
-            (allocate_registers_instr locals_types colors stack_locs
-               vector_locs)
+          ~f:(allocate_registers_instr colors stack_locs vector_locs)
       in
       Block (label, info, instrs)
 
-and allocate_registers_instr locals_types colors stack_locs vector_locs instr
-    =
-  let color = color_arg locals_types colors stack_locs vector_locs in
+and allocate_registers_instr colors stack_locs vector_locs instr =
+  let color = color_arg colors stack_locs vector_locs in
   match instr with
   | ADD (a1, a2) ->
       let a1 = color a1 in
@@ -1195,7 +1190,7 @@ and allocate_registers_instr locals_types colors stack_locs vector_locs instr
       MOVZX (a1, a2)
   | JCC _ as j -> j
 
-and color_arg locals_types colors stack_locs vector_locs = function
+and color_arg colors stack_locs vector_locs = function
   | Arg.Var v as a when is_temp_var_name v -> (
     match Map.find stack_locs a with
     | Some loc -> Deref (RBP, loc)
