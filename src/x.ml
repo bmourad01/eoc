@@ -987,7 +987,7 @@ let color_graph ?(bias = Interference_graph.empty) g =
         | Some c -> Set.add acc c)
       g u Int.Set.empty
   in
-  (* create a priority queue for processing vertices *)
+  (* create a priority heap for processing vertices *)
   let q =
     Pairing_heap.create
       ~cmp:(fun u v ->
@@ -1035,7 +1035,7 @@ let color_graph ?(bias = Interference_graph.empty) g =
           in
           loop' 0
         in
-        (* assign the color and then update the queue *)
+        (* assign the color and then update all neighbors *)
         colors := Map.set !colors u c;
         Interference_graph.iter_succ
           (function
