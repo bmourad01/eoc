@@ -1145,11 +1145,6 @@ let rec remove_jumps = function
 
 and remove_jumps_aux cfg blocks =
   let afters = Hashtbl.create (module Label) in
-  let rec interleave_pairs = function
-    | [] -> []
-    | (x, _) :: (y, b) :: rest -> (x, y) :: interleave_pairs ((y, b) :: rest)
-    | [x] -> []
-  in
   List.iter (interleave_pairs blocks) ~f:(fun (x, y) ->
       Hashtbl.set afters x y);
   let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
@@ -1192,3 +1187,7 @@ and remove_jumps_aux cfg blocks =
   in
   if Hashtbl.is_empty merged then (cfg, blocks)
   else remove_jumps_aux cfg blocks
+
+and interleave_pairs = function
+  | [] | [_] -> []
+  | (x, _) :: (y, b) :: rest -> (x, y) :: interleave_pairs ((y, b) :: rest)
