@@ -704,13 +704,19 @@ let function_prologue rootstack_spills stack_space w =
     else [SUB (Reg RSP, Imm (stack_space + (word_size * adj)))]
   in
   let init =
+    let adj_rootstk =
+      if rootstack_spills > 0 then
+        List.init rootstack_spills ~f:(fun i ->
+            MOV (Deref (R15, i * word_size), Imm 0))
+        @ [ADD (Reg R15, Imm (rootstack_spills * word_size))]
+      else []
+    in
     [ MOV (Reg RDI, Imm 0x4000)
       (* let's use a very small number to trigger the GC *)
     ; MOV (Reg RSI, Imm 16)
     ; CALL (Extern.initialize, 2)
-    ; MOV (Reg R15, Var Extern.rootstack_begin)
-    ; MOV (Deref (R15, 0), Imm 0)
-    ; ADD (Reg R15, Imm (rootstack_spills * word_size)) ]
+    ; MOV (Reg R15, Var Extern.rootstack_begin) ]
+    @ adj_rootstk
   in
   setup_frame @ callee_save_in_use @ adj_sp @ init
 
