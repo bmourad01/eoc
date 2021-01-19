@@ -1,5 +1,6 @@
 #!/bin/sh
 
+# exit on error
 set -e
 
 INPROG=$1
@@ -10,8 +11,15 @@ ASMFILE="${DIR}${PROGNAME}.S"
 OBJFILE="${DIR}${PROGNAME}.o"
 RUNTIMEOBJ="${DIR}runtime.o"
 
+# setup output directory
 mkdir -p $DIR
+
+# compile and assemble the program
 dune exec bin/print_x86.exe $1 > $ASMFILE
 nasm -g -f elf64 -o $OBJFILE $ASMFILE
+
+# compile the C runtime
 gcc -g -c runtime/runtime.c -o $RUNTIMEOBJ
+
+# link into an executable
 gcc -g -o "${DIR}$PROGNAME" $OBJFILE $RUNTIMEOBJ
