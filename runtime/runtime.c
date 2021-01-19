@@ -113,7 +113,6 @@ static int64_t *_collect_copy(int64_t *obj) {
   // has the object been copied yet?
   if (FORWARDING(*obj)) {
     size = (LENGTH(*obj) + TOTAL_TAG_OFFSET) << 3;
-    DBGPRINT("copy %p, size %ld, length %016LX\n", obj, size, LENGTH(*obj));
     // copy the object
     new_obj = _free_ptr;
     memcpy(new_obj, obj, size);
