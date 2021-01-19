@@ -1023,17 +1023,22 @@ let color_graph ?(bias = Interference_graph.empty) g =
           let bias_colors =
             try
               Interference_graph.succ bias u
-              |> List.filter_map ~f:(Map.find !colors)
+              |> List.filter_map ~f:(fun v ->
+                     Option.(
+                       Map.find !colors v
+                       >>= fun c -> some_if (not (Set.mem sat c)) c))
               |> Int.Set.of_list
             with Invalid_argument _ -> Int.Set.empty
           in
           (* find the appropriate color *)
-          let rec loop' c =
-            if Set.mem sat c then loop' (succ c)
-            else if Set.mem bias_colors c then c
-            else c
-          in
-          loop' 0
+          match Set.min_elt bias_colors with
+          | Some c when c >= 0 && c < num_regs -> c
+          | _ ->
+              let c = ref 0 in
+              while Set.mem sat !c do
+                incr c
+              done;
+              !c
         in
         (* assign the color and then update all neighbors *)
         colors := Map.set !colors u c;
