@@ -149,8 +149,10 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   DBGPRINT("GC: copying roots\n");
 
   // copy all roots first
-  for (r = rootstack_ptr; r >= _rootstack_begin && (p = *r);) {
-    *r-- = _collect_copy(p);
+  for (r = rootstack_ptr; r >= _rootstack_begin; r--) {
+    if ((p = *r)) {
+      *r = _collect_copy(p);
+    }
   }
 
   DBGPRINT("GC: copying reachable objects\n");
