@@ -179,6 +179,7 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
     // double the current size
     _heap_size <<= 1;
     // allocate a new heap and copy over the current fromspace
+    // XXX: how about freeing the old heap? when is it safe to do so?
     tmp = (int64_t *)malloc(_heap_size);
     size = (uint64_t)_fromspace_end - (uint64_t)_fromspace_begin;
     memcpy(tmp, _fromspace_begin, size);
