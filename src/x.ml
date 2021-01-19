@@ -1013,14 +1013,6 @@ let color_graph ?(bias = Interference_graph.empty) g =
 
 let rec allocate_registers = function
   | Program (info, blocks) ->
-      (* this pass actually subsumes the assign-homes and
-       * uncover-locals passes described in the book.
-       * since every local var has been colored, its
-       * color will either correspond to a register or
-       * a stack offset, and since our memory layout
-       * is very simple (all values are word-sized),
-       * we don't need to carry any type information
-       * for this pass to work properly. *)
       let bias =
         let init = Interference_graph.empty in
         List.fold blocks ~init ~f:(fun init (_, Block (_, _, instrs)) ->
@@ -1141,8 +1133,6 @@ and color_arg rootstack_spills locals_types colors = function
           let offset = (c - num_regs + 1) * word_size in
           match Map.find_exn locals_types v with
           | C.Type.Vector _ ->
-              (* R15 points to the "bottom" of the root
-               * stack, so we have to increment downwards *)
               Hash_set.add rootstack_spills v;
               Deref (R15, -(offset - word_size))
           | _ -> Deref (RBP, -offset) ) )
