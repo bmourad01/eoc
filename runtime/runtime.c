@@ -53,7 +53,7 @@ void _print_bool(int64_t i) {
 
 void _print_void() { printf("#<void>\n"); }
 
-static void _print_vector_aux(int64_t *vec, bool nested) {
+static void print_vector_aux(int64_t *vec, bool nested) {
   int64_t tag, ptr_mask, int_mask, bool_mask, void_mask, val;
   uint64_t i, length, bit;
 
@@ -72,7 +72,7 @@ static void _print_vector_aux(int64_t *vec, bool nested) {
     val = vec[i + TOTAL_TAG_OFFSET];
     bit = 1 << i;
     if (bit & ptr_mask) {
-      _print_vector_aux((int64_t *)val, true);
+      print_vector_aux((int64_t *)val, true);
     } else if (bit & int_mask) {
       printf("%ld", val);
     } else if (bit & bool_mask) {
@@ -92,7 +92,7 @@ static void _print_vector_aux(int64_t *vec, bool nested) {
 }
 
 void _print_vector(int64_t *vec) {
-  _print_vector_aux(vec, false);
+  print_vector_aux(vec, false);
   printf("\n");
 }
 
@@ -106,7 +106,7 @@ void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _rootstack_begin = (int64_t **)malloc(rootstack_size);
 }
 
-static int64_t *_collect_copy(int64_t *obj) {
+static int64_t *collect_copy(int64_t *obj) {
   uint64_t size;
   int64_t *new_obj;
 
@@ -131,9 +131,9 @@ static int64_t *_collect_copy(int64_t *obj) {
   return new_obj;
 }
 
-void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
+static void cheney(int64_t **rootstack_ptr) {
   int64_t *p, **r, *tmp, *scan_ptr, *obj;
-  uint64_t i, length, size, ptr_mask;
+  uint64_t i, length, ptr_mask;
 
   // swap fromspace with tospace
   tmp = _fromspace_begin;
@@ -151,7 +151,7 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   // copy all roots first
   for (r = rootstack_ptr; r >= _rootstack_begin; --r) {
     if ((p = *r)) {
-      *r = _collect_copy(p);
+      *r = collect_copy(p);
     }
   }
 
@@ -165,17 +165,23 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
     for (i = 0; i < length; ++i) {
       if (ptr_mask & (1 << i)) {
         obj[i + TOTAL_TAG_OFFSET] =
-            (int64_t)_collect_copy((int64_t *)obj[i + TOTAL_TAG_OFFSET]);
+            (int64_t)collect_copy((int64_t *)obj[i + TOTAL_TAG_OFFSET]);
       }
     }
     scan_ptr =
         (int64_t *)((uint64_t)scan_ptr + ((length + TOTAL_TAG_OFFSET) << 3));
   }
+}
 
+void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
+  int64_t *tmp;
+  uint64_t size;
+
+  cheney(rootstack_ptr);
   DBGPRINT("GC: checking for sufficient space\n");
 
   // check if we need to resize the heap
-  if (((uint64_t)_free_ptr + bytes) >= (uint64_t)_fromspace_end) {
+  while (((uint64_t)_free_ptr + bytes) >= (uint64_t)_fromspace_end) {
     DBGPRINT("GC: resizing the heap from %ld to %ld bytes\n", _heap_size,
              _heap_size << 1);
     // double the current size
@@ -191,6 +197,6 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
     _tospace_begin = _fromspace_end;
     _tospace_end = (int64_t *)((uint64_t)tmp + _heap_size);
     // run the GC again
-    _collect(rootstack_ptr, bytes);
+    cheney(rootstack_ptr);
   }
 }
