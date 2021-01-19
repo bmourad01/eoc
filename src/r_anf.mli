@@ -27,7 +27,7 @@ and exp =
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
 
-and atom = Int of int | Bool of bool | Var of var * Type.t | Void
+and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
 
 and prim =
   | Read

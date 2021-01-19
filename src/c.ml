@@ -38,7 +38,7 @@ and exp =
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
 
-and atom = Int of int | Bool of bool | Var of var * Type.t | Void
+and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
 
 and prim =
   | Read
@@ -101,7 +101,7 @@ and string_of_exp = function
   | Globalvalue (v, _) -> Printf.sprintf "(global-value '%s)" v
 
 and string_of_atom = function
-  | Int i -> Int.to_string i
+  | Int i -> Int64.to_string i
   | Bool b -> if b then "#t" else "#f"
   | Var (v, _) -> v
   | Void -> "(void)"
@@ -150,7 +150,7 @@ and string_of_cmp (cmp, a1, a2) =
 
 let read_int () =
   Out_channel.(flush stdout);
-  Int.of_string In_channel.(input_line_exn stdin)
+  Int64.of_string In_channel.(input_line_exn stdin)
 
 type answer = R_typed.answer
 
@@ -187,7 +187,7 @@ and interp_exp ?(read = None) env = function
   | Atom a -> interp_atom env a
   | Prim (p, _) -> interp_prim env p ~read
   | Allocate (n, _) -> `Vector (Array.init n ~f:(fun _ -> `Void))
-  | Globalvalue _ -> `Int 0
+  | Globalvalue _ -> `Int 0L
 
 and interp_atom ?(read = None) env = function
   | Int i -> `Int i
@@ -205,64 +205,64 @@ and interp_prim ?(read = None) env = function
     | None -> `Int (read_int ()) )
   | Minus a -> (
     match interp_atom env a with
-    | `Int i -> `Int (-i)
+    | `Int i -> `Int Int64.(-i)
     | _ -> assert false )
   | Plus (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Int (i1 + i2)
+    | `Int i1, `Int i2 -> `Int Int64.(i1 + i2)
     | _ -> assert false )
   | Subtract (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Int (i1 - i2)
+    | `Int i1, `Int i2 -> `Int Int64.(i1 - i2)
     | _ -> assert false )
   | Mult (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Int (i1 * i2)
+    | `Int i1, `Int i2 -> `Int Int64.(i1 * i2)
     | _ -> assert false )
   | Div (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Int (i1 / i2)
+    | `Int i1, `Int i2 -> `Int Int64.(i1 / i2)
     | _ -> assert false )
   | Rem (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Int (i1 mod i2)
+    | `Int i1, `Int i2 -> `Int Int64.(rem i1 i2)
     | _ -> assert false )
   | Land (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Int (i1 land i2)
+    | `Int i1, `Int i2 -> `Int Int64.(i1 land i2)
     | _ -> assert false )
   | Lor (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Int (i1 lor i2)
+    | `Int i1, `Int i2 -> `Int Int64.(i1 lor i2)
     | _ -> assert false )
   | Lxor (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Int (i1 lxor i2)
+    | `Int i1, `Int i2 -> `Int Int64.(i1 lxor i2)
     | _ -> assert false )
   | Lnot a -> (
     match interp_atom env a with
-    | `Int i -> `Int (lnot i)
+    | `Int i -> `Int Int64.(lnot i)
     | _ -> assert false )
   | Eq (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Bool (i1 = i2)
+    | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
     | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
     | _ -> assert false )
   | Lt (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Bool (i1 < i2)
+    | `Int i1, `Int i2 -> `Bool Int64.(i1 < i2)
     | _ -> assert false )
   | Le (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Bool (i1 <= i2)
+    | `Int i1, `Int i2 -> `Bool Int64.(i1 <= i2)
     | _ -> assert false )
   | Gt (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Bool (i1 > i2)
+    | `Int i1, `Int i2 -> `Bool Int64.(i1 > i2)
     | _ -> assert false )
   | Ge (a1, a2) -> (
     match (interp_atom env a1, interp_atom env a2) with
-    | `Int i1, `Int i2 -> `Bool (i1 >= i2)
+    | `Int i1, `Int i2 -> `Bool Int64.(i1 >= i2)
     | _ -> assert false )
   | Not a -> (
     match interp_atom env a with
@@ -270,7 +270,7 @@ and interp_prim ?(read = None) env = function
     | _ -> assert false )
   | Vectorlength a -> (
     match interp_atom env a with
-    | `Vector v -> `Int (Array.length v)
+    | `Vector v -> `Int Int64.(Array.length v |> of_int)
     | _ -> assert false )
   | Vectorref (a, i) -> (
     match interp_atom env a with

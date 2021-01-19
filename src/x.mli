@@ -41,7 +41,7 @@ end
 
 module Arg : sig
   type t =
-    | Imm of int
+    | Imm of Int64.t
     | Reg of Reg.t
     | Bytereg of Bytereg.t
     | Deref of Reg.t * int

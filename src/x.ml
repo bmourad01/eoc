@@ -104,7 +104,7 @@ let is_temp_var_name = String.is_prefix ~prefix:"%"
 module Arg = struct
   module T = struct
     type t =
-      | Imm of int
+      | Imm of Int64.t
       | Reg of Reg.t
       | Bytereg of Bytereg.t
       | Deref of Reg.t * int
@@ -112,7 +112,7 @@ module Arg = struct
     [@@deriving equal, compare, hash, sexp]
 
     let to_string = function
-      | Imm i -> Int.to_string i
+      | Imm i -> Int64.to_string i
       | Reg r -> Reg.to_string r
       | Bytereg r -> Bytereg.to_string r
       | Deref (r, i) ->
@@ -338,7 +338,7 @@ and string_of_instr = function
       Printf.sprintf "movzx %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | JCC (cc, l) -> Printf.sprintf "j%s %s" (Cc.to_string cc) l
 
-let fits_int32 i = Option.is_some (Int32.of_int i)
+let fits_int32 i = Option.is_some (Int64.to_int32 i)
 
 let rec select_instructions = function
   | C.Program (info, tails) ->
@@ -372,11 +372,11 @@ and select_instructions_tail tails t =
   (* if *)
   | C.If ((cmp, Int i1, Int i2), lt, lf) -> (
     match cmp with
-    | Eq -> if Int.(i1 = i2) then [JMP lt] else [JMP lf]
-    | Lt -> if Int.(i1 < i2) then [JMP lt] else [JMP lf]
-    | Le -> if Int.(i1 <= i2) then [JMP lt] else [JMP lf]
-    | Gt -> if Int.(i1 > i2) then [JMP lt] else [JMP lf]
-    | Ge -> if Int.(i1 >= i2) then [JMP lt] else [JMP lf] )
+    | Eq -> if Int64.(i1 = i2) then [JMP lt] else [JMP lf]
+    | Lt -> if Int64.(i1 < i2) then [JMP lt] else [JMP lf]
+    | Le -> if Int64.(i1 <= i2) then [JMP lt] else [JMP lf]
+    | Gt -> if Int64.(i1 > i2) then [JMP lt] else [JMP lf]
+    | Ge -> if Int64.(i1 >= i2) then [JMP lt] else [JMP lf] )
   | C.If ((cmp, Bool b1, Bool b2), lt, lf) -> (
     match cmp with
     | Eq -> if Bool.equal b1 b2 then [JMP lt] else [JMP lf]
@@ -409,14 +409,17 @@ and select_instructions_stmt s =
   match s with
   | C.Assign (v, e) -> select_instructions_exp (Var v) e
   | C.Collect n ->
-      [MOV (Reg RDI, Reg R15); MOV (Reg RSI, Imm n); CALL (Extern.collect, 2)]
+      [ MOV (Reg RDI, Reg R15)
+      ; MOV (Reg RSI, Imm Int64.(of_int n))
+      ; CALL (Extern.collect, 2) ]
 
 and select_instructions_exp a p =
   let open Arg in
   match p with
   (* atom *)
-  | C.(Atom (Int i)) -> if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
-  | C.(Atom (Bool b)) -> if not b then [XOR (a, a)] else [MOV (a, Imm 1)]
+  | C.(Atom (Int i)) ->
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Atom (Bool b)) -> if not b then [XOR (a, a)] else [MOV (a, Imm 1L)]
   | C.(Atom (Var (v, _))) -> [MOV (a, Var v)]
   | C.(Atom Void) -> [XOR (a, a)]
   (* read *)
@@ -426,13 +429,13 @@ and select_instructions_exp a p =
       | Arg.Reg RAX -> [c]
       | _ -> [c; MOV (a, Reg RAX)] )
   (* minus *)
-  | C.(Prim (Minus (Int i), _)) -> [MOV (a, Imm (-i))]
+  | C.(Prim (Minus (Int i), _)) -> [MOV (a, Imm Int64.(-i))]
   | C.(Prim (Minus (Var (v, t)), _)) -> [MOV (a, Var v); NEG a]
   | C.(Prim (Minus _, _)) -> assert false
   (* plus *)
   | C.(Prim (Plus (Int i1, Int i2), _)) ->
-      let i = i1 + i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+      let i = Int64.(i1 + i2) in
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Prim (Plus (Var (v, t), Int i), _))
    |C.(Prim (Plus (Int i, Var (v, t)), _)) -> [MOV (a, Var v); ADD (a, Imm i)]
   | C.(Prim (Plus (Var (v1, _), Var (v2, _)), _)) ->
@@ -440,8 +443,8 @@ and select_instructions_exp a p =
   | C.(Prim (Plus _, _)) -> assert false
   (* subtract *)
   | C.(Prim (Subtract (Int i1, Int i2), _)) ->
-      let i = i1 - i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm (i1 - i2))]
+      let i = Int64.(i1 - i2) in
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Prim (Subtract (Var (v, _), Int i), _)) ->
       [MOV (a, Var v); SUB (a, Imm i)]
   | C.(Prim (Subtract (Int i, Var (v, _)), _)) ->
@@ -450,11 +453,11 @@ and select_instructions_exp a p =
       [MOV (a, Var v1); SUB (a, Var v2)]
   | C.(Prim (Subtract _, _)) -> assert false
   (* mult *)
-  | C.(Prim (Mult (_, Int 0), _)) | C.(Prim (Mult (Int 0, _), _)) ->
+  | C.(Prim (Mult (_, Int 0L), _)) | C.(Prim (Mult (Int 0L, _), _)) ->
       [XOR (a, a)]
   | C.(Prim (Mult (Int i1, Int i2), _)) ->
-      let i = i1 * i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+      let i = Int64.(i1 * i2) in
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Prim (Mult (Var (v, _), Int i), _))
    |C.(Prim (Mult (Int i, Var (v, _)), _)) ->
       if fits_int32 i then [IMULi (a, Var v, Imm i)]
@@ -463,10 +466,10 @@ and select_instructions_exp a p =
       [MOV (a, Var v1); IMUL (a, Var v2)]
   | C.(Prim (Mult _, _)) -> assert false
   (* div *)
-  | C.(Prim (Div (Int 0, _), _)) -> [XOR (a, a)]
+  | C.(Prim (Div (Int 0L, _), _)) -> [XOR (a, a)]
   | C.(Prim (Div (Int i1, Int i2), _)) ->
-      let i = i1 / i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+      let i = Int64.(i1 / i2) in
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Prim (Div (Var (v, _), Int i), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Var v)
@@ -485,10 +488,10 @@ and select_instructions_exp a p =
       ; MOV (a, Reg RAX) ]
   | C.(Prim (Div _, _)) -> assert false
   (* rem *)
-  | C.(Prim (Rem (Int 0, _), _)) -> [XOR (a, a)]
+  | C.(Prim (Rem (Int 0L, _), _)) -> [XOR (a, a)]
   | C.(Prim (Rem (Int i1, Int i2), _)) ->
-      let i = i1 mod i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+      let i = Int64.(rem i1 i2) in
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Prim (Rem (Var (v, _), Int i), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Var v)
@@ -507,11 +510,11 @@ and select_instructions_exp a p =
       ; MOV (a, Reg RDX) ]
   | C.(Prim (Rem _, _)) -> assert false
   (* land *)
-  | C.(Prim (Land (Int 0, _), _)) | C.(Prim (Land (_, Int 0), _)) ->
+  | C.(Prim (Land (Int 0L, _), _)) | C.(Prim (Land (_, Int 0L), _)) ->
       [XOR (a, a)]
   | C.(Prim (Land (Int i1, Int i2), _)) ->
-      let i = i1 land i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+      let i = Int64.(i1 land i2) in
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Prim (Land (Var (v, _), Int i), _))
    |C.(Prim (Land (Int i, Var (v, _)), _)) -> [MOV (a, Var v); AND (a, Imm i)]
   | C.(Prim (Land (Var (v1, _), Var (v2, _)), _)) when String.equal v1 v2 ->
@@ -521,10 +524,10 @@ and select_instructions_exp a p =
   | C.(Prim (Land _, _)) -> assert false
   (* lor *)
   | C.(Prim (Lor (Int i1, Int i2), _)) ->
-      let i = i1 land i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm (i1 lor i2))]
-  | C.(Prim (Lor (Var (v, _), Int 0), _))
-   |C.(Prim (Lor (Int 0, Var (v, _)), _)) -> [MOV (a, Var v)]
+      let i = Int64.(i1 lor i2) in
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Lor (Var (v, _), Int 0L), _))
+   |C.(Prim (Lor (Int 0L, Var (v, _)), _)) -> [MOV (a, Var v)]
   | C.(Prim (Lor (Var (v, _), Int i), _))
    |C.(Prim (Lor (Int i, Var (v, _)), _)) -> [MOV (a, Var v); OR (a, Imm i)]
   | C.(Prim (Lor (Var (v1, _), Var (v2, _)), _)) when String.equal v1 v2 ->
@@ -534,8 +537,8 @@ and select_instructions_exp a p =
   | C.(Prim (Lor _, _)) -> assert false
   (* lxor *)
   | C.(Prim (Lxor (Int i1, Int i2), _)) ->
-      let i = i1 lxor i2 in
-      if Int.(i = 0) then [XOR (a, a)] else [MOV (a, Imm i)]
+      let i = Int64.(i1 lxor i2) in
+      if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
   | C.(Prim (Lxor (Var (v, _), Int i), _))
    |C.(Prim (Lxor (Int i, Var (v, _)), _)) -> [MOV (a, Var v); XOR (a, Imm i)]
   | C.(Prim (Lxor (Var (v1, _), Var (v2, _)), _)) when String.equal v1 v2 ->
@@ -544,14 +547,14 @@ and select_instructions_exp a p =
       [MOV (a, Var v1); XOR (a, Var v2)]
   | C.(Prim (Lxor _, _)) -> assert false
   (* lnot *)
-  | C.(Prim (Lnot (Int i), _)) -> [MOV (a, Imm (lnot i))]
+  | C.(Prim (Lnot (Int i), _)) -> [MOV (a, Imm Int64.(lnot i))]
   | C.(Prim (Lnot (Var (v, _)), _)) -> [MOV (a, Var v); NOT a]
   | C.(Prim (Lnot _, _)) -> assert false
   (* eq *)
   | C.(Prim (Eq (Int i1, Int i2), _)) ->
-      if Int.(i1 = i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+      if Int64.(i1 = i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Eq (Bool b1, Bool b2), _)) ->
-      if Bool.equal b1 b2 then [MOV (a, Imm 1)] else [XOR (a, a)]
+      if Bool.equal b1 b2 then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Eq (Var (v, _), Int i), _))
    |C.(Prim (Eq (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.E, Bytereg AL); MOVZX (a, Bytereg AL)]
@@ -560,7 +563,7 @@ and select_instructions_exp a p =
       let cc = if not b then Cc.E else Cc.NE in
       [TEST (Var v, Var v); SETCC (cc, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Eq (Var (v1, _), Var (v2, _)), _)) ->
-      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.E, Bytereg AL)
@@ -568,13 +571,13 @@ and select_instructions_exp a p =
   | C.(Prim (Eq _, _)) -> assert false
   (* lt *)
   | C.(Prim (Lt (Int i1, Int i2), _)) ->
-      if Int.(i1 < i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+      if Int64.(i1 < i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Lt (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Lt (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Lt (Var (v1, _), Var (v2, _)), _)) ->
-      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.L, Bytereg AL)
@@ -582,13 +585,13 @@ and select_instructions_exp a p =
   | C.(Prim (Lt _, _)) -> assert false
   (* le *)
   | C.(Prim (Le (Int i1, Int i2), _)) ->
-      if Int.(i1 <= i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+      if Int64.(i1 <= i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Le (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.LE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Le (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.GE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Le (Var (v1, _), Var (v2, _)), _)) ->
-      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.LE, Bytereg AL)
@@ -596,13 +599,13 @@ and select_instructions_exp a p =
   | C.(Prim (Le _, _)) -> assert false
   (* gt *)
   | C.(Prim (Gt (Int i1, Int i2), _)) ->
-      if Int.(i1 > i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+      if Int64.(i1 > i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Gt (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Gt (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Gt (Var (v1, _), Var (v2, _)), _)) ->
-      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.G, Bytereg AL)
@@ -610,26 +613,28 @@ and select_instructions_exp a p =
   | C.(Prim (Gt _, _)) -> assert false
   (* ge *)
   | C.(Prim (Ge (Int i1, Int i2), _)) ->
-      if Int.(i1 >= i2) then [MOV (a, Imm 1)] else [XOR (a, a)]
+      if Int64.(i1 >= i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Ge (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.GE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Ge (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.LE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Ge (Var (v1, _), Var (v2, _)), _)) ->
-      if String.equal v1 v2 then [MOV (a, Imm 1)]
+      if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
         ; SETCC (Cc.GE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Ge _, _)) -> assert false
   (* not *)
-  | C.(Prim (Not (Bool b), _)) -> if b then [XOR (a, a)] else [MOV (a, Imm 1)]
-  | C.(Prim (Not (Var (v, _)), _)) -> [MOV (a, Var v); XOR (a, Imm 1)]
+  | C.(Prim (Not (Bool b), _)) ->
+      if b then [XOR (a, a)] else [MOV (a, Imm 1L)]
+  | C.(Prim (Not (Var (v, _)), _)) -> [MOV (a, Var v); XOR (a, Imm 1L)]
   | C.(Prim (Not _, _)) -> assert false
   (* vector-length *)
   | C.(Prim (Vectorlength (Var (_, Type.Vector ts)), _)) ->
       let len = List.length ts in
-      if Int.(len = 0) then [XOR (a, a)] else [MOV (a, Imm len)]
+      if Int.(len = 0) then [XOR (a, a)]
+      else [MOV (a, Imm Int64.(of_int len))]
   | C.(Prim (Vectorlength _, _)) -> assert false
   (* vector-ref *)
   | C.(Prim (Vectorref (Var (v, _), i), _)) ->
@@ -645,11 +650,11 @@ and select_instructions_exp a p =
       [ MOV (Reg R11, Var v1)
       ; MOV
           ( Deref (Reg.R11, (i + total_tag_offset) * word_size)
-          , Imm (Bool.to_int b) )
+          , Imm (Bool.to_int b |> Int64.of_int) )
       ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Void), _)) ->
       [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm 0)
+      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm 0L)
       ; XOR (a, a) ]
   | C.(Prim (Vectorset (Var (v1, _), i, Var (v2, _)), _)) ->
       [ MOV (Reg R11, Var v1)
@@ -678,11 +683,21 @@ and select_instructions_exp a p =
             | _ -> acc)
       in
       [ MOV (Reg R11, Var Extern.free_ptr)
-      ; ADD (Var Extern.free_ptr, Imm ((n + total_tag_offset) * word_size))
-      ; MOV (Deref (Reg.R11, tag_offset * word_size), Imm vec_tag)
-      ; MOV (Deref (Reg.R11, int_mask_offset * word_size), Imm int_mask)
-      ; MOV (Deref (Reg.R11, bool_mask_offset * word_size), Imm bool_mask)
-      ; MOV (Deref (Reg.R11, void_mask_offset * word_size), Imm void_mask)
+      ; ADD
+          ( Var Extern.free_ptr
+          , Imm (Int64.of_int ((n + total_tag_offset) * word_size)) )
+      ; MOV
+          ( Deref (Reg.R11, tag_offset * word_size)
+          , Imm Int64.(of_int vec_tag) )
+      ; MOV
+          ( Deref (Reg.R11, int_mask_offset * word_size)
+          , Imm Int64.(of_int int_mask) )
+      ; MOV
+          ( Deref (Reg.R11, bool_mask_offset * word_size)
+          , Imm Int64.(of_int bool_mask) )
+      ; MOV
+          ( Deref (Reg.R11, void_mask_offset * word_size)
+          , Imm Int64.(of_int void_mask) )
       ; MOV (a, Reg R11) ]
   | C.(Allocate _) -> assert false
   (* global-value *)
@@ -700,21 +715,21 @@ let function_prologue rootstack_spills stack_space w =
      * as prescribed by the System V ABI *)
     let adj = List.length callee_save_in_use mod 2 in
     if stack_space <= 0 then
-      if adj <> 0 then [] else [SUB (Reg RSP, Imm word_size)]
-    else [SUB (Reg RSP, Imm (stack_space + (word_size * adj)))]
+      if adj <> 0 then [] else [SUB (Reg RSP, Imm Int64.(of_int word_size))]
+    else [SUB (Reg RSP, Imm (Int64.of_int (stack_space + (word_size * adj))))]
   in
   let init =
     let adj_rootstk =
       if rootstack_spills > 0 then
         [MOV (Reg R15, Var Extern.rootstack_begin)]
         @ List.init rootstack_spills ~f:(fun i ->
-              MOV (Deref (R15, i * word_size), Imm 0))
-        @ [ADD (Reg R15, Imm (rootstack_spills * word_size))]
+              MOV (Deref (R15, i * word_size), Imm 0L))
+        @ [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
       else []
     in
-    [ MOV (Reg RDI, Imm 0x4000)
+    [ MOV (Reg RDI, Imm 0x4000L)
       (* let's use a very small number to trigger the GC *)
-    ; MOV (Reg RSI, Imm 16)
+    ; MOV (Reg RSI, Imm 16L)
     ; CALL (Extern.initialize, 2) ]
     @ adj_rootstk
   in
@@ -726,14 +741,14 @@ let function_epilogue rootstack_spills typ label stack_space w instrs =
   in
   let adj_rootstk =
     if rootstack_spills > 0 then
-      [SUB (Reg R15, Imm (rootstack_spills * word_size))]
+      [SUB (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
     else []
   in
   let adj_sp =
     let adj = List.length callee_save_in_use mod 2 in
     if stack_space <= 0 then
-      if adj <> 0 then [] else [ADD (Reg RSP, Imm word_size)]
-    else [ADD (Reg RSP, Imm (stack_space + (word_size * adj)))]
+      if adj <> 0 then [] else [ADD (Reg RSP, Imm Int64.(of_int word_size))]
+    else [ADD (Reg RSP, Imm (Int64.of_int (stack_space + (word_size * adj))))]
   in
   let restore_frame = if stack_space <= 0 then [] else [POP (Reg RBP)] in
   let epilogue = adj_rootstk @ adj_sp @ callee_save_in_use @ restore_frame in

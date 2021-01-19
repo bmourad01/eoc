@@ -19,7 +19,7 @@ and exp =
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
 
-and atom = Int of int | Bool of bool | Var of var * Type.t | Void
+and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
 
 and prim =
   | Read
@@ -60,7 +60,7 @@ and string_of_exp = function
   | Globalvalue (v, _) -> Printf.sprintf "(global-value '%s)" v
 
 and string_of_atom = function
-  | Int i -> Int.to_string i
+  | Int i -> Int64.to_string i
   | Bool b -> if b then "#t" else "#f"
   | Var (v, _) -> v
   | Void -> "(void)"
@@ -139,8 +139,8 @@ and resolve_complex_atom m n = function
       let nv2, a2 = resolve_complex_atom m n e2 in
       let x = fresh_var n in
       (nv1 @ nv2 @ [(x, Prim (Subtract (a1, a2), t))], Var (x, t))
-  | R_alloc.(Prim (Mult (e, Int -1), t))
-   |R_alloc.(Prim (Mult (Int -1, e), t)) ->
+  | R_alloc.(Prim (Mult (e, Int -1L), t))
+   |R_alloc.(Prim (Mult (Int -1L, e), t)) ->
       let nv, a = resolve_complex_atom m n e in
       let x = fresh_var n in
       (nv @ [(x, Prim (Minus a, t))], Var (x, t))

@@ -26,7 +26,7 @@ type info = {typ: Type.t}
 type t = Program of info * exp
 
 and exp =
-  | Int of int
+  | Int of Int64.t
   | Bool of bool
   | Void
   | Prim of prim * Type.t
@@ -63,7 +63,7 @@ let rec to_string = function
   | Program (_, exp) -> string_of_exp exp
 
 and string_of_exp = function
-  | Int i -> Int.to_string i
+  | Int i -> Int64.to_string i
   | Bool b -> if b then "#t" else "#f"
   | Void -> "(void)"
   | Prim (p, _) -> string_of_prim p
@@ -131,82 +131,82 @@ and opt_exp env = function
   | Prim (Read, _) as r -> r
   | Prim (Minus e, t) -> (
     match opt_exp env e with
-    | Int i -> Int (-i)
+    | Int i -> Int Int64.(-i)
     | Prim (Minus e, _) -> e
     | e -> Prim (Minus e, t) )
   | Prim (Plus (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int i1, Int i2 -> Int (i1 + i2)
-    | Int i1, Prim (Minus (Int i2), _) -> Int (i1 - i2)
+    | Int i1, Int i2 -> Int Int64.(i1 + i2)
+    | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 - i2)
     | Int i1, Prim (Plus (Int i2, e2), _)
      |Prim (Plus (Int i1, e2), _), Int i2 ->
-        opt_exp env (Prim (Plus (Int (i1 + i2), e2), t))
-    | Prim (Minus (Int i1), _), Int i2 -> Int (-i1 + i2)
+        opt_exp env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
+    | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 + i2)
     | e1, e2 -> Prim (Plus (e1, e2), t) )
   | Prim (Subtract (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int i1, Int i2 -> Int (i1 - i2)
-    | Int i1, Prim (Minus (Int i2), _) -> Int (i1 + i2)
-    | Prim (Minus (Int i1), _), Int i2 -> Int (-i1 - i2)
+    | Int i1, Int i2 -> Int Int64.(i1 - i2)
+    | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 + i2)
+    | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 - i2)
     | e1, e2 -> Prim (Subtract (e1, e2), t) )
   | Prim (Mult (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int 0, _ -> Int 0
-    | _, Int 0 -> Int 0
-    | Int i1, Int i2 -> Int (i1 * i2)
+    | Int 0L, _ -> Int 0L
+    | _, Int 0L -> Int 0L
+    | Int i1, Int i2 -> Int Int64.(i1 * i2)
     | e1, e2 -> Prim (Mult (e1, e2), t) )
   | Prim (Div (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int 0, _ -> Int 0
-    | _, Int 0 -> failwith "R.opt_exp: divide by zero"
-    | Int i1, Int i2 -> Int (i1 / i2)
+    | Int 0L, _ -> Int 0L
+    | _, Int 0L -> failwith "R.opt_exp: divide by zero"
+    | Int i1, Int i2 -> Int Int64.(i1 / i2)
     | e1, e2 -> Prim (Div (e1, e2), t) )
   | Prim (Rem (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int 0, _ -> Int 0
-    | _, Int 0 -> failwith "R.opt_exp: divide by zero"
-    | Int i1, Int i2 -> Int (i1 mod i2)
+    | Int 0L, _ -> Int 0L
+    | _, Int 0L -> failwith "R.opt_exp: divide by zero"
+    | Int i1, Int i2 -> Int Int64.(rem i1 i2)
     | e1, e2 -> Prim (Rem (e1, e2), t) )
   | Prim (Land (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int 0, _ -> Int 0
-    | _, Int 0 -> Int 0
-    | Int i1, Int i2 -> Int (i1 land i2)
+    | Int 0L, _ -> Int 0L
+    | _, Int 0L -> Int 0L
+    | Int i1, Int i2 -> Int Int64.(i1 land i2)
     | e1, e2 -> Prim (Land (e1, e2), t) )
   | Prim (Lor (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int 0, e -> e
-    | e, Int 0 -> Int 0
-    | Int i1, Int i2 -> Int (i1 lor i2)
+    | Int 0L, e -> e
+    | e, Int 0L -> Int 0L
+    | Int i1, Int i2 -> Int Int64.(i1 lor i2)
     | e1, e2 -> Prim (Lor (e1, e2), t) )
   | Prim (Lxor (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int i1, Int i2 -> Int (i1 lxor i2)
+    | Int i1, Int i2 -> Int Int64.(i1 lxor i2)
     | e1, e2 -> Prim (Lxor (e1, e2), t) )
   | Prim (Lnot e, t) -> (
     match opt_exp env e with
-    | Int i -> Int (lnot i)
+    | Int i -> Int Int64.(lnot i)
     | e -> Prim (Lnot e, t) )
   | Prim (Eq (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int i1, Int i2 -> Bool (i1 = i2)
+    | Int i1, Int i2 -> Bool Int64.(i1 = i2)
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2)
     | e1, e2 -> Prim (Eq (e1, e2), t) )
   | Prim (Lt (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int i1, Int i2 -> Bool (i1 < i2)
+    | Int i1, Int i2 -> Bool Int64.(i1 < i2)
     | e1, e2 -> Prim (Lt (e1, e2), t) )
   | Prim (Le (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int i1, Int i2 -> Bool (i1 <= i2)
+    | Int i1, Int i2 -> Bool Int64.(i1 <= i2)
     | e1, e2 -> Prim (Le (e1, e2), t) )
   | Prim (Gt (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int i1, Int i2 -> Bool (i1 > i2)
+    | Int i1, Int i2 -> Bool Int64.(i1 > i2)
     | e1, e2 -> Prim (Gt (e1, e2), t) )
   | Prim (Ge (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Int i1, Int i2 -> Bool (i1 >= i2)
+    | Int i1, Int i2 -> Bool Int64.(i1 >= i2)
     | e1, e2 -> Prim (Ge (e1, e2), t) )
   | Prim (Not e, t) -> (
     match opt_exp env e with
@@ -223,7 +223,7 @@ and opt_exp env = function
   | Prim (Vector es, t) -> Prim (Vector (List.map es ~f:(opt_exp env)), t)
   | Prim (Vectorlength e, t) -> (
     match opt_exp env e with
-    | Prim (Vector es, _) -> Int (List.length es)
+    | Prim (Vector es, _) -> Int Int64.(List.length es |> of_int)
     | e -> Prim (Vectorlength e, t) )
   | Prim (Vectorref (e, i), t) -> Prim (Vectorref (opt_exp env e, i), t)
   | Prim (Vectorset (e1, i, e2), t) ->
@@ -648,12 +648,13 @@ and type_check_prim env = function
 
 let read_int () =
   Out_channel.(flush stdout);
-  Int.of_string In_channel.(input_line_exn stdin)
+  Int64.of_string In_channel.(input_line_exn stdin)
 
-type answer = [`Int of int | `Bool of bool | `Vector of answer array | `Void]
+type answer =
+  [`Int of Int64.t | `Bool of bool | `Vector of answer array | `Void]
 
 let rec string_of_answer ?(nested = false) = function
-  | `Int i -> Int.to_string i
+  | `Int i -> Int64.to_string i
   | `Bool false -> "#f"
   | `Bool true -> "#t"
   | `Vector as' ->
@@ -693,90 +694,90 @@ and interp_prim ?(read = None) env = function
     | None -> `Int (read_int ()) )
   | Minus e -> (
     match interp_exp env e ~read with
-    | `Int i -> `Int (-i)
+    | `Int i -> `Int Int64.(-i)
     | _ -> assert false )
   | Plus (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Int (i1 + i2)
+      | `Int i1, `Int i2 -> `Int Int64.(i1 + i2)
       | _ -> assert false )
   | Subtract (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Int (i1 - i2)
+      | `Int i1, `Int i2 -> `Int Int64.(i1 - i2)
       | _ -> assert false )
   | Mult (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Int (i1 * i2)
+      | `Int i1, `Int i2 -> `Int Int64.(i1 * i2)
       | _ -> assert false )
   | Div (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Int (i1 / i2)
+      | `Int i1, `Int i2 -> `Int Int64.(i1 / i2)
       | _ -> assert false )
   | Rem (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Int (i1 mod i2)
+      | `Int i1, `Int i2 -> `Int Int64.(rem i1 i2)
       | _ -> assert false )
   | Land (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Int (i1 land i2)
+      | `Int i1, `Int i2 -> `Int Int64.(i1 land i2)
       | _ -> assert false )
   | Lor (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Int (i1 lor i2)
+      | `Int i1, `Int i2 -> `Int Int64.(i1 lor i2)
       | _ -> assert false )
   | Lxor (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Int (i1 lxor i2)
+      | `Int i1, `Int i2 -> `Int Int64.(i1 lxor i2)
       | _ -> assert false )
   | Lnot e -> (
     match interp_exp env e ~read with
-    | `Int i -> `Int (lnot i)
+    | `Int i -> `Int Int64.(lnot i)
     | _ -> assert false )
   | Eq (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Bool (i1 = i2)
+      | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
       | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
       | _ -> assert false )
   | Lt (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Bool (i1 < i2)
+      | `Int i1, `Int i2 -> `Bool Int64.(i1 < i2)
       | _ -> assert false )
   | Le (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Bool (i1 <= i2)
+      | `Int i1, `Int i2 -> `Bool Int64.(i1 <= i2)
       | _ -> assert false )
   | Gt (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Bool (i1 > i2)
+      | `Int i1, `Int i2 -> `Bool Int64.(i1 > i2)
       | _ -> assert false )
   | Ge (e1, e2) -> (
       let a1 = interp_exp env e1 ~read in
       let a2 = interp_exp env e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Bool (i1 >= i2)
+      | `Int i1, `Int i2 -> `Bool Int64.(i1 >= i2)
       | _ -> assert false )
   | Not e -> (
     match interp_exp env e ~read with
@@ -798,7 +799,7 @@ and interp_prim ?(read = None) env = function
       `Vector (List.map es ~f:(interp_exp env ~read) |> Array.of_list)
   | Vectorlength e -> (
     match interp_exp env e ~read with
-    | `Vector as' -> `Int (Array.length as')
+    | `Vector as' -> `Int Int64.(Array.length as' |> of_int)
     | _ -> assert false )
   | Vectorref (e, i) -> (
     match interp_exp env e ~read with

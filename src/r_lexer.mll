@@ -51,6 +51,6 @@ rule token = parse
   | "vector-set!" { VECTORSETBANG }
   | "void" { VOID }
   | eof { EOF }
-  | integer as n { INT (int_of_string n) }
+  | integer as n { INT (Int64.of_string n) }
   | ident as id { VAR id }
   | _ { raise Error }

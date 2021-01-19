@@ -19,7 +19,7 @@ type info = {typ: Type.t; nvars: int}
 type t = Program of info * exp
 
 and exp =
-  | Int of int
+  | Int of Int64.t
   | Bool of bool
   | Void
   | Prim of prim * Type.t
@@ -58,7 +58,7 @@ let rec to_string = function
   | Program (_, exp) -> string_of_exp exp
 
 and string_of_exp = function
-  | Int i -> Int.to_string i
+  | Int i -> Int64.to_string i
   | Bool b -> if b then "#t" else "#f"
   | Void -> "(void)"
   | Prim (p, _) -> string_of_prim p
@@ -170,7 +170,9 @@ and expand_alloc n t ts es =
           ( Prim
               ( Lt
                   ( Prim
-                      ( Plus (Globalvalue (free_ptr, Type.Integer), Int bytes)
+                      ( Plus
+                          ( Globalvalue (free_ptr, Type.Integer)
+                          , Int (Int64.of_int bytes) )
                       , Type.Integer )
                   , Globalvalue (fromspace_end, Type.Integer) )
               , Type.Boolean )

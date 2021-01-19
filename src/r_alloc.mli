@@ -22,7 +22,7 @@ val total_tag_offset : int
 type t = Program of info * exp
 
 and exp =
-  | Int of int
+  | Int of Int64.t
   | Bool of bool
   | Void
   | Prim of prim * Type.t

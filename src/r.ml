@@ -7,7 +7,7 @@ type info = unit
 type t = Program of info * exp
 
 and exp =
-  | Int of int
+  | Int of Int64.t
   | Bool of bool
   | Void
   | Prim of prim
@@ -44,7 +44,7 @@ let rec to_string = function
   | Program (_, exp) -> string_of_exp exp
 
 and string_of_exp = function
-  | Int i -> Int.to_string i
+  | Int i -> Int64.to_string i
   | Bool b -> if b then "#t" else "#f"
   | Void -> "(void)"
   | Prim p -> string_of_prim p

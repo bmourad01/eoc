@@ -17,7 +17,7 @@
 %}
 
 %token EOF
-%token <int> INT
+%token <int64> INT
 %token <string> VAR
 %token PLUS MINUS STAR FSLASH REM LAND LOR LXOR LNOT 
 %token VECTOR VECTORLENGTH VECTORREF VECTORSETBANG VOID
@@ -137,6 +137,12 @@ prim:
   | LPAREN VECTORLENGTH exp RPAREN
     { Vectorlength $3 }
   | LPAREN VECTORREF exp INT RPAREN
-    { Vectorref ($3, $4) }
+    {
+      let open Core_kernel in
+      Vectorref ($3, Int64.to_int_exn $4)
+    }
   | LPAREN VECTORSETBANG exp INT exp RPAREN
-    { Vectorset ($3, $4, $5) }
+    {
+      let open Core_kernel in
+      Vectorset ($3, Int64.to_int_exn $4, $5)
+    }

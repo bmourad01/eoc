@@ -36,7 +36,7 @@ and exp =
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
 
-and atom = Int of int | Bool of bool | Var of var * Type.t | Void
+and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
 
 and prim =
   | Read
@@ -80,7 +80,7 @@ val string_of_cmp : cmp -> string
 
 type answer = R_typed.answer
 
-val interp : ?read:int option -> t -> answer
+val interp : ?read:Int64.t option -> t -> answer
 
 (* compile an R_anf program to a C program *)
 

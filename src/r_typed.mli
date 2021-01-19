@@ -23,7 +23,7 @@ type t = Program of info * exp
 (* values like Int, Bool, Void always have the
  * same type, so we don't need to annotate them *)
 and exp =
-  | Int of int
+  | Int of Int64.t
   | Bool of bool
   | Void
   | Prim of prim * Type.t
@@ -74,13 +74,14 @@ val type_check : R.t -> t
 
 (* the result of evaluating a program *)
 
-type answer = [`Int of int | `Bool of bool | `Vector of answer array | `Void]
+type answer =
+  [`Int of Int64.t | `Bool of bool | `Vector of answer array | `Void]
 
 val string_of_answer : ?nested:bool -> answer -> string
 
 (* interpret a program *)
 
-val interp : ?read:int option -> t -> answer
+val interp : ?read:Int64.t option -> t -> answer
 
 (* make all let-bound variables unique *)
 
