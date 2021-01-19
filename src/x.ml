@@ -706,16 +706,16 @@ let function_prologue rootstack_spills stack_space w =
   let init =
     let adj_rootstk =
       if rootstack_spills > 0 then
-        List.init rootstack_spills ~f:(fun i ->
-            MOV (Deref (R15, i * word_size), Imm 0))
+        [MOV (Reg R15, Var Extern.rootstack_begin)]
+        @ List.init rootstack_spills ~f:(fun i ->
+              MOV (Deref (R15, i * word_size), Imm 0))
         @ [ADD (Reg R15, Imm (rootstack_spills * word_size))]
       else []
     in
     [ MOV (Reg RDI, Imm 0x4000)
       (* let's use a very small number to trigger the GC *)
     ; MOV (Reg RSI, Imm 16)
-    ; CALL (Extern.initialize, 2)
-    ; MOV (Reg R15, Var Extern.rootstack_begin) ]
+    ; CALL (Extern.initialize, 2) ]
     @ adj_rootstk
   in
   setup_frame @ callee_save_in_use @ adj_sp @ init
@@ -724,7 +724,11 @@ let function_epilogue rootstack_spills typ label stack_space w instrs =
   let callee_save_in_use =
     Set.fold w ~init:[] ~f:(fun acc a -> POP a :: acc)
   in
-  let adj_rootstk = [SUB (Reg R15, Imm (rootstack_spills * word_size))] in
+  let adj_rootstk =
+    if rootstack_spills > 0 then
+      [SUB (Reg R15, Imm (rootstack_spills * word_size))]
+    else []
+  in
   let adj_sp =
     let adj = List.length callee_save_in_use mod 2 in
     if stack_space <= 0 then
@@ -784,6 +788,9 @@ let rec patch_instructions = function
                      | Arg.Reg RBP -> false
                      | Arg.Reg r -> Reg.is_callee_save r
                      | _ -> false)))
+      in
+      let w =
+        if info.rootstack_spills > 0 then Set.add w (Arg.Reg R15) else w
       in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
