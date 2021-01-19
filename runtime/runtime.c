@@ -84,7 +84,6 @@ static void _print_vector_aux(int64_t *vec, bool nested) {
     } else if (bit & void_mask) {
       printf("#<void>");
     }
-
     if (i < (length - 1)) {
       printf(" ");
     }
