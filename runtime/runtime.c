@@ -67,9 +67,7 @@ static void _print_vector_aux(int64_t *vec, bool nested) {
   if (!nested) {
     printf("'");
   }
-
   printf("#(");
-
   for (i = 0; i < length; ++i) {
     val = vec[i + TOTAL_TAG_OFFSET];
     bit = 1 << i;
@@ -86,7 +84,7 @@ static void _print_vector_aux(int64_t *vec, bool nested) {
     } else if (bit & void_mask) {
       printf("#<void>");
     }
-    
+
     if (i < (length - 1)) {
       printf(" ");
     }
