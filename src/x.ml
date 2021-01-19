@@ -1065,39 +1065,69 @@ let rec allocate_registers = function
                 | _ -> bias))
       in
       let colors = color_graph info.conflicts ~bias in
-      let rootstack_spills = Hash_set.create (module String) in
+      let stack_locs = compute_locations colors info.locals_types in
+      let vector_locs =
+        compute_locations colors info.locals_types ~vector:true
+      in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
             ( label
-            , allocate_registers_block rootstack_spills info.locals_types
-                colors block ))
+            , allocate_registers_block info.locals_types colors stack_locs
+                vector_locs block ))
       in
       let stack_space =
-        let colors =
-          Map.filter_keys colors ~f:(function
-            | Arg.Var v -> not (Hash_set.mem rootstack_spills v)
-            | _ -> true)
-        in
-        match Map.data colors |> Int.Set.of_list |> Set.max_elt with
+        match Map.data stack_locs |> Int.Set.of_list |> Set.min_elt with
         | None -> 0
-        | Some c -> max (c - num_regs + 1) 0 * word_size
+        | Some c -> -c
       in
       Program
-        ( { info with
-            stack_space
-          ; rootstack_spills= Hash_set.length rootstack_spills }
+        ( {info with stack_space; rootstack_spills= Map.length vector_locs}
         , blocks )
 
-and allocate_registers_block rootstack_spills locals_types colors = function
+and compute_locations ?(vector = false) colors locals_types =
+  let stack_colors =
+    Map.fold colors ~init:Int.Set.empty ~f:(fun ~key ~data acc ->
+        if data < num_regs then acc
+        else
+          match key with
+          | Arg.Var v when is_temp_var_name v ->
+              let ok =
+                match Map.find_exn locals_types v with
+                | C.Type.Vector _ -> vector
+                | _ -> not vector
+              in
+              if ok then Set.add acc data else acc
+          | _ -> acc)
+  in
+  let color_map, _ =
+    Set.fold stack_colors ~init:(Int.Map.empty, -word_size)
+      ~f:(fun (m, off) c -> (Map.set m c off, off - word_size))
+  in
+  Map.filter_mapi colors ~f:(fun ~key ~data ->
+      match key with
+      | Arg.Var v when is_temp_var_name v ->
+          let ok =
+            match Map.find_exn locals_types v with
+            | C.Type.Vector _ -> vector
+            | _ -> not vector
+          in
+          if ok then Map.find color_map data else None
+      | _ -> None)
+
+and allocate_registers_block locals_types colors stack_locs vector_locs =
+  function
   | Block (label, info, instrs) ->
       let instrs =
         List.map instrs
-          ~f:(allocate_registers_instr rootstack_spills locals_types colors)
+          ~f:
+            (allocate_registers_instr locals_types colors stack_locs
+               vector_locs)
       in
       Block (label, info, instrs)
 
-and allocate_registers_instr rootstack_spills locals_types colors instr =
-  let color = color_arg rootstack_spills locals_types colors in
+and allocate_registers_instr locals_types colors stack_locs vector_locs instr
+    =
+  let color = color_arg locals_types colors stack_locs vector_locs in
   match instr with
   | ADD (a1, a2) ->
       let a1 = color a1 in
@@ -1163,20 +1193,19 @@ and allocate_registers_instr rootstack_spills locals_types colors instr =
       MOVZX (a1, a2)
   | JCC _ as j -> j
 
-and color_arg rootstack_spills locals_types colors = function
+and color_arg locals_types colors stack_locs vector_locs = function
   | Arg.Var v as a when is_temp_var_name v -> (
-    match Map.find colors a with
-    | None -> failwith ("X.color_arg: var " ^ v ^ " was not colored")
-    | Some c -> (
-        assert (c >= 0);
-        if c < num_regs then allocatable_regs.(c)
-        else
-          let offset = (c - num_regs + 1) * word_size in
-          match Map.find_exn locals_types v with
-          | C.Type.Vector _ ->
-              Hash_set.add rootstack_spills v;
-              Deref (R15, -(offset - word_size))
-          | _ -> Deref (RBP, -offset) ) )
+    match Map.find stack_locs a with
+    | Some loc -> Deref (RBP, loc)
+    | None -> (
+      match Map.find vector_locs a with
+      | Some loc -> Deref (R15, loc + word_size)
+      | None -> (
+        match Map.find colors a with
+        | None -> failwith ("X.color_arg: var " ^ v ^ " was not colored")
+        | Some c ->
+            assert (c >= 0 && c < num_regs);
+            allocatable_regs.(c) ) ) )
   | a -> a
 
 let rec remove_jumps = function
