@@ -632,7 +632,7 @@ and type_check_prim env = function
             ( "R.type_check_prim: vector-set of " ^ R.string_of_exp e1
             ^ ", index " ^ Int.to_string i ^ " out of bounds" )
       | Some t ->
-          if Type.equal t t2 then (t, Vectorset (e1', i, e2'))
+          if Type.equal t t2 then (Type.Void, Vectorset (e1', i, e2'))
           else
             typeerr
               ( "R.type_check_prim: vector-set of " ^ R.string_of_exp e1
