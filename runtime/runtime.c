@@ -141,9 +141,8 @@ static int64_t *collect_copy(int64_t *obj) {
   int64_t *new_obj;
   vector_header_t *vec;
 
-
   // has the object been copied yet?
-  vec = (vector_header_t*)obj;
+  vec = (vector_header_t *)obj;
   if (vec->tag.forwarding) {
     size = (vec->tag.length << 3) + sizeof(vector_header_t);
     // copy the object
