@@ -13,6 +13,21 @@
 #define DBGPRINT(x...)
 #endif
 
+typedef struct {
+  union {
+    struct {
+      uint64_t forwarding : 1;
+      uint64_t length : 6;
+      uint64_t ptr_mask : 50;
+      uint64_t reserved : 7;
+    };
+    uint64_t v;
+  } tag;
+  uint64_t int_mask;
+  uint64_t bool_mask;
+  uint64_t void_mask;
+} vector_header_t;
+
 enum {
   TAG_OFFSET = 0,
   INT_MASK_OFFSET,
@@ -21,6 +36,10 @@ enum {
 
   TOTAL_TAG_OFFSET
 };
+
+#define VECTOR_ELEMENT(vec, i)                                                 \
+  (*(int64_t *)((uint64_t)(vec) + ((i) * sizeof(int64_t)) +                    \
+                sizeof(vector_header_t)))
 
 #define LENGTH_BITS 6
 #define PTRMASK_BITS 50
@@ -59,22 +78,24 @@ void _print_bool(int64_t i) {
 void _print_void() { printf("#<void>\n"); }
 
 static void print_vector_aux(int64_t *vec, bool nested) {
-  int64_t tag, ptr_mask, int_mask, bool_mask, void_mask, val;
+  vector_header_t *hdr;
+  int64_t ptr_mask, int_mask, bool_mask, void_mask, val;
   uint64_t i, length, bit;
 
-  tag = vec[TAG_OFFSET];
-  length = LENGTH(tag);
-  ptr_mask = PTRMASK(tag);
-  int_mask = vec[INT_MASK_OFFSET];
-  bool_mask = vec[BOOL_MASK_OFFSET];
-  void_mask = vec[VOID_MASK_OFFSET];
+  hdr = (vector_header_t *)vec;
+
+  length = hdr->tag.length;
+  ptr_mask = hdr->tag.ptr_mask;
+  int_mask = hdr->int_mask;
+  bool_mask = hdr->bool_mask;
+  void_mask = hdr->void_mask;
 
   if (!nested) {
     printf("'");
   }
   printf("#(");
   for (i = 0; i < length; ++i) {
-    val = vec[i + TOTAL_TAG_OFFSET];
+    val = VECTOR_ELEMENT(vec, i);
     bit = 1 << i;
     if (bit & ptr_mask) {
       print_vector_aux((int64_t *)val, true);
@@ -118,10 +139,13 @@ void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
 static int64_t *collect_copy(int64_t *obj) {
   uint64_t size;
   int64_t *new_obj;
+  vector_header_t *vec;
+
 
   // has the object been copied yet?
-  if (FORWARDING(*obj)) {
-    size = (LENGTH(*obj) + TOTAL_TAG_OFFSET) << 3;
+  vec = (vector_header_t*)obj;
+  if (vec->tag.forwarding) {
+    size = (vec->tag.length << 3) + sizeof(vector_header_t);
     // copy the object
     new_obj = _free_ptr;
     memcpy(new_obj, obj, size);
@@ -141,8 +165,9 @@ static int64_t *collect_copy(int64_t *obj) {
 }
 
 static void cheney(int64_t **rootstack_ptr) {
-  int64_t *p, **r, *tmp, *scan_ptr, *obj;
+  int64_t *p, **r, *tmp, *scan_ptr;
   uint64_t i, length, ptr_mask;
+  vector_header_t *vec;
 
   assert(rootstack_ptr >= _rootstack_begin && rootstack_ptr < _rootstack_end);
 
@@ -168,17 +193,17 @@ static void cheney(int64_t **rootstack_ptr) {
 
   // do a breadth-first search for all objects reachable from the root stack
   for (scan_ptr = _fromspace_begin; scan_ptr < _free_ptr;) {
-    obj = scan_ptr;
-    length = LENGTH(*obj);
-    ptr_mask = PTRMASK(*obj);
+    vec = (vector_header_t *)scan_ptr;
+    length = vec->tag.length;
+    ptr_mask = vec->tag.ptr_mask;
     for (i = 0; i < length; ++i) {
       if (ptr_mask & (1 << i)) {
-        obj[i + TOTAL_TAG_OFFSET] =
-            (int64_t)collect_copy((int64_t *)obj[i + TOTAL_TAG_OFFSET]);
+        VECTOR_ELEMENT(vec, i) =
+            (int64_t)collect_copy((int64_t *)VECTOR_ELEMENT(vec, i));
       }
     }
-    scan_ptr =
-        (int64_t *)((uint64_t)scan_ptr + ((length + TOTAL_TAG_OFFSET) << 3));
+    scan_ptr = (int64_t *)((uint64_t)scan_ptr +
+                           ((length << 3) + sizeof(vector_header_t)));
   }
 }
 
