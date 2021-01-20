@@ -68,18 +68,15 @@ void _print_bool(int64_t i) {
 
 void _print_void() { printf("#<void>\n"); }
 
-static void print_vector_aux(int64_t *vec, bool nested) {
-  vector_header_t *hdr;
+static void print_vector_aux(vector_header_t *vec, bool nested) {
   int64_t ptr_mask, int_mask, bool_mask, void_mask, val;
   uint64_t i, length, bit;
 
-  hdr = (vector_header_t *)vec;
-
-  length = hdr->tag.length;
-  ptr_mask = hdr->tag.ptr_mask;
-  int_mask = hdr->int_mask;
-  bool_mask = hdr->bool_mask;
-  void_mask = hdr->void_mask;
+  length = vec->tag.length;
+  ptr_mask = vec->tag.ptr_mask;
+  int_mask = vec->int_mask;
+  bool_mask = vec->bool_mask;
+  void_mask = vec->void_mask;
 
   if (!nested) {
     printf("'");
@@ -89,7 +86,7 @@ static void print_vector_aux(int64_t *vec, bool nested) {
     val = VECTOR_ELEMENT(vec, i);
     bit = 1 << i;
     if (bit & ptr_mask) {
-      print_vector_aux((int64_t *)val, true);
+      print_vector_aux((vector_header_t *)val, true);
     } else if (bit & int_mask) {
       printf("%ld", val);
     } else if (bit & bool_mask) {
@@ -108,7 +105,7 @@ static void print_vector_aux(int64_t *vec, bool nested) {
   printf(")");
 }
 
-void _print_vector(int64_t *vec) {
+void _print_vector(vector_header_t *vec) {
   print_vector_aux(vec, false);
   printf("\n");
 }
