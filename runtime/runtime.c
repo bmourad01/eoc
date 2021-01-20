@@ -28,15 +28,6 @@ typedef struct {
   uint64_t void_mask;
 } vector_header_t;
 
-enum {
-  TAG_OFFSET = 0,
-  INT_MASK_OFFSET,
-  BOOL_MASK_OFFSET,
-  VOID_MASK_OFFSET,
-
-  TOTAL_TAG_OFFSET
-};
-
 #define VECTOR_ELEMENT(vec, i)                                                 \
   (*(int64_t *)((uint64_t)(vec) + ((i) * sizeof(int64_t)) +                    \
                 sizeof(vector_header_t)))
