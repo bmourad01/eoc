@@ -1019,16 +1019,15 @@ let color_graph ?(bias = Interference_graph.empty) g =
       ()
   in
   (* map from vertices to their handles in the heap *)
-  let tokens =
-    Interference_graph.fold_vertex
-      (fun u acc ->
-        match u with
-        | Arg.Var v when is_temp_var_name v ->
-            Map.set acc u (Pairing_heap.add_removable q u)
-        | _ -> acc)
-      g Arg_map.empty
-    |> ref
-  in
+  let tokens = Hashtbl.create (module String) in
+  (* construct the heap *)
+  Interference_graph.iter_vertex
+    (fun u ->
+      match u with
+      | Arg.Var v when is_temp_var_name v ->
+          Hashtbl.set tokens v (Pairing_heap.add_removable q u)
+      | _ -> ())
+    g;
   let rec loop () =
     match Pairing_heap.pop q with
     | None -> !colors
@@ -1059,10 +1058,10 @@ let color_graph ?(bias = Interference_graph.empty) g =
         colors := Map.set !colors u c;
         Interference_graph.iter_succ
           (function
-            | Arg.Var var as v when is_temp_var_name var ->
+            | Arg.Var v' as v when is_temp_var_name v' ->
                 if not (Map.mem !colors v) then
-                  let token = Map.find_exn !tokens v in
-                  tokens := Map.set !tokens v (Pairing_heap.update q token v)
+                  let token = Hashtbl.find_exn tokens v' in
+                  Hashtbl.set tokens v' (Pairing_heap.update q token v)
             | _ -> ())
           g u;
         loop ()
