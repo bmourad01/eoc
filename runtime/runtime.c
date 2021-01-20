@@ -32,13 +32,6 @@ typedef struct {
   (*(int64_t *)((uint64_t)(vec) + ((i) * sizeof(int64_t)) +                    \
                 sizeof(vector_header_t)))
 
-#define LENGTH_BITS 6
-#define PTRMASK_BITS 50
-
-#define FORWARDING(x) (((uint64_t)(x)) & 1)
-#define LENGTH(x) ((((uint64_t)(x)) >> 1) & ((1ULL << LENGTH_BITS) - 1))
-#define PTRMASK(x) ((((uint64_t)(x)) >> 7) & ((1ULL << PTRMASK_BITS) - 1))
-
 static uint64_t _heap_size;
 static void *_heap_base;
 int64_t *_free_ptr;
