@@ -13,12 +13,12 @@
 #define DBGPRINT(x...)
 #endif
 
-typedef enum {
+enum {
   TYPE_INTEGER,
   TYPE_BOOLEAN,
   TYPE_VOID,
   TYPE_VECTOR,
-} type_t;
+};
 
 static bool is_pointer_type(uint64_t ty) {
   switch (ty) {
