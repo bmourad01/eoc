@@ -120,9 +120,9 @@ static int64_t *collect_copy(int64_t *obj) {
     // bump the free pointer
     _free_ptr = (int64_t *)((uint64_t)_free_ptr + size);
     // mark it as being copied by storing the forwarding address
-    // to where the tag used to be. we can do this because
-    // it will set the least significant bit to 0 since all
-    // of our pointers are aligned to even addresses.
+    // to where the type tag pointer used to be. these pointers
+    // reside in different regions of memory, so we will be able
+    // to distinguish them as seen above.
     assert(!((uint64_t)new_obj & 1));
     *obj = (int64_t)new_obj;
   } else {
