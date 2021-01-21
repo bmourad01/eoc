@@ -840,6 +840,7 @@ and patch_instructions_instr = function
   | MOV ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
   | MOV (a1, a2) when Arg.equal a1 a2 -> []
+  | LEA ((Deref _ as d), a) -> [LEA (Reg RAX, a); MOV (d, Reg RAX)]
   | XOR ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); XOR (d1, Reg RAX)]
   | AND ((Deref _ as d1), (Deref _ as d2)) ->
