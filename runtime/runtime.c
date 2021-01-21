@@ -62,8 +62,8 @@ void _print_bool(int64_t i) {
 void _print_void() { printf("#<void>\n"); }
 
 static void print_vector_aux(vector_header_t *vec, bool nested) {
-  int64_t ptr_mask, int_mask, bool_mask, void_mask, val;
-  uint64_t i, length, bit;
+  uint64_t i, length, bit, ptr_mask, int_mask, bool_mask, void_mask;
+  int64_t val;
 
   length = vec->tag.length;
   ptr_mask = vec->tag.ptr_mask;
