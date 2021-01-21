@@ -175,10 +175,13 @@ and instr =
 
 and arg = Arg.t
 
-let filter_non_locations =
-  Set.filter ~f:(function
-    | Arg.Imm _ -> false
-    | _ -> true)
+let filter_non_locations args =
+  Set.to_list args
+  |> List.filter_map ~f:(function
+       | Arg.Imm _ -> None
+       | Arg.Deref (r, _) -> Some (Arg.Reg r)
+       | a -> Some a)
+  |> Args.of_list
 
 let caller_save_set =
   List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
