@@ -123,7 +123,6 @@ static int64_t *collect_copy(int64_t *obj) {
     // to where the type tag pointer used to be. these pointers
     // reside in different regions of memory, so we will be able
     // to distinguish them as seen above.
-    assert(!((uint64_t)new_obj & 1));
     *obj = (int64_t)new_obj;
   } else {
     new_obj = (int64_t *)*obj;
