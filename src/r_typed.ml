@@ -29,8 +29,6 @@ module Type_map = Map.Make (Type)
 
 type type_env = Type.t var_env
 
-let max_vector_length = 50
-
 type info = {typ: Type.t}
 
 type t = Program of info * exp
@@ -609,14 +607,8 @@ and type_check_prim env = function
           ^ Type.to_string t2
           ^ " but expressions of type Boolean were expected" ) )
   | R.Vector es ->
-      if List.length es > max_vector_length then
-        typeerr
-          ( "R.type_check_prim: max vector length allowed by runtime is "
-          ^ Int.to_string max_vector_length
-          ^ " elements" )
-      else
-        let ts, es' = List.map es ~f:(type_check_exp env) |> List.unzip in
-        (Type.Vector ts, Vector es')
+      let ts, es' = List.map es ~f:(type_check_exp env) |> List.unzip in
+      (Type.Vector ts, Vector es')
   | R.Vectorlength e -> (
     match type_check_exp env e with
     | Type.Vector _, e' -> (Type.Integer, Vectorlength e')
