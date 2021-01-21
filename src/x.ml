@@ -720,12 +720,13 @@ let function_prologue rootstack_spills stack_space w =
   in
   let init =
     let adj_rootstk =
+      let mov_rootstk = [MOV (Reg R15, Var Extern.rootstack_begin)] in
       if rootstack_spills > 0 then
-        [MOV (Reg R15, Var Extern.rootstack_begin)]
+        mov_rootstk
         @ List.init rootstack_spills ~f:(fun i ->
               MOV (Deref (R15, i * word_size), Imm 0L))
         @ [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
-      else []
+      else mov_rootstk
     in
     [ MOV (Reg RDI, Imm 0x4000L)
       (* let's use a very small number to trigger the GC *)
