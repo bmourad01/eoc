@@ -302,6 +302,10 @@ let rec to_string = function
        * in such a case, the linker will complain. *)
       Printf.sprintf
         "DEFAULT REL\n\n\
+         TYPE_INTEGER equ %d\n\
+         TYPE_BOOLEAN equ %d\n\
+         TYPE_VOID equ %d\n\
+         TYPE_VECTOR equ %d\n\n\
          global %s\n\n\
          %s\n\n\
          %s\n\n\
@@ -309,15 +313,15 @@ let rec to_string = function
          %s\n\n\
          section .text\n\
          %s"
-        info.main extern_fns extern_vars typ_info blks
+        typ_int typ_bool typ_void typ_vector info.main extern_fns extern_vars
+        typ_info blks
 
 and emit_type type_map = function
-  | C.Type.Integer -> [Printf.sprintf "dq %d" typ_int]
-  | C.Type.Boolean -> [Printf.sprintf "dq %d" typ_bool]
-  | C.Type.Void -> [Printf.sprintf "dq %d" typ_void]
+  | C.Type.Integer -> ["dq TYPE_INTEGER"]
+  | C.Type.Boolean -> ["dq TYPE_BOOLEAN"]
+  | C.Type.Void -> ["dq TYPE_VOID"]
   | C.Type.Vector ts ->
-      [ Printf.sprintf "dq %d" typ_vector
-      ; Printf.sprintf "dq %d" (List.length ts) ]
+      ["dq TYPE_VECTOR"; Printf.sprintf "dq %d" (List.length ts)]
       @ ( List.map ts ~f:(fun t ->
               match Map.find type_map t with
               | None -> emit_type type_map t
