@@ -4,6 +4,8 @@ type var = R_typed.var
 
 module Type : module type of R_typed.Type
 
+module Type_map : module type of R_typed.Type_map
+
 type type_env = R_typed.type_env
 
 type info = {typ: Type.t; nvars: int}

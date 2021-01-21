@@ -4,14 +4,6 @@ let word_size = R_alloc.word_size
 
 let total_tag_offset = R_alloc.total_tag_offset
 
-let tag_offset = 0
-
-let int_mask_offset = 1
-
-let bool_mask_offset = 2
-
-let void_mask_offset = 3
-
 module Cc = struct
   type t = E | NE | L | LE | G | GE
 
@@ -140,7 +132,8 @@ type info =
   ; typ: C.Type.t
   ; cfg: Cfg.t
   ; locals_types: C.type_env
-  ; rootstack_spills: int }
+  ; rootstack_spills: int
+  ; type_map: Label.t C.Type_map.t }
 
 type t = Program of info * blocks
 
@@ -158,6 +151,7 @@ and instr =
   | IDIV of arg
   | NEG of arg
   | MOV of arg * arg
+  | LEA of arg * arg
   | CALL of Label.t * int
   | PUSH of arg
   | POP of arg
@@ -202,6 +196,7 @@ let write_set instr =
      |SUB (a, _)
      |NEG a
      |MOV (a, _)
+     |LEA (a, _)
      |IMUL (a, _)
      |IMULi (a, _, _)
      |NOT a
@@ -235,8 +230,8 @@ let read_set instr =
      |CMP (a1, a2)
      |TEST (a1, a2) -> Args.of_list [a1; a2]
     | IDIV a -> Args.of_list [a; Reg RAX; Reg RDX]
-    | NEG a | MOV (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a) ->
-        Args.singleton a
+    | NEG a | MOV (_, a) | LEA (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a)
+      -> Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
         |> List.map ~f:(fun r -> Arg.Reg r)
@@ -251,26 +246,13 @@ let read_set instr =
 module Extern = struct
   let read_int = "_read_int"
 
-  let print_int = "_print_int"
-
-  let print_bool = "_print_bool"
-
-  let print_void = "_print_void"
-
-  let print_vector = "_print_vector"
+  let print_value = "_print_value"
 
   let initialize = "_initialize"
 
   let collect = "_collect"
 
-  let extern_fns =
-    [ read_int
-    ; print_int
-    ; print_bool
-    ; print_void
-    ; print_vector
-    ; initialize
-    ; collect ]
+  let extern_fns = [read_int; print_value; initialize; collect]
 
   let free_ptr = R_alloc.free_ptr
 
@@ -280,6 +262,14 @@ module Extern = struct
 
   let extern_vars = [free_ptr; fromspace_end; rootstack_begin]
 end
+
+let typ_int = 0
+
+let typ_bool = 1
+
+let typ_void = 2
+
+let typ_vector = 3
 
 let rec to_string = function
   | Program (info, blocks) ->
@@ -296,9 +286,43 @@ let rec to_string = function
         List.map Extern.extern_vars ~f:(fun x -> "extern " ^ x)
         |> String.concat ~sep:"\n"
       in
+      let typ_info =
+        Map.to_alist info.type_map
+        |> List.map ~f:(fun (t, l) ->
+               let ty =
+                 emit_type info.type_map t
+                 |> List.map ~f:(fun s -> "    " ^ s)
+                 |> String.concat ~sep:"\n"
+               in
+               Printf.sprintf "%s:\n%s" l ty)
+        |> String.concat ~sep:"\n"
+      in
+      (* the type information shouldn't be in read-only
+       * data because it may contain relocations;
+       * in such a case, the linker will complain. *)
       Printf.sprintf
-        "DEFAULT REL\n\nglobal %s\n\n%s\n\n%s\n\nsection .text\n%s" info.main
-        extern_fns extern_vars blks
+        "DEFAULT REL\n\n\
+         global %s\n\n\
+         %s\n\n\
+         %s\n\n\
+         section .data\n\
+         %s\n\n\
+         section .text\n\
+         %s"
+        info.main extern_fns extern_vars typ_info blks
+
+and emit_type type_map = function
+  | C.Type.Integer -> [Printf.sprintf "dq %d" typ_int]
+  | C.Type.Boolean -> [Printf.sprintf "dq %d" typ_bool]
+  | C.Type.Void -> [Printf.sprintf "dq %d" typ_void]
+  | C.Type.Vector ts ->
+      [ Printf.sprintf "dq %d" typ_vector
+      ; Printf.sprintf "dq %d" (List.length ts) ]
+      @ ( List.map ts ~f:(fun t ->
+              match Map.find type_map t with
+              | None -> emit_type type_map t
+              | Some l -> [Printf.sprintf "dq %s" l])
+        |> List.concat )
 
 and string_of_block = function
   | Block (l, _, is) ->
@@ -319,6 +343,8 @@ and string_of_instr = function
   | NEG a -> Printf.sprintf "neg %s" (Arg.to_string a)
   | MOV (a1, a2) ->
       Printf.sprintf "mov %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | LEA (a1, a2) ->
+      Printf.sprintf "lea %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | CALL (l, _) -> Printf.sprintf "call %s" l
   | PUSH a -> Printf.sprintf "push %s" (Arg.to_string a)
   | POP a -> Printf.sprintf "pop %s" (Arg.to_string a)
@@ -345,10 +371,12 @@ let fits_int32 i = Option.is_some (Int64.to_int32 i)
 
 let rec select_instructions = function
   | C.Program (info, tails) ->
+      let type_map = ref C.Type_map.empty in
+      make_type type_map info.typ |> ignore;
       let blocks =
         let block_info = {live_after= []} in
         List.fold_right tails ~init:[] ~f:(fun (label, tail) blocks ->
-            let instrs = select_instructions_tail tails tail in
+            let instrs = select_instructions_tail type_map tails tail in
             (label, Block (label, block_info, instrs)) :: blocks)
       in
       let info =
@@ -358,17 +386,27 @@ let rec select_instructions = function
         ; typ= info.typ
         ; cfg= info.cfg
         ; locals_types= info.locals_types
-        ; rootstack_spills= 0 }
+        ; rootstack_spills= 0
+        ; type_map= !type_map }
       in
       Program (info, blocks)
 
-and select_instructions_tail tails t =
+and make_type type_map t =
+  match Map.find !type_map t with
+  | Some l -> l
+  | None ->
+      let n = Map.length !type_map in
+      let l = Printf.sprintf "type%d" n in
+      type_map := Map.set !type_map t l;
+      l
+
+and select_instructions_tail type_map tails t =
   let open Arg in
   match t with
-  | C.Return e -> select_instructions_exp (Reg RAX) e @ [RET]
+  | C.Return e -> select_instructions_exp type_map (Reg RAX) e @ [RET]
   | C.Seq (s, t) ->
-      let s = select_instructions_stmt s in
-      let t = select_instructions_tail tails t in
+      let s = select_instructions_stmt type_map s in
+      let t = select_instructions_tail type_map tails t in
       s @ t
   (* goto *)
   | C.Goto l -> [JMP l]
@@ -407,16 +445,16 @@ and select_instructions_tail tails t =
       [CMP (Var v1, Var v2); JCC (cc, lt); JMP lf]
   | C.If _ -> assert false
 
-and select_instructions_stmt s =
+and select_instructions_stmt type_map s =
   let open Arg in
   match s with
-  | C.Assign (v, e) -> select_instructions_exp (Var v) e
+  | C.Assign (v, e) -> select_instructions_exp type_map (Var v) e
   | C.Collect n ->
       [ MOV (Reg RDI, Reg R15)
       ; MOV (Reg RSI, Imm Int64.(of_int n))
       ; CALL (Extern.collect, 2) ]
 
-and select_instructions_exp a p =
+and select_instructions_exp type_map a p =
   let open Arg in
   match p with
   (* atom *)
@@ -665,42 +703,14 @@ and select_instructions_exp a p =
       ; XOR (a, a) ]
   | C.(Prim (Vectorset _, _)) -> assert false
   (* allocate *)
-  | C.(Allocate (n, Type.Vector ts)) ->
-      let vec_tag =
-        let ptr_mask =
-          List.foldi ts ~init:0 ~f:(fun i acc t ->
-              match t with
-              | C.Type.Vector _ -> (1 lsl i) lor acc
-              | _ -> acc)
-        in
-        let len = List.length ts in
-        (ptr_mask lsl 7) lor (len lsl 1) lor 1
-      in
-      let int_mask, bool_mask, void_mask =
-        List.foldi ts ~init:(0, 0, 0)
-          ~f:(fun i ((int_mask, bool_mask, void_mask) as acc) t ->
-            match t with
-            | C.Type.Integer -> ((1 lsl i) lor int_mask, bool_mask, void_mask)
-            | C.Type.Boolean -> (int_mask, (1 lsl i) lor bool_mask, void_mask)
-            | C.Type.Void -> (int_mask, bool_mask, (1 lsl i) lor void_mask)
-            | _ -> acc)
-      in
+  | C.(Allocate (n, (Type.Vector ts as t))) ->
+      let l = make_type type_map t in
       [ MOV (Reg R11, Var Extern.free_ptr)
       ; ADD
           ( Var Extern.free_ptr
           , Imm (Int64.of_int ((n + total_tag_offset) * word_size)) )
-      ; MOV
-          ( Deref (Reg.R11, tag_offset * word_size)
-          , Imm Int64.(of_int vec_tag) )
-      ; MOV
-          ( Deref (Reg.R11, int_mask_offset * word_size)
-          , Imm Int64.(of_int int_mask) )
-      ; MOV
-          ( Deref (Reg.R11, bool_mask_offset * word_size)
-          , Imm Int64.(of_int bool_mask) )
-      ; MOV
-          ( Deref (Reg.R11, void_mask_offset * word_size)
-          , Imm Int64.(of_int void_mask) )
+      ; LEA (Reg RAX, Var l)
+      ; MOV (Deref (Reg.R11, 0), Reg RAX)
       ; MOV (a, Reg R11) ]
   | C.(Allocate _) -> assert false
   (* global-value *)
@@ -739,7 +749,8 @@ let function_prologue rootstack_spills stack_space w =
   in
   setup_frame @ callee_save_in_use @ adj_sp @ init
 
-let function_epilogue rootstack_spills typ label stack_space w instrs =
+let function_epilogue type_map rootstack_spills typ label stack_space w
+    instrs =
   let callee_save_in_use =
     Set.fold w ~init:[] ~f:(fun acc a -> POP a :: acc)
   in
@@ -762,24 +773,11 @@ let function_epilogue rootstack_spills typ label stack_space w instrs =
           ("X.function_epilogue: block " ^ label ^ " is not well-formed")
     | RET :: _ ->
         let print =
-          match typ with
-          | C.Type.Integer ->
-              [ PUSH (Reg RAX)
-              ; MOV (Reg RDI, Reg RAX)
-              ; CALL (Extern.print_int, 1)
-              ; POP (Reg RAX) ]
-          | C.Type.Boolean ->
-              [ PUSH (Reg RAX)
-              ; MOV (Reg RDI, Reg RAX)
-              ; CALL (Extern.print_bool, 1)
-              ; POP (Reg RAX) ]
-          | C.Type.Void ->
-              [PUSH (Reg RAX); CALL (Extern.print_void, 0); POP (Reg RAX)]
-          | C.Type.Vector _ ->
-              [ PUSH (Reg RAX)
-              ; MOV (Reg RDI, Reg RAX)
-              ; CALL (Extern.print_vector, 1)
-              ; POP (Reg RAX) ]
+          [ PUSH (Reg RAX)
+          ; LEA (Reg RDI, Var (Map.find_exn type_map typ))
+          ; MOV (Reg RSI, Reg RAX)
+          ; CALL (Extern.print_value, 2)
+          ; POP (Reg RAX) ]
         in
         List.rev acc @ print @ epilogue @ [RET]
     | instr :: rest -> aux (instr :: acc) rest
@@ -824,8 +822,8 @@ and patch_instructions_block w info = function
       let instrs =
         match List.last_exn instrs with
         | RET ->
-            function_epilogue info.rootstack_spills info.typ label
-              info.stack_space w instrs
+            function_epilogue info.type_map info.rootstack_spills info.typ
+              label info.stack_space w instrs
         | _ -> instrs
       in
       Block (label, block_info, instrs)
@@ -1169,6 +1167,10 @@ and allocate_registers_instr colors stack_locs vector_locs instr =
       let a1 = color a1 in
       let a2 = color a2 in
       MOV (a1, a2)
+  | LEA (a1, a2) ->
+      let a1 = color a1 in
+      let a2 = color a2 in
+      LEA (a1, a2)
   | CALL _ as c -> c
   | PUSH a ->
       let a = color a in

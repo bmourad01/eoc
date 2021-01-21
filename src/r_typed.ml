@@ -7,17 +7,25 @@ type 'a var_env = 'a String.Map.t
 let empty_var_env = String.Map.empty
 
 module Type = struct
-  type t = Integer | Boolean | Vector of t list | Void [@@deriving equal]
+  module T = struct
+    type t = Integer | Boolean | Vector of t list | Void
+    [@@deriving equal, compare, sexp]
 
-  let rec to_string = function
-    | Integer -> "Integer"
-    | Boolean -> "Boolean"
-    | Vector ts ->
-        let s = List.map ts ~f:to_string in
-        if List.is_empty s then "(Vector)"
-        else Printf.sprintf "(Vector %s)" (String.concat s ~sep:" ")
-    | Void -> "Void"
+    let rec to_string = function
+      | Integer -> "Integer"
+      | Boolean -> "Boolean"
+      | Vector ts ->
+          let s = List.map ts ~f:to_string in
+          if List.is_empty s then "(Vector)"
+          else Printf.sprintf "(Vector %s)" (String.concat s ~sep:" ")
+      | Void -> "Void"
+  end
+
+  include T
+  include Comparable.Make (T)
 end
+
+module Type_map = Map.Make (Type)
 
 type type_env = Type.t var_env
 

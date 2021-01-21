@@ -3,6 +3,7 @@ open Core_kernel
 type var = R_typed.var
 
 module Type = R_typed.Type
+module Type_map = R_typed.Type_map
 
 type type_env = R_typed.type_env
 
@@ -12,7 +13,7 @@ let fromspace_end = "_fromspace_end"
 
 let word_size = 8
 
-let total_tag_offset = 4
+let total_tag_offset = 1
 
 type info = {typ: Type.t; nvars: int}
 

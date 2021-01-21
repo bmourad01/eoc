@@ -3,6 +3,7 @@ open Core_kernel
 type var = R_alloc.var
 
 module Type = R_alloc.Type
+module Type_map = R_alloc.Type_map
 
 type type_env = R_alloc.type_env
 

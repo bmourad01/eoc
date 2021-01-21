@@ -4,6 +4,8 @@ type var = R_alloc.var
 
 module Type : module type of R_alloc.Type
 
+module Type_map : module type of R_alloc.Type_map
+
 type type_env = R_alloc.type_env
 
 type info = {typ: Type.t}

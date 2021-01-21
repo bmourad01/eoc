@@ -7,10 +7,13 @@ type 'a var_env = 'a String.Map.t
 val empty_var_env : 'a var_env
 
 module Type : sig
-  type t = Integer | Boolean | Vector of t list | Void [@@deriving equal]
+  type t = Integer | Boolean | Vector of t list | Void
+  [@@deriving equal, compare, sexp]
 
   val to_string : t -> string
 end
+
+module Type_map : module type of Map.Make (Type)
 
 type type_env = Type.t var_env
 

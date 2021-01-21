@@ -1,5 +1,6 @@
 open Core_kernel
 module Type = R_anf.Type
+module Type_map = R_anf.Type_map
 
 type type_env = R_anf.type_env
 

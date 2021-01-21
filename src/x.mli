@@ -67,7 +67,8 @@ type info =
   ; typ: C.Type.t
   ; cfg: Cfg.t
   ; locals_types: C.type_env
-  ; rootstack_spills: int }
+  ; rootstack_spills: int
+  ; type_map: Label.t C.Type_map.t }
 
 (* the X language, representing a subset of x86-64 programs.
  * X programs are printed in NASM syntax. *)
@@ -88,6 +89,7 @@ and instr =
   | IDIV of arg
   | NEG of arg
   | MOV of arg * arg
+  | LEA of arg * arg
   | CALL of Label.t * int
   | PUSH of arg
   | POP of arg

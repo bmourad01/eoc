@@ -2,6 +2,8 @@ open Core_kernel
 
 module Type : module type of R_anf.Type
 
+module Type_map : module type of R_anf.Type_map
+
 type type_env = R_anf.type_env
 
 module Cfg : module type of Graph.Persistent.Digraph.Concrete (Label)
