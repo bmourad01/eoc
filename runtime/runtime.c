@@ -30,7 +30,7 @@ static bool is_pointer_type(uint64_t ty) {
     return true;
   default:
     // assume that ty points to another type information struct
-    return is_pointer_type(*(uint64_t*)ty);
+    return is_pointer_type(*(uint64_t *)ty);
   }
 }
 
@@ -40,7 +40,7 @@ static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
   switch (ty[0]) {
   case TYPE_INTEGER:
     printf("%ld", val);
-    return; 
+    return;
   case TYPE_BOOLEAN:
     printf("%s", val ? "#t" : "#f");
     return;
