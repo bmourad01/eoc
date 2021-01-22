@@ -20,7 +20,7 @@ enum {
   TYPE_VECTOR,
 };
 
-static bool is_pointer_type(uint64_t ty) {
+static bool is_pointer_type(uint64_t ty, bool rec) {
   switch (ty) {
   case TYPE_INTEGER:
   case TYPE_BOOLEAN:
@@ -30,12 +30,13 @@ static bool is_pointer_type(uint64_t ty) {
     return true;
   default:
     // assume that ty points to another type information struct
-    return is_pointer_type(*(uint64_t *)ty);
+    // use 'rec' to see ultimately what type is being pointed to
+    return rec ? is_pointer_type(*(uint64_t *)ty, rec) : true;
   }
 }
 
 static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
-  uint64_t i, len, tyv;
+  uint64_t i, len, tyv, v;
 
   switch (ty[0]) {
   case TYPE_INTEGER:
@@ -55,11 +56,15 @@ static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
     len = ty[1];
     for (i = 0; i < len; ++i) {
       tyv = ty[i + 2];
-      // complex type will be a pointer to another type info structure
-      if (!is_pointer_type(tyv)) {
-        print_value_aux(&tyv, ((int64_t *)val)[i + 1], true);
+      v = ((int64_t*)val)[i + 1];
+      // NOTE: there shouldn't be any complex types (e.g. Vector)
+      // inside of `ty`. those should reside in their own type
+      // information structures. thus, if this is a nested vector,
+      // `tyv` will just be a pointer.
+      if (!is_pointer_type(tyv, false)) {
+        print_value_aux(&tyv, v, true);
       } else {
-        print_value_aux((uint64_t *)tyv, ((int64_t *)val)[i + 1], true);
+        print_value_aux((uint64_t *)tyv, v, true);
       }
       if ((i + 1) < len) {
         printf(" ");
@@ -162,7 +167,7 @@ static void cheney(int64_t **rootstack_ptr) {
     ty = (int64_t *)*scan_ptr;
     length = (uint64_t)ty[1];
     for (i = 0; i < length; ++i) {
-      if (is_pointer_type(ty[i + 2])) {
+      if (is_pointer_type(ty[i + 2], true)) {
         scan_ptr[i + 1] = (int64_t)collect_copy((int64_t *)scan_ptr[i + 1]);
       }
     }
