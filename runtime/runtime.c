@@ -29,8 +29,8 @@ static bool is_pointer_type(uint64_t ty, bool rec) {
   case TYPE_VECTOR:
     return true;
   default:
-    // assume that ty points to another type information struct
-    // use 'rec' to see ultimately what type is being pointed to
+    // assume that ty points to another type information struct.
+    // use 'rec' to see ultimately what type is being pointed to.
     return rec ? is_pointer_type(*(uint64_t *)ty, rec) : true;
   }
 }
@@ -56,7 +56,7 @@ static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
     len = ty[1];
     for (i = 0; i < len; ++i) {
       tyv = ty[i + 2];
-      v = ((int64_t*)val)[i + 1];
+      v = ((int64_t *)val)[i + 1];
       // NOTE: there shouldn't be any complex types (e.g. Vector)
       // inside of `ty`. those should reside in their own type
       // information structures. thus, if this is a nested vector,
