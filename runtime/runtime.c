@@ -38,7 +38,8 @@ static bool is_pointer_type(uint64_t ty, bool rec) {
 static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
   uint64_t i, len, tyv, v;
 
-  switch (ty[0]) {
+  tyv = ty[0];
+  switch (tyv) {
   case TYPE_INTEGER:
     printf("%ld", val);
     return;
@@ -71,6 +72,10 @@ static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
       }
     }
     printf(")");
+    return;
+  default:
+    // assume again that this is a pointer
+    print_value_aux((uint64_t *)tyv, val, nested);
     return;
   }
 }
