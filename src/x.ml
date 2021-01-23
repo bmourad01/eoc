@@ -348,17 +348,7 @@ and emit_type type_map = function
               | None -> emit_type type_map t
               | Some l -> [Printf.sprintf "dq %s" l])
         |> List.concat )
-  | C.Type.Arrow (ts, t) -> (
-      ["dq TYPE_ARROW"; Printf.sprintf "dq %d" (List.length ts)]
-      @ ( List.map ts ~f:(fun t ->
-              match Map.find type_map t with
-              | None -> emit_type type_map t
-              | Some l -> [Printf.sprintf "dq %s" l])
-        |> List.concat )
-      @
-      match Map.find type_map t with
-      | None -> emit_type type_map t
-      | Some l -> [Printf.sprintf "dq %s" l] )
+  | C.Type.Arrow (ts, t) -> ["dq TYPE_ARROW"]
   | C.Type.Trustme -> ["dq TYPE_CLO"]
 
 and string_of_block = function
