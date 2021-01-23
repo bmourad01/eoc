@@ -762,7 +762,7 @@ let rec string_of_answer ?(nested = false) = function
           |> Array.to_list |> String.concat ~sep:" " )
       in
       if nested then s else "'" ^ s
-  | `Def v -> Printf.sprintf "#<function:%s>" v
+  | `Def _ -> "#<function>"
 
 let rec interp ?(read = None) = function
   | Program (_, defs) as p ->
