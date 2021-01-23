@@ -770,6 +770,7 @@ and select_instructions_exp type_map a p =
       in
       mov_args @ [CALLi (Var v, List.length mov_args); MOV (a, Reg RAX)]
   | C.Call _ -> assert false
+  (* allocate *)
   | C.(Allocate (n, (Type.Vector ts as t))) ->
       let l = make_type type_map t in
       [ MOV (Reg R11, Var Extern.free_ptr)
