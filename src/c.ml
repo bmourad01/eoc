@@ -392,8 +392,11 @@ and explicate_control_def nvars = function
       in
       let tails = Map.to_alist tails |> List.rev in
       let locals_types =
-        List.fold tails ~init:String.Map.empty
-          ~f:(fun locals_types (_, tail) ->
+        List.fold args ~init:String.Map.empty ~f:(fun locals_types (x, t) ->
+            Map.set locals_types x t)
+      in
+      let locals_types =
+        List.fold tails ~init:locals_types ~f:(fun locals_types (_, tail) ->
             let rec aux_tail env = function
               | Return e -> env
               | Seq (s, t) -> aux_tail (aux_stmt env s) t

@@ -9,6 +9,7 @@ module Type : sig
     | Void
     | Vector of t list
     | Arrow of t list * t
+    | Trustme
   [@@deriving equal, compare, sexp]
 
   val to_string : t -> string
@@ -33,6 +34,7 @@ and exp =
   | Let of var * exp * exp
   | If of exp * exp * exp
   | Apply of exp * exp list
+  | Lambda of (var * Type.t) list * Type.t * exp
 
 and prim =
   | Read
@@ -58,6 +60,7 @@ and prim =
   | Vectorlength of exp
   | Vectorref of exp * int
   | Vectorset of exp * int * exp
+  | Procedurearity of exp
 
 val to_string : t -> string
 

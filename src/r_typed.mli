@@ -34,6 +34,7 @@ and exp =
   | If of exp * exp * exp * Type.t
   | Apply of exp * exp list * Type.t
   | Funref of var * Type.t
+  | Lambda of (var * Type.t) list * Type.t * exp
 
 and prim =
   | Read
@@ -83,7 +84,8 @@ type answer =
   | `Bool of bool
   | `Void
   | `Vector of answer array
-  | `Def of var ]
+  | `Def of var
+  | `Function of answer var_env * var list * exp ]
 
 val string_of_answer : ?nested:bool -> answer -> string
 
@@ -94,6 +96,10 @@ val interp : ?read:Int64.t option -> t -> answer
 (* make all let-bound variables unique *)
 
 val uniquify : t -> t
+
+(* compile lambdas to top-level functions *)
+
+val convert_to_closures : t -> t
 
 (* limit arity of functions + calls *)
 

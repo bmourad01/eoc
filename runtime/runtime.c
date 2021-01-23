@@ -19,6 +19,7 @@ enum {
   TYPE_VOID,
   TYPE_VECTOR,
   TYPE_ARROW,
+  TYPE_CLO,
 };
 
 static bool is_pointer_type(uint64_t ty, bool rec) {
@@ -77,6 +78,9 @@ static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
     return;
   case TYPE_ARROW:
     printf("#<function>");
+    return;
+  case TYPE_CLO:
+    printf("#<closure>");
     return;
   default:
     // assume again that this is a pointer

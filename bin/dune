@@ -4,6 +4,7 @@
         interp_r
         interp_c
         uniquify
+        convert_to_closures
         limit_functions
         expose_allocation
         resolve_complex

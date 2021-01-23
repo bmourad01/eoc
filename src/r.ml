@@ -10,6 +10,7 @@ module Type = struct
       | Void
       | Vector of t list
       | Arrow of t list * t
+      | Trustme
     [@@deriving equal, compare, sexp]
 
     let rec to_string = function
@@ -22,7 +23,8 @@ module Type = struct
           else Printf.sprintf "(Vector %s)" (String.concat s ~sep:" ")
       | Arrow (ts, t) ->
           let s = List.map ts ~f:to_string |> String.concat ~sep:" -> " in
-          Printf.sprintf "%s -> %s" s (to_string t)
+          Printf.sprintf "(%s -> %s)" s (to_string t)
+      | Trustme -> "_"
   end
 
   include T
@@ -46,6 +48,7 @@ and exp =
   | Let of var * exp * exp
   | If of exp * exp * exp
   | Apply of exp * exp list
+  | Lambda of (var * Type.t) list * Type.t * exp
 
 and prim =
   | Read
@@ -71,6 +74,7 @@ and prim =
   | Vectorlength of exp
   | Vectorref of exp * int
   | Vectorset of exp * int * exp
+  | Procedurearity of exp
 
 let rec to_string = function
   | Program (_, defs, exp) ->
@@ -108,6 +112,14 @@ and string_of_exp = function
   | Apply (e, es) ->
       Printf.sprintf "(%s %s)" (string_of_exp e)
         (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
+  | Lambda (args, t, e) ->
+      let s =
+        List.map args ~f:(fun (a, t) ->
+            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+        |> String.concat ~sep:" "
+      in
+      Printf.sprintf "(lambda: (%s) : %s %s)" s (Type.to_string t)
+        (string_of_exp e)
 
 and string_of_prim = function
   | Read -> "(read)"
@@ -154,3 +166,5 @@ and string_of_prim = function
   | Vectorset (e1, i, e2) ->
       Printf.sprintf "(vector-set! %s %d %s)" (string_of_exp e1) i
         (string_of_exp e2)
+  | Procedurearity e ->
+      Printf.sprintf "(procedure-arity %s)" (string_of_exp e)

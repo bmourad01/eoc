@@ -176,6 +176,7 @@ and expose_allocation_exp n = function
       let es = List.map es ~f:(expose_allocation_exp n) in
       Apply (e, es, t)
   | R_typed.Funref (v, t) -> Funref (v, t)
+  | R_typed.Lambda _ -> assert false
 
 and expand_alloc n t ts es =
   let v = newvar n in

@@ -29,6 +29,7 @@ rule token = parse
   | "lxor" { LXOR }
   | "lnot" { LNOT }
   | "(define" { DEFINE }
+  | "(lambda:" { LAMBDA }
   | '(' { LPAREN }
   | ')' { RPAREN }
   | '[' { LSQUARE }
@@ -50,6 +51,7 @@ rule token = parse
   | "vector-length" { VECTORLENGTH }
   | "vector-ref" { VECTORREF }
   | "vector-set!" { VECTORSETBANG }
+  | "procedure-arity" { PROCEDUREARITY }
   | "void" { VOID }
   | "Integer" { TINTEGER }
   | "Boolean" { TBOOLEAN }

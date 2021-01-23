@@ -283,6 +283,8 @@ let typ_vector = 3
 
 let typ_arrow = 4
 
+let typ_clo = 5
+
 let rec to_string = function
   | Program (info, defs) ->
       let blks =
@@ -316,7 +318,8 @@ let rec to_string = function
          TYPE_BOOLEAN equ %d\n\
          TYPE_VOID equ %d\n\
          TYPE_VECTOR equ %d\n\
-         TYPE_ARROW equ %d\n\n\
+         TYPE_ARROW equ %d\n\
+         TYPE_CLO equ %d\n\n\
          global %s\n\n\
          %s\n\n\
          %s\n\n\
@@ -324,7 +327,7 @@ let rec to_string = function
          %s\n\n\
          section .data\n\
          %s"
-        typ_int typ_bool typ_void typ_vector typ_arrow R_typed.main
+        typ_int typ_bool typ_void typ_vector typ_arrow typ_clo R_typed.main
         extern_fns extern_vars blks typ_info
 
 and string_of_def = function
@@ -356,6 +359,7 @@ and emit_type type_map = function
       match Map.find type_map t with
       | None -> emit_type type_map t
       | Some l -> [Printf.sprintf "dq %s" l] )
+  | C.Type.Trustme -> ["dq TYPE_CLO"]
 
 and string_of_block = function
   | Block (l, _, is) ->
@@ -816,9 +820,14 @@ let function_prologue is_main rootstack_spills stack_space w =
     let mov_rootstk = [MOV (Reg R15, Var Extern.rootstack_begin)] in
     let adj_rootstk =
       if rootstack_spills > 0 then
-        List.init rootstack_spills ~f:(fun i ->
-            MOV (Deref (R15, i * word_size), Imm 0L))
-        @ [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
+        let adj =
+          [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
+        in
+        if is_main then
+          List.init rootstack_spills ~f:(fun i ->
+              MOV (Deref (R15, i * word_size), Imm 0L))
+          @ adj
+        else adj
       else []
     in
     if is_main then
@@ -1208,9 +1217,12 @@ and allocate_registers_def = function
  * from a base address (i.e. RBP or R15). *)
 and compute_locations ?(vector = false) colors locals_types =
   let ok v =
-    match Map.find_exn locals_types v with
-    | C.Type.Vector _ -> vector
-    | _ -> not vector
+    match Map.find locals_types v with
+    | None -> false
+    | Some t -> (
+      match t with
+      | C.Type.Vector _ -> vector
+      | _ -> not vector )
   in
   let stack_colors =
     Map.fold colors ~init:Int.Set.empty ~f:(fun ~key ~data acc ->

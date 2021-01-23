@@ -31,6 +31,7 @@ and exp =
   | If of exp * exp * exp * Type.t
   | Apply of exp * exp list * Type.t
   | Funref of var * Type.t
+  | Lambda of (var * Type.t) list * Type.t * exp
 
 and prim =
   | Read
@@ -66,7 +67,62 @@ let typeof_exp = function
   | Let (_, _, _, t) -> t
   | If (_, _, _, t) -> t
   | Apply (_, _, t) -> t
+  | Lambda (args, t, _) -> Type.Arrow (List.map args ~f:snd, t)
   | Funref (_, t) -> t
+
+let rec vars_of_exp = function
+  | Int _ -> empty_var_env
+  | Bool _ -> empty_var_env
+  | Void -> empty_var_env
+  | Prim (p, _) -> vars_of_prim p
+  | Var (v, t) -> String.Map.singleton v t
+  | Let (_, e1, e2, _) ->
+      let m1 = vars_of_exp e1 in
+      let m2 = vars_of_exp e2 in
+      Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
+  | If (e1, e2, e3, _) ->
+      let m1 = vars_of_exp e1 in
+      let m2 = vars_of_exp e2 in
+      let m3 = vars_of_exp e3 in
+      List.fold [m2; m3] ~init:m1 ~f:(fun acc m ->
+          Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
+  | Apply (e, es, _) ->
+      let m = vars_of_exp e in
+      let ms = List.map es ~f:vars_of_exp in
+      List.fold ms ~init:m ~f:(fun acc m ->
+          Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
+  | Lambda (_, _, e) -> vars_of_exp e
+  | Funref _ -> empty_var_env
+
+and vars_of_prim = function
+  | Read -> empty_var_env
+  | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
+      vars_of_exp e
+  | Plus (e1, e2)
+   |Subtract (e1, e2)
+   |Mult (e1, e2)
+   |Div (e1, e2)
+   |Rem (e1, e2)
+   |Land (e1, e2)
+   |Lor (e1, e2)
+   |Lxor (e1, e2)
+   |Eq (e1, e2)
+   |Lt (e1, e2)
+   |Le (e1, e2)
+   |Gt (e1, e2)
+   |Ge (e1, e2)
+   |And (e1, e2)
+   |Or (e1, e2)
+   |Vectorset (e1, _, e2) ->
+      let m1 = vars_of_exp e1 in
+      let m2 = vars_of_exp e2 in
+      Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
+  | Vector [] -> empty_var_env
+  | Vector es ->
+      let ms = List.map es ~f:vars_of_exp in
+      List.(
+        fold (tl_exn ms) ~init:(hd_exn ms) ~f:(fun acc m ->
+            Map.merge_skewed acc m ~combine:(fun ~key v _ -> v)))
 
 let main_def = function
   | Program (_, defs) ->
@@ -107,6 +163,14 @@ and string_of_exp = function
       Printf.sprintf "(%s %s)" (string_of_exp e)
         (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
   | Funref (v, _) -> Printf.sprintf "(fun-ref %s)" v
+  | Lambda (args, t, e) ->
+      let s =
+        List.map args ~f:(fun (a, t) ->
+            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+        |> String.concat ~sep:" "
+      in
+      Printf.sprintf "(lambda: (%s) : %s %s)" s (Type.to_string t)
+        (string_of_exp e)
 
 and string_of_prim = function
   | Read -> "(read)"
@@ -155,9 +219,11 @@ and string_of_prim = function
         (string_of_exp e2)
 
 let rec opt = function
-  | Program (info, defs) -> Program (info, defs)
+  | Program (info, defs) -> Program (info, List.map defs ~f:opt_def)
 
-(* Program (info, opt_exp empty_var_env exp) *)
+and opt_def = function
+  | Def (v, args, t, e) -> Def (v, args, t, opt_exp empty_var_env e)
+
 and opt_exp env = function
   | Int _ as i -> i
   | Bool _ as b -> b
@@ -277,6 +343,7 @@ and opt_exp env = function
     | e1 -> If (e1, e2, e3, t) )
   | Apply (e, es, t) -> Apply (opt_exp env e, List.map es ~f:(opt_exp env), t)
   | Funref _ as f -> f
+  | Lambda _ as l -> l
 
 exception Type_error of string
 
@@ -317,6 +384,14 @@ and type_check_exp env denv = function
   | R.Int i -> (Type.Integer, Int i)
   | R.Bool b -> (Type.Boolean, Bool b)
   | R.Void -> (Type.Void, Void)
+  | R.(Prim (Procedurearity e)) -> (
+    match type_check_exp env denv e with
+    | Type.Arrow (args, _), _ ->
+        (Type.Integer, Int (List.length args |> Int64.of_int))
+    | t, _ ->
+        typeerr
+          ( "R_typed.type_check_exp: procedure-arity of " ^ R.string_of_exp e
+          ^ " has type " ^ Type.to_string t ^ "; it is not a function" ) )
   | R.Prim p ->
       let t, p = type_check_prim env denv p in
       (t, Prim (p, t))
@@ -375,6 +450,18 @@ and type_check_exp env denv = function
             ( "R_typed.type_check_exp: apply of " ^ R.string_of_exp e
             ^ " has type " ^ Type.to_string t
             ^ "; it is not a function and cannot be applied" ) )
+  | R.Lambda (args, t, e) -> (
+      let env =
+        List.fold args ~init:env ~f:(fun env (x, t) -> Map.set env x t)
+      in
+      match type_check_exp env denv e with
+      | t', e' when Type.equal t t' ->
+          (Type.Arrow (List.map args ~f:snd, t), Lambda (args, t, e'))
+      | t', _ ->
+          typeerr
+            ( "R_typed.type_check_exp: lambda body " ^ R.string_of_exp e
+            ^ " has type " ^ Type.to_string t'
+            ^ " but was declared to have type " ^ Type.to_string t ) )
 
 and type_check_prim env denv = function
   | R.Read -> (Type.Integer, Read)
@@ -738,6 +825,8 @@ and type_check_prim env denv = function
           ( "R_typed.type_check_prim: vector-set of " ^ R.string_of_exp e1
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Vector was expected" ) )
+  (* this is handled above since it returns an expression *)
+  | R.Procedurearity _ -> assert false
 
 let read_int () =
   Out_channel.(flush stdout);
@@ -748,7 +837,8 @@ type answer =
   | `Bool of bool
   | `Void
   | `Vector of answer array
-  | `Def of var ]
+  | `Def of var
+  | `Function of answer var_env * var list * exp ]
 
 let rec string_of_answer ?(nested = false) = function
   | `Int i -> Int64.to_string i
@@ -763,13 +853,13 @@ let rec string_of_answer ?(nested = false) = function
       in
       if nested then s else "'" ^ s
   | `Def _ -> "#<function>"
+  | `Function _ -> "#<function>"
 
 let rec interp ?(read = None) = function
   | Program (_, defs) as p ->
       let (Def (_, _, _, e)) = main_def p in
       interp_exp empty_var_env defs e ~read
 
-(* interp_exp empty_var_env exp ~read *)
 and interp_exp ?(read = None) env defs = function
   | Int i -> `Int i
   | Bool b -> `Bool b
@@ -798,8 +888,16 @@ and interp_exp ?(read = None) env defs = function
         let es = List.map es ~f:(interp_exp env defs ~read) in
         let env = List.zip_exn args es |> String.Map.of_alist_exn in
         interp_exp env defs e' ~read
+    | `Function (env', args, e') ->
+        let es = List.map es ~f:(interp_exp env defs ~read) in
+        let env =
+          List.zip_exn args es
+          |> List.fold ~init:env' ~f:(fun acc (x, e) -> Map.set acc x e)
+        in
+        interp_exp env defs e' ~read
     | _ -> assert false )
   | Funref (v, _) -> `Def v
+  | Lambda (args, _, e) -> `Function (env, List.map args ~f:fst, e)
 
 and interp_prim ?(read = None) env defs = function
   | Read -> (
@@ -970,6 +1068,18 @@ and uniquify_exp m = function
       let _, es = List.map es ~f:(uniquify_exp m) |> List.unzip in
       (m, Apply (e, es, t))
   | Funref _ as f -> (m, f)
+  | Lambda (args, t, e) ->
+      let m', args =
+        List.fold args ~init:(m, []) ~f:(fun (m, args) (x, t) ->
+            let n =
+              match Map.find m x with
+              | None -> 1
+              | Some n -> n + 1
+            in
+            (Map.set m x n, (newvar x n, t) :: args))
+      in
+      let _, e = uniquify_exp m' e in
+      (m, Lambda (List.rev args, t, e))
 
 and uniquify_prim m = function
   | Read -> (m, Read)
@@ -1058,6 +1168,337 @@ and uniquify_prim m = function
 
 and newvar v n = Printf.sprintf "%s.%d" v n
 
+let rec convert_to_closures = function
+  | Program (info, defs) ->
+      let n = ref 0 in
+      let defs, new_defs =
+        List.(map defs ~f:(convert_to_closures_def n) |> unzip)
+      in
+      let defs = List.concat new_defs @ defs in
+      Program (info, List.map defs ~f:(fix_types_def defs))
+
+and fix_types_def defs = function
+  | Def (v, args, t, e) ->
+      Def (v, args, t, fix_types_exp defs (String.Map.of_alist_exn args) e)
+
+and fix_types_exp defs env = function
+  | Int _ as i -> i
+  | Bool _ as b -> b
+  | Void -> Void
+  | Prim (p, t) ->
+      let p, t = fix_types_prim defs env p in
+      Prim (p, t)
+  | Var (v, t) -> (
+    match Map.find env v with
+    | None -> assert false
+    | Some t -> Var (v, t) )
+  | Let (v, e1, e2, t) ->
+      let e1 = fix_types_exp defs env e1 in
+      let t1 = typeof_exp e1 in
+      let e2 = fix_types_exp defs (Map.set env v t1) e2 in
+      let t = typeof_exp e2 in
+      Let (v, e1, e2, t)
+  | If (e1, e2, e3, t) ->
+      let e1 = fix_types_exp defs env e1 in
+      let e2 = fix_types_exp defs env e2 in
+      let e3 = fix_types_exp defs env e3 in
+      let t2 = typeof_exp e2 in
+      let t3 = typeof_exp e3 in
+      let t =
+        (* if both branches returned closures, they could have
+         * different closure environments but share the same
+         * function signature, so we need a "trust me" type here too. *)
+        match (t2, t3) with
+        | ( Type.(Vector [Arrow (Vector tv1 :: ts1, tret1); Vector tv1'])
+          , Type.(Vector [Arrow (Vector tv2 :: ts2, tret2); Vector tv2']) )
+          ->
+            if
+              List.equal Type.equal ts1 ts2
+              && Type.equal tret1 tret2
+              && List.equal Type.equal tv1 tv1'
+              && List.equal Type.equal tv2 tv2'
+            then
+              Type.(
+                Vector
+                  [Arrow (Vector [Trustme] :: ts1, tret1); Vector [Trustme]])
+            else assert false
+        | _ ->
+            assert (Type.(equal t2 t3));
+            t2
+      in
+      If (e1, e2, e3, t)
+  | Apply (e, es, t) -> (
+      let e = fix_types_exp defs env e in
+      let es = List.map es ~f:(fix_types_exp defs env) in
+      match typeof_exp e with
+      | Type.Arrow (_, tret) -> Apply (e, es, tret)
+      | _ -> assert false )
+  | Funref (v, t) ->
+      let (Def (_, args, t, _)) =
+        List.find_exn defs ~f:(function Def (v', _, _, _) ->
+            String.equal v v')
+      in
+      let t = Type.Arrow (List.map args ~f:snd, t) in
+      Funref (v, t)
+  | Lambda _ -> assert false
+
+and fix_types_prim defs env = function
+  | Read -> (Read, Type.Integer)
+  | Minus e -> (Minus (fix_types_exp defs env e), Type.Integer)
+  | Plus (e1, e2) ->
+      ( Plus (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Integer )
+  | Subtract (e1, e2) ->
+      ( Subtract (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Integer )
+  | Mult (e1, e2) ->
+      ( Mult (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Integer )
+  | Div (e1, e2) ->
+      ( Div (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Integer )
+  | Rem (e1, e2) ->
+      ( Rem (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Integer )
+  | Land (e1, e2) ->
+      ( Land (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Integer )
+  | Lor (e1, e2) ->
+      ( Lor (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Integer )
+  | Lxor (e1, e2) ->
+      ( Lxor (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Integer )
+  | Lnot e -> (Lnot (fix_types_exp defs env e), Type.Integer)
+  | Eq (e1, e2) ->
+      ( Eq (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Boolean )
+  | Lt (e1, e2) ->
+      ( Lt (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Boolean )
+  | Le (e1, e2) ->
+      ( Le (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Boolean )
+  | Gt (e1, e2) ->
+      ( Gt (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Boolean )
+  | Ge (e1, e2) ->
+      ( Ge (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Boolean )
+  | Not e -> (Not (fix_types_exp defs env e), Type.Boolean)
+  | And (e1, e2) ->
+      ( And (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Boolean )
+  | Or (e1, e2) ->
+      ( Or (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      , Type.Boolean )
+  | Vector es ->
+      let es = List.map es ~f:(fix_types_exp defs env) in
+      let ts = List.map es ~f:typeof_exp in
+      (Vector es, Type.Vector ts)
+  | Vectorlength e ->
+      let e = fix_types_exp defs env e in
+      (Vectorlength e, Type.Integer)
+  | Vectorref (e, i) -> (
+      let e = fix_types_exp defs env e in
+      match typeof_exp e with
+      | Type.Vector ts -> (Vectorref (e, i), List.nth_exn ts i)
+      | _ -> assert false )
+  | Vectorset (e1, i, e2) ->
+      let e1 = fix_types_exp defs env e1 in
+      let e2 = fix_types_exp defs env e2 in
+      (Vectorset (e1, i, e2), Type.Void)
+
+and convert_to_closures_def n = function
+  | Def (v, args, t, e) ->
+      let args =
+        (* if we encounter a function as an argument, then
+         * it's not possible to know the type of the closure
+         * environment, so we need to use a dumb "trust me" type *)
+        List.map args ~f:(fun (x, t) ->
+            match t with
+            | Type.Arrow (targs, tret) ->
+                (x, Type.(Vector [Arrow (targs, tret); Vector [Trustme]]))
+            | _ -> (x, t))
+      in
+      let e', new_defs =
+        convert_to_closures_exp (String.Map.of_alist_exn args) n e
+      in
+      let args =
+        if Label.equal v main then args else ("_", Type.Vector []) :: args
+      in
+      let t = typeof_exp e' in
+      (Def (v, args, t, e'), new_defs)
+
+(* IMPORTANT: the types in the AST will be partly junk
+ * after running this, so it's our job to fix them *)
+and convert_to_closures_exp env n = function
+  | Int _ as i -> (i, [])
+  | Bool _ as b -> (b, [])
+  | Void -> (Void, [])
+  | Prim (p, t) ->
+      let p, new_defs = convert_to_closures_prim env n p in
+      (Prim (p, t), new_defs)
+  | Var (v, t) ->
+      let t =
+        match Map.find env v with
+        | None -> t
+        | Some t -> t
+      in
+      (Var (v, t), [])
+  | Let (v, e1, e2, t) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 =
+        convert_to_closures_exp (Map.set env v (typeof_exp e1)) n e2
+      in
+      (Let (v, e1, e2, typeof_exp e2), new_defs1 @ new_defs2)
+  | If (e1, e2, e3, t) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e3, new_defs3 = convert_to_closures_exp env n e3 in
+      (If (e1, e2, e3, t), new_defs1 @ new_defs2 @ new_defs3)
+  | Apply (e, es, t) ->
+      let e, new_defs = convert_to_closures_exp env n e in
+      let es, new_defs_es =
+        List.(map es ~f:(convert_to_closures_exp env n) |> unzip)
+      in
+      let et = typeof_exp e in
+      let e' =
+        Let
+          ( "_f"
+          , e
+          , Apply
+              ( Prim (Vectorref (Var ("_f", et), 0), Type.Trustme)
+              , Prim (Vectorref (Var ("_f", et), 1), Type.Trustme) :: es
+              , t )
+          , t )
+      in
+      (e', new_defs @ List.concat new_defs_es)
+  | Funref (v, t) ->
+      ( Prim
+          ( Vector [Funref (v, t); Prim (Vector [], Type.Vector [])]
+          , Type.(Vector [t; Vector []]) )
+      , [] )
+  | Lambda (args, t, e) ->
+      let vars = vars_of_exp e in
+      let free_vars =
+        List.fold args ~init:vars ~f:(fun acc (x, _) -> Map.remove acc x)
+        |> Map.to_alist
+      in
+      let c, d = newclo n in
+      let ct = Type.Vector (List.map free_vars ~f:snd) in
+      let clo_arg = (c, ct) in
+      let e, new_defs = convert_to_closures_exp env n e in
+      let et = typeof_exp e in
+      let new_body, _ =
+        List.fold_right free_vars
+          ~init:(e, List.length free_vars - 1)
+          ~f:(fun (x, t) (e, i) ->
+            (Let (x, Prim (Vectorref (Var (c, ct), i), t), e, et), i - 1))
+      in
+      let ft = Type.Arrow (List.map args ~f:snd, t) in
+      let new_defs = Def (d, clo_arg :: args, t, new_body) :: new_defs in
+      ( Prim
+          ( Vector
+              [ Funref (d, ft)
+              ; Prim
+                  ( Vector (List.map free_vars ~f:(fun (x, t) -> Var (x, t)))
+                  , ct ) ]
+          , Type.Vector [ft; ct] )
+      , new_defs )
+
+and convert_to_closures_prim env n = function
+  | Read -> (Read, [])
+  | Minus e ->
+      let e, new_defs = convert_to_closures_exp env n e in
+      (Minus e, new_defs)
+  | Plus (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Plus (e1, e2), new_defs1 @ new_defs2)
+  | Subtract (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Subtract (e1, e2), new_defs1 @ new_defs2)
+  | Mult (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Mult (e1, e2), new_defs1 @ new_defs2)
+  | Div (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Div (e1, e2), new_defs1 @ new_defs2)
+  | Rem (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Rem (e1, e2), new_defs1 @ new_defs2)
+  | Land (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Land (e1, e2), new_defs1 @ new_defs2)
+  | Lor (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Lor (e1, e2), new_defs1 @ new_defs2)
+  | Lxor (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Lxor (e1, e2), new_defs1 @ new_defs2)
+  | Lnot e ->
+      let e, new_defs = convert_to_closures_exp env n e in
+      (Lnot e, new_defs)
+  | Eq (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Eq (e1, e2), new_defs1 @ new_defs2)
+  | Lt (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Lt (e1, e2), new_defs1 @ new_defs2)
+  | Le (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Le (e1, e2), new_defs1 @ new_defs2)
+  | Gt (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Gt (e1, e2), new_defs1 @ new_defs2)
+  | Ge (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Ge (e1, e2), new_defs1 @ new_defs2)
+  | Not e ->
+      let e, new_defs = convert_to_closures_exp env n e in
+      (Not e, new_defs)
+  | And (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (And (e1, e2), new_defs1 @ new_defs2)
+  | Or (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Or (e1, e2), new_defs1 @ new_defs2)
+  | Vector es ->
+      let es, new_defs =
+        List.(map es ~f:(convert_to_closures_exp env n) |> unzip)
+      in
+      (Vector es, List.concat new_defs)
+  | Vectorlength e ->
+      let e, new_defs = convert_to_closures_exp env n e in
+      (Vectorlength e, new_defs)
+  | Vectorref (e, i) ->
+      let e, new_defs = convert_to_closures_exp env n e in
+      (Vectorref (e, i), new_defs)
+  | Vectorset (e1, i, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      (Vectorset (e1, i, e2), new_defs1 @ new_defs2)
+
+and newclo n =
+  let c = Printf.sprintf "_clo%d" !n in
+  let d = Printf.sprintf "_def%d" !n in
+  incr n; (c, d)
+
 let rec limit_functions = function
   | Program (info, defs) ->
       let defs = List.map defs ~f:limit_functions_def in
@@ -1139,6 +1580,7 @@ and limit_functions_exp defs = function
           | If (e1, e2, e3, _) -> If (e1, e2, e3, et)
           | Apply (e, es, _) -> Apply (e, es, et)
           | Funref _ as f -> f
+          | Lambda _ as l -> l
           | _ -> assert false
         in
         Apply (e, args1 @ [Prim (Vector args2, final_arg_t)], t)
@@ -1148,6 +1590,8 @@ and limit_functions_exp defs = function
             Label.equal v v')
       in
       Funref (v, Type.Arrow (List.map args ~f:snd, t'))
+  (* convert_to_closures should have erased all lambdas *)
+  | Lambda _ -> assert false
 
 and limit_functions_prim defs = function
   | Read -> Read

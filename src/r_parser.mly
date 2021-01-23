@@ -17,12 +17,12 @@
 %}
 
 %token EOF
-%token DEFINE
+%token DEFINE LAMBDA
 %token LPAREN RPAREN LSQUARE RSQUARE
 %token <int64> INT
 %token <string> VAR
 %token PLUS MINUS STAR FSLASH REM LAND LOR LXOR LNOT 
-%token VECTOR VECTORLENGTH VECTORREF VECTORSETBANG VOID
+%token VECTOR VECTORLENGTH VECTORREF VECTORSETBANG PROCEDUREARITY VOID
 %token TINTEGER TBOOLEAN TVOID TVECTOR ARROW COLON
 %token READ LET
 %token TRUE FALSE
@@ -113,6 +113,8 @@ exp:
     { If ($3, $4, $5) }
   | LPAREN exp list(exp) RPAREN
     { Apply ($2, $3) }
+  | LAMBDA LPAREN args = list(def_arg) RPAREN COLON t = typ e = exp RPAREN
+    { Lambda (args, t, e) }
 
 prim:
   | LPAREN READ RPAREN
@@ -187,3 +189,6 @@ prim:
       let open Core_kernel in
       Vectorset ($3, Int64.to_int_exn $4, $5)
     }
+  | PROCEDUREARITY exp RPAREN
+    { Procedurearity $2 }
+      
