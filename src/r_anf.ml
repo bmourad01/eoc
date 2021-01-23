@@ -150,8 +150,6 @@ and resolve_complex_def nvars = function
       let e = resolve_complex_exp m n e in
       Def (v, args, t, e)
 
-(* let e = resolve_complex_exp R_typed.empty_var_env (ref info.nvars) e in
- * Program ({typ= info.typ}, e) *)
 and resolve_complex_atom m n = function
   | R_alloc.Int i -> ([], Int i)
   | R_alloc.Bool b -> ([], Bool b)
