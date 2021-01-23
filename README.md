@@ -33,3 +33,4 @@ For building the project, run `dune build`. To compile a program, run `./compile
 - Register allocation with move biasing
 - Tuples (`vector`) & garbage collection
 - Top-level functions via `define`
+- Anonymous functions via `lambda`
