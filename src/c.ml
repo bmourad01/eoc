@@ -553,6 +553,7 @@ and do_assign fn e x cont =
   | Return (Atom a) -> Seq (Assign (x, Atom a), cont)
   | Return (Prim (p, t)) -> Seq (Assign (x, Prim (p, t)), cont)
   | Return (Funref (v, t)) -> Seq (Assign (x, Funref (v, t)), cont)
+  | Return (Call (a, as', t)) -> Seq (Assign (x, Call (a, as', t)), cont)
   | Return (Allocate (n, t)) -> Seq (Assign (x, Allocate (n, t)), cont)
   | Return (Globalvalue (v, t)) -> Seq (Assign (x, Globalvalue (v, t)), cont)
   | Seq (s, t) -> Seq (s, do_assign fn t x cont)
