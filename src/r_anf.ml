@@ -131,7 +131,8 @@ and string_of_prim = function
 let rec resolve_complex = function
   | R_alloc.Program (info, defs) ->
       let nvars = ref info.nvars in
-      Program ({nvars= !nvars}, List.map defs ~f:(resolve_complex_def nvars))
+      let defs = List.map defs ~f:(resolve_complex_def nvars) in
+      Program ({nvars= !nvars}, defs)
 
 and resolve_complex_def nvars = function
   | R_alloc.Def (v, args, t, e) ->
