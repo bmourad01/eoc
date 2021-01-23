@@ -71,7 +71,17 @@ def_arg:
 
 def:
   | DEFINE LPAREN v = VAR args = list(def_arg) RPAREN COLON t = typ e = exp RPAREN
-    { Def (v, args, t, e) }
+    {
+      let open Core_kernel in
+      let s = Hash_set.create (module String) in
+      List.iter args ~f:(fun (x, _) ->
+          match Hash_set.strict_add s x with
+          | Error _ ->
+             invalid_arg
+               ("define: function " ^ v ^ ", arg " ^ x ^ " cannot be redefined")
+          | Ok () -> ());
+      Def (v, args, t, e)
+    }
 
 atom_exp:
   | INT
@@ -114,7 +124,16 @@ exp:
   | LPAREN exp list(exp) RPAREN
     { Apply ($2, $3) }
   | LAMBDA LPAREN args = list(def_arg) RPAREN COLON t = typ e = exp RPAREN
-    { Lambda (args, t, e) }
+    {
+      let open Core_kernel in
+      let s = Hash_set.create (module String) in
+      List.iter args ~f:(fun (x, _) ->
+          match Hash_set.strict_add s x with
+          | Error _ ->
+             invalid_arg ("lambda: arg " ^ x ^ " cannot be redefined")
+          | Ok () -> ());
+      Lambda (args, t, e)
+    }
 
 prim:
   | LPAREN READ RPAREN
