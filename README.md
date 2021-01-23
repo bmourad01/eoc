@@ -6,7 +6,7 @@ Implementation of a compiler from a subset of Racket to AMD64, based on the book
 
 - OCaml (>= 4.08)
 - nasm (>= 2.15.05)
-- gcc (>= 9.3.0)
+- a C99-compatible C compiler
 - a POSIX-compliant shell
 
 Additionally, the following OCaml packages are required:
