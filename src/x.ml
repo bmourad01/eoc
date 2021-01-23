@@ -840,7 +840,7 @@ let function_epilogue is_main type_map rootstack_spills typ label stack_space
     | [] ->
         failwith
           ("X.function_epilogue: block " ^ label ^ " is not well-formed")
-    | RET :: _ ->
+    | ((RET | JMPt _) as t) :: _ ->
         let print =
           if is_main then
             [ PUSH (Reg RAX)
@@ -850,18 +850,7 @@ let function_epilogue is_main type_map rootstack_spills typ label stack_space
             ; POP (Reg RAX) ]
           else []
         in
-        List.rev acc @ print @ epilogue @ [RET]
-    | (JMPt _ as j) :: _ ->
-        let print =
-          if is_main then
-            [ PUSH (Reg RAX)
-            ; LEA (Reg RDI, Var (Map.find_exn type_map typ))
-            ; MOV (Reg RSI, Reg RAX)
-            ; CALL (Extern.print_value, 2)
-            ; POP (Reg RAX) ]
-          else []
-        in
-        List.rev acc @ print @ epilogue @ [j]
+        List.rev acc @ print @ epilogue @ [t]
     | instr :: rest -> aux (instr :: acc) rest
   in
   aux [] instrs
