@@ -495,7 +495,7 @@ and select_instructions_tail type_map tails t =
             | Var (v, _) -> MOV (Reg r, Var v) :: acc)
         |> List.rev
       in
-      mov_args @ [JMPt (Var v, List.length mov_args)]
+      mov_args @ [MOV (Reg RAX, Var v); JMPt (Reg RAX, List.length mov_args)]
   | C.Tailcall _ -> assert false
 
 and select_instructions_stmt type_map s =
