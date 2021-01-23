@@ -194,6 +194,7 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   uint64_t size;
 
   cheney(rootstack_ptr);
+
   DBGPRINT("GC: checking for sufficient space\n");
 
   // check if we need to resize the heap
