@@ -15,9 +15,11 @@ let word_size = 8
 
 let total_tag_offset = 1
 
-type info = {typ: Type.t; nvars: int}
+type info = {nvars: int Label.Map.t}
 
-type t = Program of info * exp
+type t = Program of info * def list
+
+and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
@@ -27,6 +29,8 @@ and exp =
   | Var of var * Type.t
   | Let of var * exp * exp * Type.t
   | If of exp * exp * exp * Type.t
+  | Apply of exp * exp list * Type.t
+  | Funref of var * Type.t
   | Collect of int
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
@@ -56,7 +60,22 @@ and prim =
   | Vectorset of exp * int * exp
 
 let rec to_string = function
-  | Program (_, exp) -> string_of_exp exp
+  | Program (_, defs) ->
+      List.map defs ~f:string_of_def |> String.concat ~sep:"\n\n"
+
+and string_of_def = function
+  | Def (v, args, t, e) ->
+      let s =
+        List.map args ~f:(fun (a, t) ->
+            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+        |> String.concat ~sep:" "
+      in
+      if String.is_empty s then
+        Printf.sprintf "(define (%s) : %s %s)" v (Type.to_string t)
+          (string_of_exp e)
+      else
+        Printf.sprintf "(define (%s %s) : %s %s)" v s (Type.to_string t)
+          (string_of_exp e)
 
 and string_of_exp = function
   | Int i -> Int64.to_string i
@@ -70,6 +89,11 @@ and string_of_exp = function
   | If (e1, e2, e3, _) ->
       Printf.sprintf "(if %s %s %s)" (string_of_exp e1) (string_of_exp e2)
         (string_of_exp e3)
+  | Apply (e, [], _) -> Printf.sprintf "(%s)" (string_of_exp e)
+  | Apply (e, es, _) ->
+      Printf.sprintf "(%s %s)" (string_of_exp e)
+        (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
+  | Funref (v, _) -> Printf.sprintf "(fun-ref %s)" v
   | Collect n -> Printf.sprintf "(collect %d)" n
   | Allocate (n, t) -> Printf.sprintf "(allocate %d %s)" n (Type.to_string t)
   | Globalvalue (v, _) -> Printf.sprintf "(global-value '%s)" v
@@ -121,10 +145,15 @@ let newvar n =
   incr n; v
 
 let rec expose_allocation = function
-  | R_typed.Program (info, exp) ->
+  | R_typed.Program (info, defs) ->
+      let defs, ns = List.map defs ~f:expose_allocation_def |> List.unzip in
+      Program ({nvars= Label.Map.of_alist_exn ns}, defs)
+
+and expose_allocation_def = function
+  | R_typed.Def (v, args, t, e) ->
       let n = ref 0 in
-      let exp = expose_allocation_exp n exp in
-      Program ({typ= info.typ; nvars= !n}, exp)
+      let e = expose_allocation_exp n e in
+      (Def (v, args, t, e), (v, !n))
 
 and expose_allocation_exp n = function
   | R_typed.Int i -> Int i
@@ -142,6 +171,11 @@ and expose_allocation_exp n = function
       let e2 = expose_allocation_exp n e2 in
       let e3 = expose_allocation_exp n e3 in
       If (e1, e2, e3, t)
+  | R_typed.Apply (e, es, t) ->
+      let e = expose_allocation_exp n e in
+      let es = List.map es ~f:(expose_allocation_exp n) in
+      Apply (e, es, t)
+  | R_typed.Funref (v, t) -> Funref (v, t)
 
 and expand_alloc n t ts es =
   let v = newvar n in

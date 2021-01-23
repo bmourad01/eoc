@@ -7,15 +7,19 @@ module Type_map = R_alloc.Type_map
 
 type type_env = R_alloc.type_env
 
-type info = {typ: Type.t}
+type info = unit
 
-type t = Program of info * exp
+type t = Program of info * def list
+
+and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Atom of atom
   | Prim of prim * Type.t
   | Let of var * exp * exp * Type.t
   | If of exp * exp * exp * Type.t
+  | Apply of atom * atom list * Type.t
+  | Funref of var * Type.t
   | Collect of int
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
@@ -45,7 +49,22 @@ and prim =
   | Vectorset of atom * int * atom
 
 let rec to_string = function
-  | Program (_, e) -> string_of_exp e
+  | Program (_, defs) ->
+      List.map defs ~f:string_of_def |> String.concat ~sep:"\n\n"
+
+and string_of_def = function
+  | Def (v, args, t, e) ->
+      let s =
+        List.map args ~f:(fun (a, t) ->
+            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+        |> String.concat ~sep:" "
+      in
+      if String.is_empty s then
+        Printf.sprintf "(define (%s) : %s %s)" v (Type.to_string t)
+          (string_of_exp e)
+      else
+        Printf.sprintf "(define (%s %s) : %s %s)" v s (Type.to_string t)
+          (string_of_exp e)
 
 and string_of_exp = function
   | Atom a -> string_of_atom a
@@ -56,6 +75,11 @@ and string_of_exp = function
   | If (e1, e2, e3, _) ->
       Printf.sprintf "(if %s %s %s)" (string_of_exp e1) (string_of_exp e2)
         (string_of_exp e3)
+  | Apply (a, [], _) -> Printf.sprintf "(%s)" (string_of_atom a)
+  | Apply (a, as', _) ->
+      Printf.sprintf "(%s %s)" (string_of_atom a)
+        (List.map as' ~f:string_of_atom |> String.concat ~sep:" ")
+  | Funref (v, _) -> Printf.sprintf "(fun-ref %s)" v
   | Collect n -> Printf.sprintf "(collect %d)" n
   | Allocate (n, t) -> Printf.sprintf "(allocate %d %s)" n (Type.to_string t)
   | Globalvalue (v, _) -> Printf.sprintf "(global-value '%s)" v
@@ -105,10 +129,29 @@ and string_of_prim = function
         (string_of_atom a2)
 
 let rec resolve_complex = function
-  | R_alloc.Program (info, e) ->
-      let e = resolve_complex_exp R_typed.empty_var_env (ref info.nvars) e in
-      Program ({typ= info.typ}, e)
+  | R_alloc.Program (info, defs) ->
+      Program ((), List.map defs ~f:(resolve_complex_def info.nvars))
 
+and resolve_complex_def nvars = function
+  | R_alloc.Def (v, args, t, e) ->
+      let n = ref (Map.find_exn nvars v) in
+      let m =
+        List.map args ~f:(fun (x, t) ->
+            let x' = fresh_var n in
+            (x, Var (x', t)))
+        |> String.Map.of_alist_exn
+      in
+      let args =
+        List.map args ~f:(fun (x, t) ->
+            match Map.find_exn m x with
+            | Var (x', _) -> (x', t)
+            | _ -> assert false)
+      in
+      let e = resolve_complex_exp m n e in
+      Def (v, args, t, e)
+
+(* let e = resolve_complex_exp R_typed.empty_var_env (ref info.nvars) e in
+ * Program ({typ= info.typ}, e) *)
 and resolve_complex_atom m n = function
   | R_alloc.Int i -> ([], Int i)
   | R_alloc.Bool b -> ([], Bool b)
@@ -260,6 +303,18 @@ and resolve_complex_atom m n = function
       in
       let x = fresh_var n in
       ([(x, e)], Var (x, t))
+  | R_alloc.Apply (e, es, t) ->
+      let nv, a = resolve_complex_atom m n e in
+      let nvs, as' =
+        List.map es ~f:(resolve_complex_atom m n) |> List.unzip
+      in
+      let nvs = List.concat nvs in
+      let x = fresh_var n in
+      ((nv @ nvs) @ [(x, Apply (a, as', t))], Var (x, t))
+  | R_alloc.Funref (v, t) ->
+      let e = Funref (v, t) in
+      let x = fresh_var n in
+      ([(x, e)], Var (x, t))
   | R_alloc.Collect n' ->
       let e = Collect n' in
       let x = fresh_var n in
@@ -381,6 +436,16 @@ and resolve_complex_exp m n = function
         , resolve_complex_exp m n e2
         , resolve_complex_exp m n e3
         , t )
+  | R_alloc.Apply (e, es, t) ->
+      (* same situation as vector-ref *)
+      let nv, a = resolve_complex_atom m n e in
+      let nvs, as' =
+        List.map es ~f:(resolve_complex_atom m n) |> List.unzip
+      in
+      let nvs = List.concat nvs in
+      let x = fresh_var n in
+      unfold (nv @ nvs @ [(x, Apply (a, as', t))]) (Atom (Var (x, t)))
+  | R_alloc.Funref (v, t) -> Funref (v, t)
   | R_alloc.Collect n -> Collect n
   | R_alloc.Allocate (n, t) -> Allocate (n, t)
   | R_alloc.Globalvalue (v, t) -> Globalvalue (v, t)
@@ -401,6 +466,8 @@ and typeof' = function
   | R_alloc.Var (_, t) -> t
   | R_alloc.Let (_, _, _, t) -> t
   | R_alloc.If (_, _, _, t) -> t
+  | R_alloc.Apply (_, _, t) -> t
+  | R_alloc.Funref (_, t) -> t
   | R_alloc.Collect _ -> Type.Void
   | R_alloc.Allocate (_, t) -> t
   | R_alloc.Globalvalue (_, t) -> t
@@ -413,6 +480,8 @@ and typeof = function
   | Prim (_, t) -> t
   | Let (_, _, _, t) -> t
   | If (_, _, _, t) -> t
+  | Apply (_, _, t) -> t
+  | Funref (_, t) -> t
   | Collect _ -> Type.Void
   | Allocate (_, t) -> t
   | Globalvalue (_, t) -> t

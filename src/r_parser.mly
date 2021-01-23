@@ -17,11 +17,13 @@
 %}
 
 %token EOF
+%token DEFINE
+%token LPAREN RPAREN LSQUARE RSQUARE
 %token <int64> INT
 %token <string> VAR
 %token PLUS MINUS STAR FSLASH REM LAND LOR LXOR LNOT 
 %token VECTOR VECTORLENGTH VECTORREF VECTORSETBANG VOID
-%token LPAREN RPAREN LSQUARE RSQUARE
+%token TINTEGER TBOOLEAN TVOID TVECTOR ARROW COLON
 %token READ LET
 %token TRUE FALSE
 %token EQ LT LE GT GE NOT AND OR IF
@@ -32,17 +34,46 @@
 %%
 
 prog:
+  | nonempty_list(def) exp EOF
+    {
+      let open Core_kernel in
+      R_typed.type_check (Program ((), $1, $2))
+    }
   | exp EOF
     {
       let open Core_kernel in
-      R_typed.type_check (Program ((), $1))
+      R_typed.type_check (Program ((), [], $1))
     }
 
 let_arg:
   | LSQUARE v = VAR e = exp RSQUARE
     { (v, e) }
 
-exp:
+typ:
+  | TINTEGER
+    { Type.Integer }
+  | TBOOLEAN
+    { Type.Boolean }
+  | TVOID
+    { Type.Void }
+  | LPAREN TVECTOR list(typ) RPAREN
+    { Type.Vector $3 }
+  | LPAREN typ ARROW separated_nonempty_list(ARROW, typ) RPAREN
+    {
+      let open Core_kernel in
+      let ts = List.drop_last_exn $4 in
+      Type.Arrow ($2 :: ts, List.last_exn $4)
+    }
+
+def_arg:
+  | LSQUARE VAR COLON typ RSQUARE
+    { ($2, $4) }
+
+def:
+  | DEFINE LPAREN v = VAR args = list(def_arg) RPAREN COLON t = typ e = exp RPAREN
+    { Def (v, args, t, e) }
+
+atom_exp:
   | INT
     { Int $1 }
   | TRUE
@@ -51,10 +82,10 @@ exp:
     { Bool false }
   | LPAREN VOID RPAREN
     { Void }
-  | prim
-    { Prim $1 }
   | VAR
     { Var $1 }
+
+let_exp:
   | LPAREN LET LPAREN args = nonempty_list(let_arg) RPAREN body = exp RPAREN
     {
       let open Core_kernel in
@@ -70,8 +101,18 @@ exp:
       let open Core_kernel in
       List.fold_right args ~init:body ~f:(fun (v, e) acc -> Let (v, e, acc))
     }
+
+exp:
+  | atom_exp
+    { $1 }
+  | prim
+    { Prim $1 }
+  | let_exp
+    { $1 }
   | LPAREN IF exp exp exp RPAREN
     { If ($3, $4, $5) }
+  | LPAREN exp list(exp) RPAREN
+    { Apply ($2, $3) }
 
 prim:
   | LPAREN READ RPAREN

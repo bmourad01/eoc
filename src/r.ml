@@ -2,9 +2,40 @@ open Core_kernel
 
 type var = string [@@deriving equal, compare, hash, sexp]
 
+module Type = struct
+  module T = struct
+    type t =
+      | Integer
+      | Boolean
+      | Void
+      | Vector of t list
+      | Arrow of t list * t
+    [@@deriving equal, compare, sexp]
+
+    let rec to_string = function
+      | Integer -> "Integer"
+      | Boolean -> "Boolean"
+      | Void -> "Void"
+      | Vector ts ->
+          let s = List.map ts ~f:to_string in
+          if List.is_empty s then "(Vector)"
+          else Printf.sprintf "(Vector %s)" (String.concat s ~sep:" ")
+      | Arrow (ts, t) ->
+          let s = List.map ts ~f:to_string |> String.concat ~sep:" -> " in
+          Printf.sprintf "%s -> %s" s (to_string t)
+  end
+
+  include T
+  include Comparable.Make (T)
+end
+
+module Type_map = Map.Make (Type)
+
 type info = unit
 
-type t = Program of info * exp
+type t = Program of info * def list * exp
+
+and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
@@ -14,6 +45,7 @@ and exp =
   | Var of var
   | Let of var * exp * exp
   | If of exp * exp * exp
+  | Apply of exp * exp list
 
 and prim =
   | Read
@@ -41,7 +73,24 @@ and prim =
   | Vectorset of exp * int * exp
 
 let rec to_string = function
-  | Program (_, exp) -> string_of_exp exp
+  | Program (_, defs, exp) ->
+      let ds = List.map defs ~f:string_of_def |> String.concat ~sep:"\n\n" in
+      if String.is_empty ds then string_of_exp exp
+      else ds ^ "\n\n" ^ string_of_exp exp
+
+and string_of_def = function
+  | Def (v, args, t, e) ->
+      let s =
+        List.map args ~f:(fun (a, t) ->
+            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+        |> String.concat ~sep:" "
+      in
+      if String.is_empty s then
+        Printf.sprintf "(define (%s) : %s %s)" v (Type.to_string t)
+          (string_of_exp e)
+      else
+        Printf.sprintf "(define (%s %s) : %s %s)" v s (Type.to_string t)
+          (string_of_exp e)
 
 and string_of_exp = function
   | Int i -> Int64.to_string i
@@ -55,6 +104,10 @@ and string_of_exp = function
   | If (e1, e2, e3) ->
       Printf.sprintf "(if %s %s %s)" (string_of_exp e1) (string_of_exp e2)
         (string_of_exp e3)
+  | Apply (e, []) -> Printf.sprintf "(%s)" (string_of_exp e)
+  | Apply (e, es) ->
+      Printf.sprintf "(%s %s)" (string_of_exp e)
+        (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
 
 and string_of_prim = function
   | Read -> "(read)"

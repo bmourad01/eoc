@@ -4,6 +4,7 @@
         interp_r
         interp_c
         uniquify
+        limit_functions
         expose_allocation
         resolve_complex
         explicate_control

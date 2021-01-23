@@ -8,7 +8,7 @@ module Type_map : module type of R_typed.Type_map
 
 type type_env = R_typed.type_env
 
-type info = {typ: Type.t; nvars: int}
+type info = {nvars: int Label.Map.t}
 
 val free_ptr : string
 
@@ -21,7 +21,9 @@ val total_tag_offset : int
 (* same as the R_typed language, but with
  * special operators for allocating objects. *)
 
-type t = Program of info * exp
+type t = Program of info * def list
+
+and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
@@ -31,6 +33,8 @@ and exp =
   | Var of var * Type.t
   | Let of var * exp * exp * Type.t
   | If of exp * exp * exp * Type.t
+  | Apply of exp * exp list * Type.t
+  | Funref of var * Type.t
   | Collect of int
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t

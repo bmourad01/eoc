@@ -18,6 +18,7 @@ enum {
   TYPE_BOOLEAN,
   TYPE_VOID,
   TYPE_VECTOR,
+  TYPE_ARROW,
 };
 
 static bool is_pointer_type(uint64_t ty, bool rec) {
@@ -25,6 +26,7 @@ static bool is_pointer_type(uint64_t ty, bool rec) {
   case TYPE_INTEGER:
   case TYPE_BOOLEAN:
   case TYPE_VOID:
+  case TYPE_ARROW:
     return false;
   case TYPE_VECTOR:
     return true;
@@ -72,6 +74,9 @@ static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
       }
     }
     printf(")");
+    return;
+  case TYPE_ARROW:
+    printf("#<function>");
     return;
   default:
     // assume again that this is a pointer

@@ -2,11 +2,27 @@ open Core_kernel
 
 type var = string [@@deriving equal, compare, hash, sexp]
 
+module Type : sig
+  type t =
+    | Integer
+    | Boolean
+    | Void
+    | Vector of t list
+    | Arrow of t list * t
+  [@@deriving equal, compare, sexp]
+
+  val to_string : t -> string
+end
+
+module Type_map : module type of Map.Make (Type)
+
 type info = unit
 
 (* the R language: an untyped subset of Racket *)
 
-type t = Program of info * exp
+type t = Program of info * def list * exp
+
+and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
@@ -16,6 +32,7 @@ and exp =
   | Var of var
   | Let of var * exp * exp
   | If of exp * exp * exp
+  | Apply of exp * exp list
 
 and prim =
   | Read

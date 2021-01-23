@@ -6,22 +6,21 @@ type 'a var_env = 'a String.Map.t
 
 val empty_var_env : 'a var_env
 
-module Type : sig
-  type t = Integer | Boolean | Vector of t list | Void
-  [@@deriving equal, compare, sexp]
+module Type : module type of R.Type
 
-  val to_string : t -> string
-end
+module Type_map : module type of R.Type_map
 
-module Type_map : module type of Map.Make (Type)
+val main : Label.t
 
 type type_env = Type.t var_env
 
-type info = {typ: Type.t}
+type info = unit
 
 (* a type-checked R program *)
 
-type t = Program of info * exp
+type t = Program of info * def list
+
+and def = Def of var * (var * Type.t) list * Type.t * exp
 
 (* values like Int, Bool, Void always have the
  * same type, so we don't need to annotate them *)
@@ -33,6 +32,8 @@ and exp =
   | Var of var * Type.t
   | Let of var * exp * exp * Type.t
   | If of exp * exp * exp * Type.t
+  | Apply of exp * exp list * Type.t
+  | Funref of var * Type.t
 
 and prim =
   | Read
@@ -78,7 +79,11 @@ val type_check : R.t -> t
 (* the result of evaluating a program *)
 
 type answer =
-  [`Int of Int64.t | `Bool of bool | `Vector of answer array | `Void]
+  [ `Int of Int64.t
+  | `Bool of bool
+  | `Void
+  | `Vector of answer array
+  | `Def of var ]
 
 val string_of_answer : ?nested:bool -> answer -> string
 
@@ -89,3 +94,7 @@ val interp : ?read:Int64.t option -> t -> answer
 (* make all let-bound variables unique *)
 
 val uniquify : t -> t
+
+(* limit arity of functions + calls *)
+
+val limit_functions : t -> t

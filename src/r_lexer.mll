@@ -28,6 +28,7 @@ rule token = parse
   | "lor" { LOR }
   | "lxor" { LXOR }
   | "lnot" { LNOT }
+  | "(define" { DEFINE }
   | '(' { LPAREN }
   | ')' { RPAREN }
   | '[' { LSQUARE }
@@ -50,6 +51,12 @@ rule token = parse
   | "vector-ref" { VECTORREF }
   | "vector-set!" { VECTORSETBANG }
   | "void" { VOID }
+  | "Integer" { TINTEGER }
+  | "Boolean" { TBOOLEAN }
+  | "Void" { TVOID }
+  | "Vector" { TVECTOR }
+  | "->" { ARROW }
+  | ':' { COLON }
   | eof { EOF }
   | integer as n { INT (Int64.of_string n) }
   | ident as id { VAR id }

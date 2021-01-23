@@ -125,17 +125,20 @@ module Arg_map = Map.Make (Arg)
 module Interference_graph = Graph.Persistent.Graph.Concrete (Arg)
 module Cfg = C.Cfg
 
-type info =
+type info = {type_map: Label.t C.Type_map.t}
+
+type t = Program of info * def list
+
+and def = Def of def_info * Label.t * blocks
+
+and def_info =
   { main: Label.t
   ; stack_space: int
   ; conflicts: Interference_graph.t
-  ; typ: C.Type.t
   ; cfg: Cfg.t
+  ; typ: C.Type.t
   ; locals_types: C.type_env
-  ; rootstack_spills: int
-  ; type_map: Label.t C.Type_map.t }
-
-type t = Program of info * blocks
+  ; rootstack_spills: int }
 
 and blocks = (Label.t * block) list
 
@@ -153,10 +156,12 @@ and instr =
   | MOV of arg * arg
   | LEA of arg * arg
   | CALL of Label.t * int
+  | CALLi of arg * int
   | PUSH of arg
   | POP of arg
   | RET
   | JMP of Label.t
+  | JMPt of arg * int
   | NOT of arg
   | XOR of arg * arg
   | AND of arg * arg
@@ -206,10 +211,10 @@ let write_set instr =
      |SETCC (_, a)
      |MOVZX (a, _) -> Args.singleton a
     | IDIV _ -> Args.of_list [Reg RAX; Reg RDX]
-    | CALL _ -> Set.add caller_save_set (Reg RSP)
+    | CALL _ | CALLi _ -> Set.add caller_save_set (Reg RSP)
     | PUSH _ | RET -> Args.singleton (Reg RSP)
     | POP a -> Args.of_list [a; Reg RSP]
-    | JMP _ | JCC _ | CMP _ | TEST _ -> Args.empty
+    | JMP _ | JMPt _ | JCC _ | CMP _ | TEST _ -> Args.empty
   in
   aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
 
@@ -236,6 +241,11 @@ let read_set instr =
         List.take Reg.arg_passing arity
         |> List.map ~f:(fun r -> Arg.Reg r)
         |> List.append [Arg.Reg RSP]
+        |> Args.of_list
+    | CALLi (a, arity) | JMPt (a, arity) ->
+        List.take Reg.arg_passing arity
+        |> List.map ~f:(fun r -> Arg.Reg r)
+        |> List.append [Arg.Reg RSP; a]
         |> Args.of_list
     | PUSH a -> Args.of_list [a; Reg RSP]
     | POP _ | RET -> Args.singleton (Reg RSP)
@@ -271,12 +281,12 @@ let typ_void = 2
 
 let typ_vector = 3
 
+let typ_arrow = 4
+
 let rec to_string = function
-  | Program (info, blocks) ->
+  | Program (info, defs) ->
       let blks =
-        List.map blocks ~f:snd
-        |> List.map ~f:string_of_block
-        |> String.concat ~sep:"\n"
+        List.map defs ~f:string_of_def |> String.concat ~sep:"\n\n"
       in
       let extern_fns =
         List.map Extern.extern_fns ~f:(fun x -> "extern " ^ x)
@@ -306,6 +316,7 @@ let rec to_string = function
          TYPE_BOOLEAN equ %d\n\
          TYPE_VOID equ %d\n\
          TYPE_VECTOR equ %d\n\n\
+         TYPE_ARROW equ %d\n\n\
          global %s\n\n\
          %s\n\n\
          %s\n\n\
@@ -313,8 +324,14 @@ let rec to_string = function
          %s\n\n\
          section .text\n\
          %s"
-        typ_int typ_bool typ_void typ_vector info.main extern_fns extern_vars
-        typ_info blks
+        typ_int typ_bool typ_void typ_vector typ_arrow R_typed.main
+        extern_fns extern_vars typ_info blks
+
+and string_of_def = function
+  | Def (_, _, blocks) ->
+      List.map blocks ~f:snd
+      |> List.map ~f:string_of_block
+      |> String.concat ~sep:"\n"
 
 and emit_type type_map = function
   | C.Type.Integer -> ["dq TYPE_INTEGER"]
@@ -327,6 +344,7 @@ and emit_type type_map = function
               | None -> emit_type type_map t
               | Some l -> [Printf.sprintf "dq %s" l])
         |> List.concat )
+  | C.Type.Arrow _ -> ["dq TYPE_ARROW"]
 
 and string_of_block = function
   | Block (l, _, is) ->
@@ -350,10 +368,12 @@ and string_of_instr = function
   | LEA (a1, a2) ->
       Printf.sprintf "lea %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | CALL (l, _) -> Printf.sprintf "call %s" l
+  | CALLi (a, _) -> Printf.sprintf "call %s" (Arg.to_string a)
   | PUSH a -> Printf.sprintf "push %s" (Arg.to_string a)
   | POP a -> Printf.sprintf "pop %s" (Arg.to_string a)
   | RET -> "ret"
   | JMP l -> Printf.sprintf "jmp %s" l
+  | JMPt (a, _) -> Printf.sprintf "jmp %s" (Arg.to_string a)
   | NOT a -> Printf.sprintf "not %s" (Arg.to_string a)
   | XOR (a1, a2) ->
       Printf.sprintf "xor %s, %s" (Arg.to_string a1) (Arg.to_string a2)
@@ -374,26 +394,10 @@ and string_of_instr = function
 let fits_int32 i = Option.is_some (Int64.to_int32 i)
 
 let rec select_instructions = function
-  | C.Program (info, tails) ->
+  | C.Program (info, defs) ->
       let type_map = ref C.Type_map.empty in
-      make_type type_map info.typ |> ignore;
-      let blocks =
-        let block_info = {live_after= []} in
-        List.fold_right tails ~init:[] ~f:(fun (label, tail) blocks ->
-            let instrs = select_instructions_tail type_map tails tail in
-            (label, Block (label, block_info, instrs)) :: blocks)
-      in
-      let info =
-        { main= info.main
-        ; stack_space= 0
-        ; conflicts= Interference_graph.empty
-        ; typ= info.typ
-        ; cfg= info.cfg
-        ; locals_types= info.locals_types
-        ; rootstack_spills= 0
-        ; type_map= !type_map }
-      in
-      Program (info, blocks)
+      let defs = List.map defs ~f:(select_instructions_def type_map) in
+      Program ({type_map= !type_map}, defs)
 
 and make_type type_map t =
   match Map.find !type_map t with
@@ -403,6 +407,36 @@ and make_type type_map t =
       let l = Printf.sprintf "type%d" n in
       type_map := Map.set !type_map t l;
       l
+
+and select_instructions_def type_map = function
+  | C.Def (l, args, t, info, tails) ->
+      List.iter args ~f:(fun (_, t) -> make_type type_map t |> ignore);
+      make_type type_map t |> ignore;
+      let blocks =
+        let block_info = {live_after= []} in
+        let mov_args =
+          let regs = List.(take Reg.arg_passing (length args)) in
+          List.foldi regs ~init:[] ~f:(fun i acc r ->
+              MOV (Var (List.nth_exn args i |> fst), Reg r) :: acc)
+          |> List.rev
+        in
+        List.fold_right tails ~init:[] ~f:(fun (label, tail) blocks ->
+            let instrs = select_instructions_tail type_map tails tail in
+            let instrs =
+              if Label.equal label l then mov_args @ instrs else instrs
+            in
+            (label, Block (label, block_info, instrs)) :: blocks)
+      in
+      let info =
+        { main= info.main
+        ; stack_space= 0
+        ; conflicts= Interference_graph.empty
+        ; typ= t
+        ; cfg= info.cfg
+        ; locals_types= info.locals_types
+        ; rootstack_spills= 0 }
+      in
+      Def (info, l, blocks)
 
 and select_instructions_tail type_map tails t =
   let open Arg in
@@ -448,6 +482,20 @@ and select_instructions_tail type_map tails t =
       let cc = Cc.of_c_cmp cmp in
       [CMP (Var v1, Var v2); JCC (cc, lt); JMP lf]
   | C.If _ -> assert false
+  (* tail-call *)
+  | C.(Tailcall (Var (v, _), args, _)) ->
+      let mov_args =
+        let regs = List.(take Reg.arg_passing (length args)) in
+        List.foldi regs ~init:[] ~f:(fun i acc r ->
+            match List.nth_exn args i with
+            | Int i -> MOV (Reg r, Imm i) :: acc
+            | Bool false | Void -> XOR (Reg r, Reg r) :: acc
+            | Bool true -> MOV (Reg r, Imm 1L) :: acc
+            | Var (v, _) -> MOV (Reg r, Var v) :: acc)
+        |> List.rev
+      in
+      mov_args @ [JMPt (Var v, List.length mov_args)]
+  | C.Tailcall _ -> assert false
 
 and select_instructions_stmt type_map s =
   let open Arg in
@@ -706,7 +754,22 @@ and select_instructions_exp type_map a p =
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2)
       ; XOR (a, a) ]
   | C.(Prim (Vectorset _, _)) -> assert false
-  (* allocate *)
+  (* fun-ref *)
+  | C.(Funref (v, _)) -> [LEA (a, Var v)]
+  (* call *)
+  | C.(Call (Var (v, _), args, _)) ->
+      let mov_args =
+        let regs = List.(take Reg.arg_passing (length args)) in
+        List.foldi regs ~init:[] ~f:(fun i acc r ->
+            match List.nth_exn args i with
+            | Int i -> MOV (Reg r, Imm i) :: acc
+            | Bool false | Void -> XOR (Reg r, Reg r) :: acc
+            | Bool true -> MOV (Reg r, Imm 1L) :: acc
+            | Var (v, _) -> MOV (Reg r, Var v) :: acc)
+        |> List.rev
+      in
+      mov_args @ [CALLi (Var v, List.length mov_args); MOV (a, Reg RAX)]
+  | C.Call _ -> assert false
   | C.(Allocate (n, (Type.Vector ts as t))) ->
       let l = make_type type_map t in
       [ MOV (Reg R11, Var Extern.free_ptr)
@@ -720,7 +783,7 @@ and select_instructions_exp type_map a p =
   (* global-value *)
   | C.Globalvalue (v, _) -> [MOV (a, Var v)]
 
-let function_prologue rootstack_spills stack_space w =
+let function_prologue is_main rootstack_spills stack_space w =
   let setup_frame =
     if stack_space <= 0 then [] else [PUSH (Reg RBP); MOV (Reg RBP, Reg RSP)]
   in
@@ -736,25 +799,26 @@ let function_prologue rootstack_spills stack_space w =
     else [SUB (Reg RSP, Imm (Int64.of_int (stack_space + (word_size * adj))))]
   in
   let init =
+    let mov_rootstk = [MOV (Reg R15, Var Extern.rootstack_begin)] in
     let adj_rootstk =
-      let mov_rootstk = [MOV (Reg R15, Var Extern.rootstack_begin)] in
       if rootstack_spills > 0 then
-        mov_rootstk
-        @ List.init rootstack_spills ~f:(fun i ->
-              MOV (Deref (R15, i * word_size), Imm 0L))
+        List.init rootstack_spills ~f:(fun i ->
+            MOV (Deref (R15, i * word_size), Imm 0L))
         @ [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
-      else mov_rootstk
+      else []
     in
-    [ MOV (Reg RDI, Imm 0x4000L)
-      (* let's use a very small number to trigger the GC *)
-    ; MOV (Reg RSI, Imm 16L)
-    ; CALL (Extern.initialize, 2) ]
-    @ adj_rootstk
+    if is_main then
+      [ MOV (Reg RDI, Imm 0x4000L)
+        (* let's use a very small number to trigger the GC *)
+      ; MOV (Reg RSI, Imm 16L)
+      ; CALL (Extern.initialize, 2) ]
+      @ mov_rootstk @ adj_rootstk
+    else adj_rootstk
   in
   setup_frame @ callee_save_in_use @ adj_sp @ init
 
-let function_epilogue type_map rootstack_spills typ label stack_space w
-    instrs =
+let function_epilogue is_main type_map rootstack_spills typ label stack_space
+    w instrs =
   let callee_save_in_use =
     Set.fold w ~init:[] ~f:(fun acc a -> POP a :: acc)
   in
@@ -777,19 +841,36 @@ let function_epilogue type_map rootstack_spills typ label stack_space w
           ("X.function_epilogue: block " ^ label ^ " is not well-formed")
     | RET :: _ ->
         let print =
-          [ PUSH (Reg RAX)
-          ; LEA (Reg RDI, Var (Map.find_exn type_map typ))
-          ; MOV (Reg RSI, Reg RAX)
-          ; CALL (Extern.print_value, 2)
-          ; POP (Reg RAX) ]
+          if is_main then
+            [ PUSH (Reg RAX)
+            ; LEA (Reg RDI, Var (Map.find_exn type_map typ))
+            ; MOV (Reg RSI, Reg RAX)
+            ; CALL (Extern.print_value, 2)
+            ; POP (Reg RAX) ]
+          else []
         in
         List.rev acc @ print @ epilogue @ [RET]
+    | (JMPt _ as j) :: _ ->
+        let print =
+          if is_main then
+            [ PUSH (Reg RAX)
+            ; LEA (Reg RDI, Var (Map.find_exn type_map typ))
+            ; MOV (Reg RSI, Reg RAX)
+            ; CALL (Extern.print_value, 2)
+            ; POP (Reg RAX) ]
+          else []
+        in
+        List.rev acc @ print @ epilogue @ [j]
     | instr :: rest -> aux (instr :: acc) rest
   in
   aux [] instrs
 
 let rec patch_instructions = function
-  | Program (info, blocks) ->
+  | Program (info, defs) ->
+      Program (info, List.map defs ~f:(patch_instructions_def info.type_map))
+
+and patch_instructions_def type_map = function
+  | Def (info, l, blocks) ->
       let blocks =
         List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
             let instrs =
@@ -812,21 +893,23 @@ let rec patch_instructions = function
       in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
-            (label, patch_instructions_block w info block))
+            (label, patch_instructions_block l w type_map info block))
       in
-      Program (info, blocks)
+      Def (info, l, blocks)
 
-and patch_instructions_block w info = function
+and patch_instructions_block l w type_map info = function
   | Block (label, block_info, instrs) ->
+      let is_main = Label.equal l R_typed.main in
       let instrs =
         if Label.equal label info.main then
-          function_prologue info.rootstack_spills info.stack_space w @ instrs
+          function_prologue is_main info.rootstack_spills info.stack_space w
+          @ instrs
         else instrs
       in
       let instrs =
         match List.last_exn instrs with
-        | RET ->
-            function_epilogue info.type_map info.rootstack_spills info.typ
+        | RET | JMPt _ ->
+            function_epilogue is_main type_map info.rootstack_spills info.typ
               label info.stack_space w instrs
         | _ -> instrs
       in
@@ -859,7 +942,10 @@ and patch_instructions_instr = function
   | instr -> [instr]
 
 let rec uncover_live = function
-  | Program (info, blocks) ->
+  | Program (info, defs) -> Program (info, List.map defs ~f:uncover_live_def)
+
+and uncover_live_def = function
+  | Def (info, l, blocks) ->
       let la_map = Hashtbl.create (module Label) in
       let lb_map = Hashtbl.create (module Label) in
       let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
@@ -881,7 +967,7 @@ let rec uncover_live = function
             in
             (label, Block (label, {live_after}, instrs)))
       in
-      Program (info, blocks)
+      Def (info, l, blocks)
 
 and uncover_live_cfg blocks cfg la_map lb_map = function
   | Block (label, _, instrs) ->
@@ -925,13 +1011,17 @@ and uncover_live_cfg blocks cfg la_map lb_map = function
 and exit_live_set = Args.of_list [Reg RAX; Reg RSP; Reg RBP]
 
 let rec build_interference = function
-  | Program (info, blocks) ->
+  | Program (info, defs) ->
+      Program (info, List.map defs ~f:build_interference_def)
+
+and build_interference_def = function
+  | Def (info, l, blocks) ->
       let conflicts =
         let init = Interference_graph.empty in
         List.fold blocks ~init ~f:(fun g (_, block) ->
             build_interference_block info.locals_types g block)
       in
-      Program ({info with conflicts}, blocks)
+      Def ({info with conflicts}, l, blocks)
 
 and build_interference_block locals_types g = function
   | Block (_, info, instrs) ->
@@ -952,7 +1042,7 @@ and build_interference_block locals_types g = function
                      (* special case, treat this like a MOV *)
                      if Arg.(equal v d) then g
                      else Interference_graph.add_edge g v d
-                 | CALL (l, _) when String.equal l Extern.collect -> (
+                 | CALL _ -> (
                    match v with
                    | Arg.Var v' when is_temp_var_name v' -> (
                      match Map.find_exn locals_types v' with
@@ -1076,7 +1166,11 @@ let color_graph ?(bias = Interference_graph.empty) g =
   loop ()
 
 let rec allocate_registers = function
-  | Program (info, blocks) ->
+  | Program (info, defs) ->
+      Program (info, List.map defs ~f:allocate_registers_def)
+
+and allocate_registers_def = function
+  | Def (info, l, blocks) ->
       let bias =
         let init = Interference_graph.empty in
         List.fold blocks ~init ~f:(fun init (_, Block (_, _, instrs)) ->
@@ -1100,8 +1194,9 @@ let rec allocate_registers = function
         | None -> 0
         | Some c -> -c
       in
-      Program
+      Def
         ( {info with stack_space; rootstack_spills= Map.length vector_locs}
+        , l
         , blocks )
 
 (* since we may have spilled variables both to the regular stack
@@ -1177,6 +1272,7 @@ and allocate_registers_instr colors stack_locs vector_locs instr =
       let a2 = color a2 in
       LEA (a1, a2)
   | CALL _ as c -> c
+  | CALLi (a, n) -> CALLi (color a, n)
   | PUSH a ->
       let a = color a in
       PUSH a
@@ -1185,6 +1281,7 @@ and allocate_registers_instr colors stack_locs vector_locs instr =
       POP a
   | RET -> RET
   | JMP _ as j -> j
+  | JMPt (a, n) -> JMPt (color a, n)
   | NOT a ->
       let a = color a in
       NOT a
@@ -1230,9 +1327,12 @@ and color_arg colors stack_locs vector_locs = function
   | a -> a
 
 let rec remove_jumps = function
-  | Program (info, blocks) ->
+  | Program (info, defs) -> Program (info, List.map defs ~f:remove_jumps_def)
+
+and remove_jumps_def = function
+  | Def (info, l, blocks) ->
       let cfg, blocks = remove_jumps_aux info.cfg blocks in
-      Program ({info with cfg}, blocks)
+      Def ({info with cfg}, l, blocks)
 
 and remove_jumps_aux cfg blocks =
   let afters = Hashtbl.create (module Label) in

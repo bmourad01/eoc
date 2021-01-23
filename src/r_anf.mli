@@ -8,7 +8,7 @@ module Type_map : module type of R_alloc.Type_map
 
 type type_env = R_alloc.type_env
 
-type info = {typ: Type.t}
+type info = unit
 
 (* the R language in A-normal form,
  * equivalent to continuation-passing style (CPS).
@@ -18,13 +18,17 @@ type info = {typ: Type.t}
  * system will guarantee that the program
  * has the ANF structure. *)
 
-type t = Program of info * exp
+type t = Program of info * def list
+
+and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Atom of atom
   | Prim of prim * Type.t
   | Let of var * exp * exp * Type.t
   | If of exp * exp * exp * Type.t
+  | Apply of atom * atom list * Type.t
+  | Funref of var * Type.t
   | Collect of int
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t

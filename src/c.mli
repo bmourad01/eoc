@@ -8,9 +8,9 @@ type type_env = R_anf.type_env
 
 module Cfg : module type of Graph.Persistent.Digraph.Concrete (Label)
 
-type info = {main: Label.t; typ: Type.t; cfg: Cfg.t; locals_types: type_env}
-
 type var = R.var
+
+type info = {main: Label.t}
 
 module Cmp : sig
   type t = Eq | Lt | Le | Gt | Ge
@@ -20,7 +20,11 @@ end
 
 (* the C intermediate language *)
 
-type t = Program of info * tails
+type t = Program of info * def list
+
+and def = Def of Label.t * (var * Type.t) list * Type.t * def_info * tails
+
+and def_info = {main: Label.t; cfg: Cfg.t; locals_types: type_env}
 
 and tails = (Label.t * tail) list
 
@@ -29,12 +33,15 @@ and tail =
   | Seq of stmt * tail
   | Goto of Label.t
   | If of cmp * Label.t * Label.t
+  | Tailcall of atom * atom list * Type.t
 
 and stmt = Assign of var * exp | Collect of int
 
 and exp =
   | Atom of atom
   | Prim of prim * Type.t
+  | Funref of Label.t * Type.t
+  | Call of atom * atom list * Type.t
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
 

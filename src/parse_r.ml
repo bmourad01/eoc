@@ -23,6 +23,7 @@ let parse filename =
                (file_pos lexbuf))
       | R_typed.Type_error msg ->
           failwith (Printf.sprintf "R: %s type error: %s" filename msg)
+      | Assert_failure _ as a -> raise a
       | _ ->
           failwith
             (Printf.sprintf "R: %s unknown parser error: %s" filename
