@@ -820,14 +820,11 @@ let function_prologue is_main rootstack_spills stack_space w =
     let mov_rootstk = [MOV (Reg R15, Var Extern.rootstack_begin)] in
     let adj_rootstk =
       if rootstack_spills > 0 then
-        let adj =
-          [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
-        in
-        if is_main then
-          List.init rootstack_spills ~f:(fun i ->
-              MOV (Deref (R15, i * word_size), Imm 0L))
-          @ adj
-        else adj
+        (* bump the rootstack pointer and zero out
+         * the locations for this stack frame *)
+        [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
+        @ List.init rootstack_spills ~f:(fun i ->
+              MOV (Deref (R15, i * -word_size), Imm 0L))
       else []
     in
     if is_main then
