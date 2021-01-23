@@ -345,7 +345,17 @@ and emit_type type_map = function
               | None -> emit_type type_map t
               | Some l -> [Printf.sprintf "dq %s" l])
         |> List.concat )
-  | C.Type.Arrow _ -> ["dq TYPE_ARROW"]
+  | C.Type.Arrow (ts, t) -> (
+      ["dq TYPE_ARROW"; Printf.sprintf "dq %d" (List.length ts)]
+      @ ( List.map ts ~f:(fun t ->
+              match Map.find type_map t with
+              | None -> emit_type type_map t
+              | Some l -> [Printf.sprintf "dq %s" l])
+        |> List.concat )
+      @
+      match Map.find type_map t with
+      | None -> emit_type type_map t
+      | Some l -> [Printf.sprintf "dq %s" l] )
 
 and string_of_block = function
   | Block (l, _, is) ->
@@ -411,8 +421,10 @@ and make_type type_map t =
 
 and select_instructions_def type_map = function
   | C.Def (l, args, t, info, tails) ->
-      List.iter args ~f:(fun (_, t) -> make_type type_map t |> ignore);
+      let args_t = List.map args ~f:snd in
+      List.iter args_t ~f:(fun t -> make_type type_map t |> ignore);
       make_type type_map t |> ignore;
+      make_type type_map C.Type.(Arrow (args_t, t)) |> ignore;
       let blocks =
         let block_info = {live_after= []} in
         let mov_args =
