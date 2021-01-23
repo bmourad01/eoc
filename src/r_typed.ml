@@ -1207,7 +1207,12 @@ and fix_types_exp defs env = function
       let t =
         (* if both branches returned closures, they could have
          * different closure environments but share the same
-         * function signature, so we need a "trust me" type here too. *)
+         * function signature, so we need a "trust me" type here too.
+         *
+         * it's important to note that this would never actually be
+         * accepted by the type-checker. we're only doing this
+         * for internal use by the compiler so that we have
+         * access to types like Vector which are needed by the runtime. *)
         match (t2, t3) with
         | ( Type.(Vector [Arrow (Vector tv1 :: ts1, tret1); Vector tv1'])
           , Type.(Vector [Arrow (Vector tv2 :: ts2, tret2); Vector tv2']) )
@@ -1234,6 +1239,8 @@ and fix_types_exp defs env = function
       | Type.Arrow (_, tret) -> Apply (e, es, tret)
       | _ -> assert false )
   | Funref (v, t) ->
+      (* now that the top-level function has the correct type,
+       * we need to update the type in the reference to it. *)
       let (Def (_, args, t, _)) =
         List.find_exn defs ~f:(function Def (v', _, _, _) ->
             String.equal v v')
