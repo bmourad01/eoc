@@ -7,7 +7,7 @@ module Type_map = R_alloc.Type_map
 
 type type_env = R_alloc.type_env
 
-type info = unit
+type info = {nvars: int Label.Map.t}
 
 type t = Program of info * def list
 
@@ -130,11 +130,12 @@ and string_of_prim = function
 
 let rec resolve_complex = function
   | R_alloc.Program (info, defs) ->
-      Program ((), List.map defs ~f:(resolve_complex_def info.nvars))
+      let nvars = ref info.nvars in
+      Program ({nvars= !nvars}, List.map defs ~f:(resolve_complex_def nvars))
 
 and resolve_complex_def nvars = function
   | R_alloc.Def (v, args, t, e) ->
-      let n = ref (Map.find_exn nvars v) in
+      let n = ref (Map.find_exn !nvars v) in
       let m =
         List.map args ~f:(fun (x, t) ->
             let x' = fresh_var n in
@@ -148,6 +149,7 @@ and resolve_complex_def nvars = function
             | _ -> assert false)
       in
       let e = resolve_complex_exp m n e in
+      nvars := Map.set !nvars v !n;
       Def (v, args, t, e)
 
 and resolve_complex_atom m n = function
@@ -435,14 +437,17 @@ and resolve_complex_exp m n = function
         , resolve_complex_exp m n e3
         , t )
   | R_alloc.Apply (e, es, t) ->
-      (* same situation as vector-ref *)
+      (* instead of trying to determine whether we're in tail
+       * position here, we will just treat Apply as a complex
+       * operation for now. later when we run explicate_control,
+       * it will be much easier to know when we're actually
+       * in tail position. *)
       let nv, a = resolve_complex_atom m n e in
       let nvs, as' =
         List.map es ~f:(resolve_complex_atom m n) |> List.unzip
       in
       let nvs = List.concat nvs in
-      let x = fresh_var n in
-      unfold (nv @ nvs @ [(x, Apply (a, as', t))]) (Atom (Var (x, t)))
+      unfold (nv @ nvs) (Apply (a, as', t))
   | R_alloc.Funref (v, t) -> Funref (v, t)
   | R_alloc.Collect n -> Collect n
   | R_alloc.Allocate (n, t) -> Allocate (n, t)

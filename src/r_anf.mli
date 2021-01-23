@@ -8,7 +8,7 @@ module Type_map : module type of R_alloc.Type_map
 
 type type_env = R_alloc.type_env
 
-type info = unit
+type info = {nvars: int Label.Map.t}
 
 (* the R language in A-normal form,
  * equivalent to continuation-passing style (CPS).

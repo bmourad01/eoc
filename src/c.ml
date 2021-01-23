@@ -365,15 +365,18 @@ and interp_cmp ?(read = None) env defs (cmp, a1, a2) =
 
 let rec explicate_control = function
   | R_anf.Program (info, defs) ->
-      Program ({main= R_typed.main}, List.map defs ~f:explicate_control_def)
+      Program
+        ( {main= R_typed.main}
+        , List.map defs ~f:(explicate_control_def info.nvars) )
 
-and explicate_control_def = function
+and explicate_control_def nvars = function
   | R_anf.Def (v, args, t, e) ->
       let cfg = Cfg.(add_vertex empty v) in
       (* we're not using a Hashtbl here because we 
        * want a specific ordering for each block *)
       let tails = ref Label.Map.empty in
-      let tail = explicate_tail v tails (ref 0) e in
+      let n = ref (Map.find_exn nvars v) in
+      let tail = explicate_tail v tails n (ref 0) e in
       let tails = Map.set !tails v tail in
       let cfg =
         Map.fold tails ~init:cfg ~f:(fun ~key:label ~data:tail cfg ->
@@ -410,18 +413,23 @@ and explicate_control_def = function
         , {main= List.hd_exn tails |> fst; cfg; locals_types}
         , tails )
 
-and explicate_tail fn tails n = function
+and explicate_tail fn tails nv n = function
   | R_anf.(Atom a) -> Return (Atom (translate_atom a))
   | R_anf.(Prim (p, t)) -> Return (Prim (translate_prim p, t))
   | R_anf.(Let (v, e1, e2, _)) ->
-      let cont = explicate_tail fn tails n e2 in
-      explicate_assign fn tails n e1 v cont
+      let cont = explicate_tail fn tails nv n e2 in
+      explicate_assign fn tails nv n e1 v cont
   | R_anf.(If (e1, e2, e3, _)) ->
-      let tt = explicate_tail fn tails n e2 in
-      let tf = explicate_tail fn tails n e3 in
-      explicate_pred fn tails n e1 tt tf
+      let tt = explicate_tail fn tails nv n e2 in
+      let tf = explicate_tail fn tails nv n e3 in
+      explicate_pred fn tails nv n e1 tt tf
   | R_anf.(Apply (a, as', t)) ->
-      Tailcall (translate_atom a, List.map as' ~f:translate_atom, t)
+      if Label.equal fn R_typed.main then
+        (* the main function (our top-level program) should
+         * never make tail calls. all of them are expected
+         * to return. *)
+        Return (Call (translate_atom a, List.map as' ~f:translate_atom, t))
+      else Tailcall (translate_atom a, List.map as' ~f:translate_atom, t)
   | R_anf.(Funref (v, t)) -> Return (Funref (v, t))
   | R_anf.Collect n -> Seq (Collect n, Return (Atom Void))
   | R_anf.Allocate (n, t) -> Return (Allocate (n, t))
@@ -457,24 +465,24 @@ and translate_prim p =
   | R_anf.Vectorref (a, i) -> Vectorref (tr a, i)
   | R_anf.Vectorset (a1, i, a2) -> Vectorset (tr a1, i, tr a2)
 
-and explicate_assign fn tails n e x cont =
+and explicate_assign fn tails nv n e x cont =
   match e with
   | R_anf.(Let (v, e1, e2, _)) ->
-      let cont = explicate_assign fn tails n e2 x cont in
-      explicate_assign fn tails n e1 v cont
+      let cont = explicate_assign fn tails nv n e2 x cont in
+      explicate_assign fn tails nv n e1 v cont
   | R_anf.(If (e1, e2, e3, _)) ->
       (* avoid duplicating code; do the assignments
        * and then go to the continuation *)
       let l = fresh_label fn n in
       add_tail tails l cont;
-      let tt = explicate_assign fn tails n e2 x (Goto l) in
-      let tf = explicate_assign fn tails n e3 x (Goto l) in
-      explicate_pred fn tails n e1 tt tf
+      let tt = explicate_assign fn tails nv n e2 x (Goto l) in
+      let tf = explicate_assign fn tails nv n e3 x (Goto l) in
+      explicate_pred fn tails nv n e1 tt tf
   | _ ->
-      let t = explicate_tail fn tails n e in
+      let t = explicate_tail fn tails nv n e in
       do_assign fn t x cont
 
-and explicate_pred fn tails n cnd thn els =
+and explicate_pred fn tails nv n cnd thn els =
   let tr = translate_atom in
   match cnd with
   | R_anf.(Atom (Bool b)) -> if b then thn else els
@@ -521,16 +529,23 @@ and explicate_pred fn tails n cnd thn els =
       add_tail tails lf els;
       If ((Cmp.Ge, tr a1, tr a2), lt, lf)
   | R_anf.(Let (x, e1, e2, _)) ->
-      let t = explicate_pred fn tails n e2 thn els in
-      explicate_assign fn tails n e1 x t
+      let t = explicate_pred fn tails nv n e2 thn els in
+      explicate_assign fn tails nv n e1 x t
   | R_anf.(If (e1, e2, e3, _)) ->
       let lt = fresh_label fn n in
       let lf = fresh_label fn n in
       add_tail tails lt thn;
       add_tail tails lf els;
-      let tt = explicate_pred fn tails n e2 (Goto lt) (Goto lf) in
-      let tf = explicate_pred fn tails n e3 (Goto lt) (Goto lf) in
-      explicate_pred fn tails n e1 tt tf
+      let tt = explicate_pred fn tails nv n e2 (Goto lt) (Goto lf) in
+      let tf = explicate_pred fn tails nv n e3 (Goto lt) (Goto lf) in
+      explicate_pred fn tails nv n e1 tt tf
+  | R_anf.(Apply (_, _, t) as a) ->
+      (* this is a case where we're not in tail position for a call *)
+      let x = fresh_var nv in
+      let t =
+        explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
+      in
+      explicate_assign fn tails nv n a x t
   | _ -> assert false
 
 and do_assign fn e x cont =
@@ -547,6 +562,10 @@ and do_assign fn e x cont =
 and fresh_label v n =
   let l = Printf.sprintf ".L%s%d" v !n in
   incr n; l
+
+and fresh_var n =
+  let v = Printf.sprintf "%%%d" !n in
+  incr n; v
 
 and add_tail tails l t = tails := Map.set !tails l t
 
