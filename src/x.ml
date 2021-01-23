@@ -315,7 +315,7 @@ let rec to_string = function
          TYPE_INTEGER equ %d\n\
          TYPE_BOOLEAN equ %d\n\
          TYPE_VOID equ %d\n\
-         TYPE_VECTOR equ %d\n\n\
+         TYPE_VECTOR equ %d\n\
          TYPE_ARROW equ %d\n\n\
          global %s\n\n\
          %s\n\n\
