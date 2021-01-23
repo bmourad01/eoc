@@ -320,18 +320,19 @@ let rec to_string = function
          global %s\n\n\
          %s\n\n\
          %s\n\n\
-         section .data\n\
-         %s\n\n\
          section .text\n\
+         %s\n\n\
+         section .data\n\
          %s"
         typ_int typ_bool typ_void typ_vector typ_arrow R_typed.main
-        extern_fns extern_vars typ_info blks
+        extern_fns extern_vars blks typ_info
 
 and string_of_def = function
   | Def (_, _, blocks) ->
-      List.map blocks ~f:snd
-      |> List.map ~f:string_of_block
-      |> String.concat ~sep:"\n"
+      "align 16\n"
+      ^ ( List.map blocks ~f:snd
+        |> List.map ~f:string_of_block
+        |> String.concat ~sep:"\n" )
 
 and emit_type type_map = function
   | C.Type.Integer -> ["dq TYPE_INTEGER"]
