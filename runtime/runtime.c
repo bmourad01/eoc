@@ -28,6 +28,7 @@ static bool is_pointer_type(uint64_t ty, bool rec) {
   case TYPE_BOOLEAN:
   case TYPE_VOID:
   case TYPE_ARROW:
+  case TYPE_CLO:
     return false;
   case TYPE_VECTOR:
     return true;
