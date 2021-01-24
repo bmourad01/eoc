@@ -123,6 +123,7 @@ void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _tospace_end = (int64_t *)((uint64_t)_fromspace_begin + heap_size);
   _rootstack_begin = (int64_t **)malloc(rootstack_size);
   assert(_rootstack_begin);
+  memset(_rootstack_begin, 0, rootstack_size);
   _rootstack_end = (int64_t **)((uint64_t)_rootstack_begin + rootstack_size);
 }
 
