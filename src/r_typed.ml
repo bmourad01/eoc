@@ -1219,7 +1219,6 @@ and indirect_refs_prim = function
 let rec convert_to_closures = function
   | Program (info, defs) as p ->
       let indirect = indirect_refs p in
-      Set.iter indirect ~f:(fun v -> Printf.eprintf "%s\n" v);
       let n = ref 0 in
       let defs, new_defs =
         List.(map defs ~f:(convert_to_closures_def indirect n) |> unzip)
