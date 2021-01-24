@@ -319,23 +319,32 @@ and opt_exp env = function
     | e -> Prim (Not e, t) )
   | Prim (And (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Bool b1, Bool b2 -> Bool (b1 && b2)
+    | Bool false, _ -> Bool false
+    | Bool true, e -> opt_exp env e
     | e1, e2 -> Prim (And (e1, e2), t) )
   | Prim (Or (e1, e2), t) -> (
     match (opt_exp env e1, opt_exp env e2) with
-    | Bool b1, Bool b2 -> Bool (b1 || b2)
+    | Bool false, e -> opt_exp env e
+    | Bool true, _ -> Bool true
     | e1, e2 -> Prim (Or (e1, e2), t) )
   | Prim (Vector es, t) -> Prim (Vector (List.map es ~f:(opt_exp env)), t)
   | Prim (Vectorlength e, t) -> (
     match opt_exp env e with
     | Prim (Vector es, _) -> Int Int64.(List.length es |> of_int)
     | e -> Prim (Vectorlength e, t) )
-  | Prim (Vectorref (e, i), t) -> Prim (Vectorref (opt_exp env e, i), t)
+  | Prim (Vectorref (e, i), t) -> (
+    match opt_exp env e with
+    | Prim (Vector es, _) -> opt_exp env (List.nth_exn es i)
+    | e -> Prim (Vectorref (e, i), t) )
   | Prim (Vectorset (e1, i, e2), t) ->
       Prim (Vectorset (opt_exp env e1, i, opt_exp env e2), t)
-  | Var (v, _) -> (
+  | Var (v, _) as var -> (
+    (* assuming the program has been type-checked,
+     * we know that the var is not actually free
+     * but we may not have been able to bind it
+     * to an expression yet, so leave it as-is. *)
     match Map.find env v with
-    | None -> failwith ("R.opt_exp: var " ^ v ^ " is not bound")
+    | None -> var
     | Some e -> e )
   | Let (v, e1, e2, t) ->
       let e1 = opt_exp env e1 in
@@ -348,7 +357,7 @@ and opt_exp env = function
     | e1 -> If (e1, e2, e3, t) )
   | Apply (e, es, t) -> Apply (opt_exp env e, List.map es ~f:(opt_exp env), t)
   | Funref _ as f -> f
-  | Lambda _ as l -> l
+  | Lambda (args, t, e) -> Lambda (args, t, opt_exp env e)
 
 exception Type_error of string
 
