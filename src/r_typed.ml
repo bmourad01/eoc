@@ -1435,7 +1435,12 @@ and convert_to_closures_exp escaped env n = function
       let c, d = newclo n in
       let ct = Type.Vector (List.map free_vars ~f:snd) in
       let clo_arg = (c, ct) in
-      let e, new_defs = convert_to_closures_exp escaped env n e in
+      let e, new_defs =
+        let env =
+          List.fold args ~init:env ~f:(fun env (x, t) -> Map.set env x t)
+        in
+        convert_to_closures_exp escaped env n e
+      in
       let et = typeof_exp e in
       let new_body, _ =
         List.fold_right free_vars
