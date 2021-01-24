@@ -507,11 +507,45 @@ and select_instructions_tail type_map tails t =
 and select_instructions_stmt type_map s =
   let open Arg in
   match s with
+  (* set! *)
   | C.Assign (v, e) -> select_instructions_exp type_map (Var v) e
+  (* collect *)
   | C.Collect n ->
       [ MOV (Reg RDI, Reg R15)
       ; MOV (Reg RSI, Imm Int64.(of_int n))
       ; CALL (Extern.collect, 2) ]
+  (* call *)
+  | C.(Callstmt (Var (v, _), args)) ->
+      let mov_args =
+        let regs = List.(take Reg.arg_passing (length args)) in
+        List.foldi regs ~init:[] ~f:(fun i acc r ->
+            match List.nth_exn args i with
+            | Int i -> MOV (Reg r, Imm i) :: acc
+            | Bool false | Void -> XOR (Reg r, Reg r) :: acc
+            | Bool true -> MOV (Reg r, Imm 1L) :: acc
+            | Var (v, _) -> MOV (Reg r, Var v) :: acc)
+        |> List.rev
+      in
+      mov_args @ [CALLi (Var v, List.length mov_args)]
+  | C.Callstmt _ -> assert false
+  (* vector-set! *)
+  | C.(Vectorsetstmt (Var (v1, _), i, Int n)) ->
+      [ MOV (Reg R11, Var v1)
+      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm n) ]
+  | C.(Vectorsetstmt (Var (v1, _), i, Bool b)) ->
+      [ MOV (Reg R11, Var v1)
+      ; MOV
+          ( Deref (Reg.R11, (i + total_tag_offset) * word_size)
+          , Imm (Bool.to_int b |> Int64.of_int) ) ]
+  | C.(Vectorsetstmt (Var (v1, _), i, Void)) ->
+      [ MOV (Reg R11, Var v1)
+      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm 0L) ]
+  | C.(Vectorsetstmt (Var (v1, _), i, Var (v2, _))) ->
+      [ MOV (Reg R11, Var v1)
+      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2) ]
+  | C.Vectorsetstmt _ -> assert false
+  (* read *)
+  | C.Readstmt -> [CALL (Extern.read_int, 0)]
 
 and select_instructions_exp type_map a p =
   let open Arg in
@@ -741,7 +775,7 @@ and select_instructions_exp type_map a p =
       [ MOV (Reg R11, Var v)
       ; MOV (a, Deref (Reg.R11, (i + total_tag_offset) * word_size)) ]
   | C.(Prim (Vectorref _, _)) -> assert false
-  (* vector-set *)
+  (* vector-set! *)
   | C.(Prim (Vectorset (Var (v1, _), i, Int n), _)) ->
       [ MOV (Reg R11, Var v1)
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm n)
@@ -940,23 +974,65 @@ and patch_instructions_instr = function
   | MOVZX ((Deref _ as d), a) -> [MOVZX (Reg RAX, a); MOV (d, Reg RAX)]
   | instr -> [instr]
 
+let analyze_dataflow cfg ~transfer ~bottom ~join ~equal =
+  let mapping = Hashtbl.create (module Label) in
+  let worklist = Queue.create () in
+  Cfg.iter_vertex
+    (fun v ->
+      Hashtbl.set mapping v bottom;
+      Queue.enqueue worklist v)
+    cfg;
+  let trans_cfg =
+    let trans_cfg =
+      Cfg.fold_vertex (fun v acc -> Cfg.add_vertex acc v) cfg Cfg.empty
+    in
+    Cfg.fold_edges (fun u v acc -> Cfg.add_edge acc v u) cfg trans_cfg
+  in
+  let rec loop () =
+    match Queue.dequeue worklist with
+    | None -> ()
+    | Some node ->
+        let input =
+          Cfg.fold_pred
+            (fun pred state -> join state (Hashtbl.find_exn mapping pred))
+            trans_cfg node bottom
+        in
+        let output = transfer node input in
+        if not (equal output (Hashtbl.find_exn mapping node)) then (
+          Hashtbl.set mapping node output;
+          Cfg.iter_pred (fun pred -> Queue.enqueue worklist pred) cfg node );
+        loop ()
+  in
+  loop (); mapping
+
 let rec uncover_live = function
   | Program (info, defs) -> Program (info, List.map defs ~f:uncover_live_def)
 
 and uncover_live_def = function
   | Def (info, l, blocks) ->
-      let la_map = Hashtbl.create (module Label) in
-      let lb_map = Hashtbl.create (module Label) in
       let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
-      (* the CFG is currently a DAG, so we start from
-       * the exit blocks and work our way backward
-       * to the entry by visiting predecessors *)
-      Cfg.iter_vertex
-        (fun l ->
-          if Cfg.out_degree info.cfg l = 0 then
-            let block = Hashtbl.find_exn blocks' l in
-            uncover_live_cfg blocks' info.cfg la_map lb_map block)
-        info.cfg;
+      let la_map = Hashtbl.create (module Label) in
+      let _ =
+        analyze_dataflow info.cfg
+          ~transfer:(fun label la ->
+            let (Block (_, _, instrs)) = Hashtbl.find_exn blocks' label in
+            let live_after, live_before =
+              List.fold_right instrs
+                ~init:([], [la])
+                ~f:(fun instr (live_after, live_before) ->
+                  let live_after' = List.hd_exn live_before in
+                  let live_before' =
+                    Set.(
+                      union
+                        (diff live_after' (write_set instr))
+                        (read_set instr))
+                  in
+                  (live_after' :: live_after, live_before' :: live_before))
+            in
+            Hashtbl.set la_map label live_after;
+            List.hd_exn live_before)
+          ~bottom:Args.empty ~join:Set.union ~equal:Args.equal
+      in
       let blocks =
         List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
             let live_after =
@@ -967,47 +1043,6 @@ and uncover_live_def = function
             (label, Block (label, {live_after}, instrs)))
       in
       Def (info, l, blocks)
-
-and uncover_live_cfg blocks cfg la_map lb_map = function
-  | Block (label, _, instrs) ->
-      let live_before =
-        let lb =
-          match Hashtbl.find lb_map label with
-          | None ->
-              if Cfg.out_degree cfg label = 0 then exit_live_set
-              else Args.empty
-          | Some lb -> lb
-        in
-        Cfg.fold_succ
-          (fun l acc ->
-            let lb =
-              match Hashtbl.find lb_map l with
-              | None -> Args.empty
-              | Some lb -> lb
-            in
-            Set.union lb acc)
-          cfg label lb
-      in
-      let live_after, live_before =
-        List.fold_right instrs
-          ~init:([], [live_before])
-          ~f:(fun instr (live_after, live_before) ->
-            let live_after' = List.hd_exn live_before in
-            let live_before' =
-              Set.(
-                union (diff live_after' (write_set instr)) (read_set instr))
-            in
-            (live_after' :: live_after, live_before' :: live_before))
-      in
-      Hashtbl.set la_map label live_after;
-      Hashtbl.set lb_map label (List.hd_exn live_before);
-      Cfg.iter_pred
-        (fun l ->
-          uncover_live_cfg blocks cfg la_map lb_map
-            (Hashtbl.find_exn blocks l))
-        cfg label
-
-and exit_live_set = Args.of_list [Reg RAX; Reg RSP; Reg RBP]
 
 let rec build_interference = function
   | Program (info, defs) ->

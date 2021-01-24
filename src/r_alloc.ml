@@ -31,6 +31,9 @@ and exp =
   | If of exp * exp * exp * Type.t
   | Apply of exp * exp list * Type.t
   | Funref of var * Type.t
+  | Setbang of var * exp
+  | Begin of exp list * exp * Type.t
+  | While of exp * exp
   | Collect of int
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
@@ -94,6 +97,14 @@ and string_of_exp = function
       Printf.sprintf "(%s %s)" (string_of_exp e)
         (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
   | Funref (v, _) -> Printf.sprintf "(fun-ref %s)" v
+  | Setbang (v, e) -> Printf.sprintf "(set! %s %s)" v (string_of_exp e)
+  | Begin ([], e, _) -> Printf.sprintf "(begin %s)" (string_of_exp e)
+  | Begin (es, e, _) ->
+      Printf.sprintf "(begin %s %s)"
+        (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
+        (string_of_exp e)
+  | While (e1, e2) ->
+      Printf.sprintf "(while %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Collect n -> Printf.sprintf "(collect %d)" n
   | Allocate (n, t) -> Printf.sprintf "(allocate %d %s)" n (Type.to_string t)
   | Globalvalue (v, _) -> Printf.sprintf "(global-value '%s)" v
@@ -177,6 +188,14 @@ and expose_allocation_exp n = function
       Apply (e, es, t)
   | R_typed.Funref (v, t) -> Funref (v, t)
   | R_typed.Lambda _ -> assert false
+  | R_typed.Setbang (v, e) -> Setbang (v, expose_allocation_exp n e)
+  | R_typed.Begin (es, e, t) ->
+      Begin
+        ( List.map es ~f:(expose_allocation_exp n)
+        , expose_allocation_exp n e
+        , t )
+  | R_typed.While (e1, e2) ->
+      While (expose_allocation_exp n e1, expose_allocation_exp n e2)
 
 and expand_alloc n t ts es =
   let v = newvar n in
@@ -190,16 +209,33 @@ and expand_alloc n t ts es =
     (* generate the sequence that initializes the contents of the vector *)
     let base =
       let vec = Var (v, t) in
-      List.zip_exn vs ts
-      |> List.foldi ~init:[] ~f:(fun i acc (v, t) ->
-             Prim (Vectorset (vec, i, Var (v, t)), Type.Void) :: acc)
-      |> List.rev
-      |> List.zip_exn (nvars n len)
-      |> expand vec t
+      let sets =
+        List.zip_exn vs ts
+        |> List.foldi ~init:[] ~f:(fun i acc (v, t) ->
+               Prim (Vectorset (vec, i, Var (v, t)), Type.Void) :: acc)
+        |> List.rev
+      in
+      Begin (sets, vec, t)
     in
     (* hardcode the idiom that allocates the vector triggering
      * the GC beforehand if there is not enough space *)
     let bytes = (len + total_tag_offset) * word_size in
+    (* Begin
+     *   ( [ If
+     *       ( Prim
+     *           ( Lt
+     *               ( Prim
+     *                   ( Plus
+     *                       ( Globalvalue (free_ptr, Type.Integer)
+     *                       , Int (Int64.of_int bytes) )
+     *                   , Type.Integer )
+     *               , Globalvalue (fromspace_end, Type.Integer) )
+     *           , Type.Boolean )
+     *       , Void
+     *       , Collect bytes
+     *       , Type.Void ) ]
+     *   , Let (v, Allocate (len, t), base, t)
+     *   , t) *)
     Let
       ( newvar n
       , If

@@ -35,6 +35,9 @@ and exp =
   | If of exp * exp * exp
   | Apply of exp * exp list
   | Lambda of (var * Type.t) list * Type.t * exp
+  | Setbang of var * exp
+  | Begin of exp list * exp
+  | While of exp * exp
 
 and prim =
   | Read

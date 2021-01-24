@@ -49,6 +49,9 @@ and exp =
   | If of exp * exp * exp
   | Apply of exp * exp list
   | Lambda of (var * Type.t) list * Type.t * exp
+  | Setbang of var * exp
+  | Begin of exp list * exp
+  | While of exp * exp
 
 and prim =
   | Read
@@ -120,6 +123,14 @@ and string_of_exp = function
       in
       Printf.sprintf "(lambda: (%s) : %s %s)" s (Type.to_string t)
         (string_of_exp e)
+  | Setbang (v, e) -> Printf.sprintf "(set! %s %s)" v (string_of_exp e)
+  | Begin ([], e) -> Printf.sprintf "(begin %s)" (string_of_exp e)
+  | Begin (es, e) ->
+      Printf.sprintf "(begin %s %s)"
+        (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
+        (string_of_exp e)
+  | While (e1, e2) ->
+      Printf.sprintf "(while %s %s)" (string_of_exp e1) (string_of_exp e2)
 
 and string_of_prim = function
   | Read -> "(read)"

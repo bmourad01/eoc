@@ -35,7 +35,12 @@ and tail =
   | If of cmp * Label.t * Label.t
   | Tailcall of atom * atom list * Type.t
 
-and stmt = Assign of var * exp | Collect of int
+and stmt =
+  | Assign of var * exp
+  | Collect of int
+  | Callstmt of atom * atom list
+  | Vectorsetstmt of atom * int * atom
+  | Readstmt
 
 and exp =
   | Atom of atom

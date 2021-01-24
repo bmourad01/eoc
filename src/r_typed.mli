@@ -35,6 +35,9 @@ and exp =
   | Apply of exp * exp list * Type.t
   | Funref of var * Type.t
   | Lambda of (var * Type.t) list * Type.t * exp
+  | Setbang of var * exp
+  | Begin of exp list * exp * Type.t
+  | While of exp * exp
 
 and prim =
   | Read
@@ -96,6 +99,10 @@ val interp : ?read:Int64.t option -> t -> answer
 (* make all let-bound variables unique *)
 
 val uniquify : t -> t
+
+(* box mutable variables that escape into closures *)
+
+val convert_assignments : t -> t
 
 (* compile lambdas to top-level functions *)
 

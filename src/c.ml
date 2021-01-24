@@ -36,7 +36,12 @@ and tail =
   | If of cmp * Label.t * Label.t
   | Tailcall of atom * atom list * Type.t
 
-and stmt = Assign of var * exp | Collect of int
+and stmt =
+  | Assign of var * exp
+  | Collect of int
+  | Callstmt of atom * atom list
+  | Vectorsetstmt of atom * int * atom
+  | Readstmt
 
 and exp =
   | Atom of atom
@@ -120,6 +125,14 @@ and string_of_tail = function
 and string_of_stmt = function
   | Assign (v, e) -> Printf.sprintf "(set! %s %s)" v (string_of_exp e)
   | Collect n -> Printf.sprintf "(collect %d)" n
+  | Callstmt (a, []) -> Printf.sprintf "(call %s)" (string_of_atom a)
+  | Callstmt (a, as') ->
+      Printf.sprintf "(call %s %s)" (string_of_atom a)
+        (List.map as' ~f:string_of_atom |> String.concat ~sep:" ")
+  | Vectorsetstmt (a1, i, a2) ->
+      Printf.sprintf "(vector-set! %s %d %s)" (string_of_atom a1) i
+        (string_of_atom a2)
+  | Readstmt -> "(read)"
 
 and string_of_exp = function
   | Atom a -> string_of_atom a
@@ -195,12 +208,13 @@ let rec interp ?(read = None) = function
       let tails = Label.Map.of_alist_exn tails in
       match Map.find tails info'.main with
       | None -> failwith "C.interp: no main label defined"
-      | Some t -> interp_tail R_typed.empty_var_env defs tails t ~read )
+      | Some t -> interp_tail (ref R_typed.empty_var_env) defs tails t ~read
+      )
 
 and interp_tail ?(read = None) env defs tails = function
   | Return e -> interp_exp env defs e ~read
   | Seq (s, t) ->
-      let env = interp_stmt env defs s ~read in
+      interp_stmt env defs s ~read;
       interp_tail env defs tails t ~read
   | Goto l -> (
     match Map.find tails l with
@@ -221,7 +235,9 @@ and interp_tail ?(read = None) env defs tails = function
         in
         let as' = List.map as' ~f:(interp_atom env defs ~read) in
         let env =
-          List.zip_exn (List.map args ~f:fst) as' |> String.Map.of_alist_exn
+          List.zip_exn (List.map args ~f:fst) as'
+          |> List.fold ~init:!env ~f:(fun env (x, a) -> Map.set env x a)
+          |> ref
         in
         let tails = Label.Map.of_alist_exn tails in
         match Map.find tails info'.main with
@@ -233,8 +249,36 @@ and interp_tail ?(read = None) env defs tails = function
 and interp_stmt ?(read = None) env defs = function
   | Assign (v, e) ->
       let e = interp_exp env defs e ~read in
-      Map.set env v e
-  | Collect _ -> env
+      env := Map.set !env v e
+  | Collect _ -> ()
+  | Callstmt (a, as') -> (
+    match interp_atom env defs a ~read with
+    | `Def v ->
+        let (Def (_, args, _, info', tails)) =
+          List.find_exn defs ~f:(function Def (v', _, _, _, _) ->
+              Label.equal v v')
+        in
+        let as' = List.map as' ~f:(interp_atom env defs ~read) in
+        let env =
+          List.zip_exn (List.map args ~f:fst) as'
+          |> List.fold ~init:!env ~f:(fun env (x, a) -> Map.set env x a)
+          |> ref
+        in
+        let tails = Label.Map.of_alist_exn tails in
+        ( match Map.find tails info'.main with
+        | None ->
+            failwith ("C.interp: no entry label defined for function " ^ v)
+        | Some t -> interp_tail env defs tails t ~read )
+        |> ignore
+    | _ -> assert false )
+  | Vectorsetstmt (a1, i, a2) -> (
+    match (interp_atom env defs a1, interp_atom env defs a2) with
+    | `Vector v, v' -> v.(i) <- v'
+    | _ -> assert false )
+  | Readstmt -> (
+    match read with
+    | None -> read_int () |> ignore
+    | Some _ -> () )
 
 and interp_exp ?(read = None) env defs = function
   | Atom a -> interp_atom env defs a
@@ -249,7 +293,9 @@ and interp_exp ?(read = None) env defs = function
         in
         let as' = List.map as' ~f:(interp_atom env defs ~read) in
         let env =
-          List.zip_exn (List.map args ~f:fst) as' |> String.Map.of_alist_exn
+          List.zip_exn (List.map args ~f:fst) as'
+          |> List.fold ~init:!env ~f:(fun env (x, a) -> Map.set env x a)
+          |> ref
         in
         let tails = Label.Map.of_alist_exn tails in
         match Map.find tails info'.main with
@@ -264,7 +310,7 @@ and interp_atom ?(read = None) env defs = function
   | Int i -> `Int i
   | Bool b -> `Bool b
   | Var (v, _) -> (
-    match Map.find env v with
+    match Map.find !env v with
     | None -> failwith ("C.interp_atom: var " ^ v ^ " is unbound")
     | Some i -> i )
   | Void -> `Void
@@ -281,7 +327,7 @@ and interp_prim ?(read = None) env defs = function
   | Plus (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Int Int64.(i1 + i2)
-    | _ -> assert false )
+    | a1, a2 -> assert false )
   | Subtract (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Int Int64.(i1 - i2)
@@ -406,6 +452,9 @@ and explicate_control_def nvars = function
             and aux_stmt env = function
               | Assign (v, e) -> Map.set env v (typeof_exp e)
               | Collect _ -> env
+              | Callstmt _ -> env
+              | Vectorsetstmt _ -> env
+              | Readstmt -> env
             in
             aux_tail locals_types tail)
       in
@@ -434,9 +483,58 @@ and explicate_tail fn tails nv n = function
         Return (Call (translate_atom a, List.map as' ~f:translate_atom, t))
       else Tailcall (translate_atom a, List.map as' ~f:translate_atom, t)
   | R_anf.(Funref (v, t)) -> Return (Funref (v, t))
+  | R_anf.Setbang (v, e) ->
+      explicate_assign fn tails nv n e v (Return (Atom Void))
+  | R_anf.Begin (es, e, _) ->
+      let e' = explicate_tail fn tails nv n e in
+      List.fold_right es ~init:e' ~f:(fun e cont ->
+          explicate_effect fn tails nv n e cont)
+  | R_anf.While (e1, e2) ->
+      let loop = fresh_label fn n in
+      let tt = explicate_effect fn tails nv n e2 (Goto loop) in
+      let top = explicate_pred fn tails nv n e1 tt (Return (Atom Void)) in
+      add_tail tails loop top; Goto loop
   | R_anf.Collect n -> Seq (Collect n, Return (Atom Void))
   | R_anf.Allocate (n, t) -> Return (Allocate (n, t))
   | R_anf.Globalvalue (v, t) -> Return (Globalvalue (v, t))
+
+and explicate_effect fn tails nv n e cont =
+  match e with
+  | R_anf.Atom _ -> cont
+  | R_anf.Prim (Read, _) -> Seq (Readstmt, cont)
+  | R_anf.Prim (Vectorset (a1, i, a2), _) ->
+      Seq (Vectorsetstmt (translate_atom a1, i, translate_atom a2), cont)
+  | R_anf.Prim _ -> cont
+  | R_anf.Let (v, e1, e2, _) ->
+      let cont = explicate_effect fn tails nv n e2 cont in
+      explicate_assign fn tails nv n e1 v cont
+  | R_anf.If (e1, e2, e3, _) ->
+      (* FIXME *)
+      let l = fresh_label fn n in
+      add_tail tails l cont;
+      let tt = explicate_effect fn tails nv n e2 (Goto l) in
+      let tf = explicate_effect fn tails nv n e3 (Goto l) in
+      let p = explicate_pred fn tails nv n e1 tt tf in
+      let l' = fresh_label fn n in
+      add_tail tails l' p; cont
+  | R_anf.Apply (a, as', _) ->
+      Seq (Callstmt (translate_atom a, List.map as' ~f:translate_atom), cont)
+  | R_anf.Funref _ -> cont
+  | R_anf.Setbang (v, e) -> explicate_assign fn tails nv n e v cont
+  | R_anf.Begin (es, e, _) ->
+      let e' = explicate_effect fn tails nv n e cont in
+      List.fold_right es ~init:e' ~f:(fun e cont ->
+          explicate_effect fn tails nv n e cont)
+  | R_anf.While (e1, e2) ->
+      let l = fresh_label fn n in
+      let loop = fresh_label fn n in
+      add_tail tails l cont;
+      let tt = explicate_effect fn tails nv n e2 (Goto loop) in
+      let top = explicate_pred fn tails nv n e1 tt (Goto l) in
+      add_tail tails loop top; Goto loop
+  | R_anf.Collect n -> Seq (Collect n, cont)
+  | R_anf.Allocate _ -> cont
+  | R_anf.Globalvalue _ -> cont
 
 and translate_atom = function
   | R_anf.Int i -> Int i
@@ -483,7 +581,7 @@ and explicate_assign fn tails nv n e x cont =
       explicate_pred fn tails nv n e1 tt tf
   | _ ->
       let t = explicate_tail fn tails nv n e in
-      do_assign fn t x cont
+      do_assign fn tails nv n t x cont
 
 and explicate_pred fn tails nv n cnd thn els =
   let tr = translate_atom in
@@ -549,17 +647,23 @@ and explicate_pred fn tails nv n cnd thn els =
         explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
       in
       explicate_assign fn tails nv n a x t
+  | R_anf.Begin (es, e, t) as b ->
+      let x = fresh_var nv in
+      let t =
+        explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
+      in
+      explicate_assign fn tails nv n b x t
   | _ -> assert false
 
-and do_assign fn e x cont =
-  match e with
+and do_assign fn tails nv n t x cont =
+  match t with
   | Return (Atom a) -> Seq (Assign (x, Atom a), cont)
   | Return (Prim (p, t)) -> Seq (Assign (x, Prim (p, t)), cont)
   | Return (Funref (v, t)) -> Seq (Assign (x, Funref (v, t)), cont)
   | Return (Call (a, as', t)) -> Seq (Assign (x, Call (a, as', t)), cont)
   | Return (Allocate (n, t)) -> Seq (Assign (x, Allocate (n, t)), cont)
   | Return (Globalvalue (v, t)) -> Seq (Assign (x, Globalvalue (v, t)), cont)
-  | Seq (s, t) -> Seq (s, do_assign fn t x cont)
+  | Seq (s, t) -> Seq (s, do_assign fn tails nv n t x cont)
   | Tailcall (a, as', t) -> Seq (Assign (x, Call (a, as', t)), cont)
   | _ -> assert false
 

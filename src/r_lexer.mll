@@ -47,6 +47,9 @@ rule token = parse
   | "and" { AND }
   | "or" { OR }
   | "if" { IF }
+  | "set!" { SETBANG }
+  | "begin" { BEGIN }
+  | "while" { WHILE }
   | "vector" { VECTOR }
   | "vector-length" { VECTORLENGTH }
   | "vector-ref" { VECTORREF }

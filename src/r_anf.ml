@@ -20,6 +20,9 @@ and exp =
   | If of exp * exp * exp * Type.t
   | Apply of atom * atom list * Type.t
   | Funref of var * Type.t
+  | Setbang of var * exp
+  | Begin of exp list * exp * Type.t
+  | While of exp * exp
   | Collect of int
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
@@ -80,6 +83,14 @@ and string_of_exp = function
       Printf.sprintf "(%s %s)" (string_of_atom a)
         (List.map as' ~f:string_of_atom |> String.concat ~sep:" ")
   | Funref (v, _) -> Printf.sprintf "(fun-ref %s)" v
+  | Setbang (v, e) -> Printf.sprintf "(set! %s %s)" v (string_of_exp e)
+  | Begin ([], e, _) -> Printf.sprintf "(begin %s)" (string_of_exp e)
+  | Begin (es, e, _) ->
+      Printf.sprintf "(begin %s %s)"
+        (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
+        (string_of_exp e)
+  | While (e1, e2) ->
+      Printf.sprintf "(while %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Collect n -> Printf.sprintf "(collect %d)" n
   | Allocate (n, t) -> Printf.sprintf "(allocate %d %s)" n (Type.to_string t)
   | Globalvalue (v, _) -> Printf.sprintf "(global-value '%s)" v
@@ -316,6 +327,30 @@ and resolve_complex_atom m n = function
       let e = Funref (v, t) in
       let x = fresh_var n in
       ([(x, e)], Var (x, t))
+  | R_alloc.Setbang (v, e) -> (
+    match Map.find m v with
+    | None ->
+        failwith ("R_anf.resolve_complex_atom: var " ^ v ^ " is unbound")
+    | Some (Var (x, t)) ->
+        let e' = Setbang (x, resolve_complex_exp m n e) in
+        let x = fresh_var n in
+        ([(x, e')], Var (x, Type.Void))
+    | _ -> assert false )
+  | R_alloc.Begin (es, e, t) ->
+      let e' =
+        Begin
+          ( List.map es ~f:(resolve_complex_exp m n)
+          , resolve_complex_exp m n e
+          , t )
+      in
+      let x = fresh_var n in
+      ([(x, e')], Var (x, t))
+  | R_alloc.While (e1, e2) ->
+      let e' =
+        While (resolve_complex_exp m n e1, resolve_complex_exp m n e2)
+      in
+      let x = fresh_var n in
+      ([(x, e')], Var (x, Type.Void))
   | R_alloc.Collect n' ->
       let e = Collect n' in
       let x = fresh_var n in
@@ -450,6 +485,18 @@ and resolve_complex_exp m n = function
       let nvs = List.concat nvs in
       unfold (nv @ nvs) (Apply (a, as', t))
   | R_alloc.Funref (v, t) -> Funref (v, t)
+  | R_alloc.Setbang (v, e) -> (
+    match Map.find m v with
+    | None -> failwith ("R_anf.resolve_complex_exp: var " ^ v ^ " is unbound")
+    | Some (Var (x, _)) -> Setbang (x, resolve_complex_exp m n e)
+    | Some _ -> assert false )
+  | R_alloc.Begin (es, e, t) ->
+      Begin
+        ( List.map es ~f:(resolve_complex_exp m n)
+        , resolve_complex_exp m n e
+        , t )
+  | R_alloc.While (e1, e2) ->
+      While (resolve_complex_exp m n e1, resolve_complex_exp m n e2)
   | R_alloc.Collect n -> Collect n
   | R_alloc.Allocate (n, t) -> Allocate (n, t)
   | R_alloc.Globalvalue (v, t) -> Globalvalue (v, t)
@@ -472,6 +519,9 @@ and typeof' = function
   | R_alloc.If (_, _, _, t) -> t
   | R_alloc.Apply (_, _, t) -> t
   | R_alloc.Funref (_, t) -> t
+  | R_alloc.Setbang _ -> Type.Void
+  | R_alloc.Begin (_, _, t) -> t
+  | R_alloc.While _ -> Type.Void
   | R_alloc.Collect _ -> Type.Void
   | R_alloc.Allocate (_, t) -> t
   | R_alloc.Globalvalue (_, t) -> t
@@ -486,6 +536,9 @@ and typeof = function
   | If (_, _, _, t) -> t
   | Apply (_, _, t) -> t
   | Funref (_, t) -> t
+  | Setbang _ -> Type.Void
+  | Begin (_, _, t) -> t
+  | While _ -> Type.Void
   | Collect _ -> Type.Void
   | Allocate (_, t) -> t
   | Globalvalue (_, t) -> t

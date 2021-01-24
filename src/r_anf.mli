@@ -29,6 +29,9 @@ and exp =
   | If of exp * exp * exp * Type.t
   | Apply of atom * atom list * Type.t
   | Funref of var * Type.t
+  | Setbang of var * exp
+  | Begin of exp list * exp * Type.t
+  | While of exp * exp
   | Collect of int
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t

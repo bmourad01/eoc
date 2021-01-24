@@ -22,6 +22,7 @@
 %token <int64> INT
 %token <string> VAR
 %token PLUS MINUS STAR FSLASH REM LAND LOR LXOR LNOT 
+%token SETBANG BEGIN WHILE
 %token VECTOR VECTORLENGTH VECTORREF VECTORSETBANG PROCEDUREARITY VOID
 %token TINTEGER TBOOLEAN TVOID TVECTOR ARROW COLON
 %token READ LET
@@ -58,6 +59,8 @@ typ:
     { Type.Void }
   | LPAREN TVECTOR list(typ) RPAREN
     { Type.Vector $3 }
+  | LPAREN ARROW typ RPAREN
+    { Type.Arrow ([], $3) }
   | LPAREN typ ARROW separated_nonempty_list(ARROW, typ) RPAREN
     {
       let open Core_kernel in
@@ -134,6 +137,16 @@ exp:
           | Ok () -> ());
       Lambda (args, t, e)
     }
+  | LPAREN SETBANG VAR exp RPAREN
+    { Setbang ($3, $4) }
+  | LPAREN BEGIN nonempty_list(exp) RPAREN
+    {
+      let open Core_kernel in
+      let len = List.length $3 in
+      Begin (List.take $3 (len - 1), List.last_exn $3)
+    }
+  | LPAREN WHILE exp exp RPAREN
+    { While ($3, $4) }
 
 prim:
   | LPAREN READ RPAREN

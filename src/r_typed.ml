@@ -32,6 +32,9 @@ and exp =
   | Apply of exp * exp list * Type.t
   | Funref of var * Type.t
   | Lambda of (var * Type.t) list * Type.t * exp
+  | Setbang of var * exp
+  | Begin of exp list * exp * Type.t
+  | While of exp * exp
 
 and prim =
   | Read
@@ -69,6 +72,9 @@ let typeof_exp = function
   | Apply (_, _, t) -> t
   | Lambda (args, t, _) -> Type.Arrow (List.map args ~f:snd, t)
   | Funref (_, t) -> t
+  | Setbang _ -> Type.Void
+  | Begin (_, _, t) -> t
+  | While _ -> Type.Void
 
 let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
   | Int _ -> empty_var_env
@@ -98,6 +104,23 @@ let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
       in
       free_vars_of_exp e ~bnd
   | Funref _ -> empty_var_env
+  | Setbang (v, e) ->
+      let m1 =
+        if Set.mem bnd v then empty_var_env
+        else String.Map.singleton v (typeof_exp e)
+      in
+      let m2 = free_vars_of_exp e ~bnd in
+      Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
+  | Begin ([], e, _) -> free_vars_of_exp e ~bnd
+  | Begin (es, e, _) ->
+      let m = free_vars_of_exp e ~bnd in
+      let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
+      List.fold (m :: List.tl_exn ms) ~init:(List.hd_exn ms) ~f:(fun acc m ->
+          Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
+  | While (e1, e2) ->
+      let m1 = free_vars_of_exp e1 ~bnd in
+      let m2 = free_vars_of_exp e2 ~bnd in
+      Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
 
 and free_vars_of_prim ?(bnd = String.Set.empty) = function
   | Read -> empty_var_env
@@ -176,6 +199,14 @@ and string_of_exp = function
       in
       Printf.sprintf "(lambda: (%s) : %s %s)" s (Type.to_string t)
         (string_of_exp e)
+  | Setbang (v, e) -> Printf.sprintf "(set! %s %s)" v (string_of_exp e)
+  | Begin ([], e, _) -> Printf.sprintf "(begin %s)" (string_of_exp e)
+  | Begin (es, e, _) ->
+      Printf.sprintf "(begin %s %s)"
+        (List.map es ~f:string_of_exp |> String.concat ~sep:" ")
+        (string_of_exp e)
+  | While (e1, e2) ->
+      Printf.sprintf "(while %s %s)" (string_of_exp e1) (string_of_exp e2)
 
 and string_of_prim = function
   | Read -> "(read)"
@@ -227,117 +258,121 @@ let rec opt = function
   | Program (info, defs) -> Program (info, List.map defs ~f:opt_def)
 
 and opt_def = function
-  | Def (v, args, t, e) -> Def (v, args, t, opt_exp empty_var_env e)
+  | Def (v, args, t, e) ->
+      let mutated = Hash_set.create (module String) in
+      Def (v, args, t, opt_exp mutated empty_var_env e)
 
-and opt_exp env = function
+and opt_exp mutated env = function
   | Int _ as i -> i
   | Bool _ as b -> b
   | Void -> Void
   | Prim (Read, _) as r -> r
   | Prim (Minus e, t) -> (
-    match opt_exp env e with
+    match opt_exp mutated env e with
     | Int i -> Int Int64.(-i)
     | Prim (Minus e, _) -> e
     | e -> Prim (Minus e, t) )
   | Prim (Plus (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 + i2)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 - i2)
     | Int i1, Prim (Plus (Int i2, e2), _)
      |Prim (Plus (Int i1, e2), _), Int i2 ->
-        opt_exp env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
+        opt_exp mutated env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 + i2)
     | e1, e2 -> Prim (Plus (e1, e2), t) )
   | Prim (Subtract (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 - i2)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 + i2)
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 - i2)
     | e1, e2 -> Prim (Subtract (e1, e2), t) )
   | Prim (Mult (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(i1 * i2)
     | e1, e2 -> Prim (Mult (e1, e2), t) )
   | Prim (Div (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
     | Int i1, Int i2 -> Int Int64.(i1 / i2)
     | e1, e2 -> Prim (Div (e1, e2), t) )
   | Prim (Rem (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
     | Int i1, Int i2 -> Int Int64.(rem i1 i2)
     | e1, e2 -> Prim (Rem (e1, e2), t) )
   | Prim (Land (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(i1 land i2)
     | e1, e2 -> Prim (Land (e1, e2), t) )
   | Prim (Lor (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int 0L, e -> e
     | e, Int 0L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(i1 lor i2)
     | e1, e2 -> Prim (Lor (e1, e2), t) )
   | Prim (Lxor (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 lxor i2)
     | e1, e2 -> Prim (Lxor (e1, e2), t) )
   | Prim (Lnot e, t) -> (
-    match opt_exp env e with
+    match opt_exp mutated env e with
     | Int i -> Int Int64.(lnot i)
     | e -> Prim (Lnot e, t) )
   | Prim (Eq (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 = i2)
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2)
     | e1, e2 -> Prim (Eq (e1, e2), t) )
   | Prim (Lt (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 < i2)
     | e1, e2 -> Prim (Lt (e1, e2), t) )
   | Prim (Le (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 <= i2)
     | e1, e2 -> Prim (Le (e1, e2), t) )
   | Prim (Gt (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 > i2)
     | e1, e2 -> Prim (Gt (e1, e2), t) )
   | Prim (Ge (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 >= i2)
     | e1, e2 -> Prim (Ge (e1, e2), t) )
   | Prim (Not e, t) -> (
-    match opt_exp env e with
+    match opt_exp mutated env e with
     | Bool b -> Bool (not b)
     | e -> Prim (Not e, t) )
   | Prim (And (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
     | Bool false, _ -> Bool false
-    | Bool true, e -> opt_exp env e
+    | Bool true, e -> opt_exp mutated env e
     | e1, e2 -> Prim (And (e1, e2), t) )
   | Prim (Or (e1, e2), t) -> (
-    match (opt_exp env e1, opt_exp env e2) with
-    | Bool false, e -> opt_exp env e
+    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    | Bool false, e -> opt_exp mutated env e
     | Bool true, _ -> Bool true
     | e1, e2 -> Prim (Or (e1, e2), t) )
-  | Prim (Vector es, t) -> Prim (Vector (List.map es ~f:(opt_exp env)), t)
+  | Prim (Vector es, t) ->
+      Prim (Vector (List.map es ~f:(opt_exp mutated env)), t)
   | Prim (Vectorlength e, t) -> (
-    match opt_exp env e with
+    match opt_exp mutated env e with
     | Prim (Vector es, _) -> Int Int64.(List.length es |> of_int)
     | e -> Prim (Vectorlength e, t) )
   | Prim (Vectorref (e, i), t) -> (
-    match opt_exp env e with
-    | Prim (Vector es, _) -> opt_exp env (List.nth_exn es i)
+    match opt_exp mutated env e with
+    | Prim (Vector es, _) -> opt_exp mutated env (List.nth_exn es i)
     | e -> Prim (Vectorref (e, i), t) )
   | Prim (Vectorset (e1, i, e2), t) ->
-      Prim (Vectorset (opt_exp env e1, i, opt_exp env e2), t)
+      Prim (Vectorset (opt_exp mutated env e1, i, opt_exp mutated env e2), t)
+  | Var (v, _) as var when Hash_set.mem mutated v -> var
   | Var (v, _) as var -> (
     (* assuming the program has been type-checked,
      * we know that the var is not actually free
@@ -347,17 +382,26 @@ and opt_exp env = function
     | None -> var
     | Some e -> e )
   | Let (v, e1, e2, t) ->
-      let e1 = opt_exp env e1 in
-      let e2 = opt_exp (Map.set env v e1) e2 in
+      let e1 = opt_exp mutated env e1 in
+      let e2 = opt_exp mutated (Map.set env v e1) e2 in
       Let (v, e1, e2, t)
   | If (e1, e2, e3, t) -> (
-    match opt_exp env e1 with
-    | Bool true -> opt_exp env e2
-    | Bool false -> opt_exp env e3
+    match opt_exp mutated env e1 with
+    | Bool true -> opt_exp mutated env e2
+    | Bool false -> opt_exp mutated env e3
     | e1 -> If (e1, e2, e3, t) )
-  | Apply (e, es, t) -> Apply (opt_exp env e, List.map es ~f:(opt_exp env), t)
+  | Apply (e, es, t) ->
+      Apply (opt_exp mutated env e, List.map es ~f:(opt_exp mutated env), t)
   | Funref _ as f -> f
-  | Lambda (args, t, e) -> Lambda (args, t, opt_exp env e)
+  | Lambda (args, t, e) -> Lambda (args, t, opt_exp mutated env e)
+  | Setbang (v, e) ->
+      let e' = Setbang (v, opt_exp mutated env e) in
+      Hash_set.add mutated v; e'
+  | Begin (es, e, t) ->
+      let es = List.map es ~f:(opt_exp mutated env) in
+      let e = opt_exp mutated env e in
+      Begin (es, e, t)
+  | While _ as w -> w
 
 exception Type_error of string
 
@@ -476,6 +520,49 @@ and type_check_exp env denv = function
             ( "R_typed.type_check_exp: lambda body " ^ R.string_of_exp e
             ^ " has type " ^ Type.to_string t'
             ^ " but was declared to have type " ^ Type.to_string t ) )
+  | R.Setbang (v, e) -> (
+    match Map.find env v with
+    | None ->
+        typeerr ("R_typed.type_check_exp: set! var " ^ v ^ " is not bound")
+    | Some t -> (
+      match type_check_exp env denv e with
+      | t', e' when Type.equal t t' -> (Type.Void, Setbang (v, e'))
+      | t', _ ->
+          typeerr
+            ( "R_typed.type_check_exp: set! expression " ^ R.string_of_exp e
+            ^ " has type " ^ Type.to_string t'
+            ^ " but an expression of type " ^ Type.to_string t
+            ^ " was expected" ) ) )
+  | R.Begin (es, e) ->
+      let ts', es' =
+        List.map es ~f:(type_check_exp env denv) |> List.unzip
+      in
+      List.(
+        iter (zip_exn ts' es) ~f:(fun (t, e) ->
+            match t with
+            | Type.Void -> ()
+            | _ ->
+                typeerr
+                  ( "R_typed.type_check_exp: begin expression "
+                  ^ R.string_of_exp e ^ " has type " ^ Type.to_string t
+                  ^ " but an expression of type Void was expected" )));
+      let t', e' = type_check_exp env denv e in
+      (t', Begin (es', e', t'))
+  | R.While (e1, e2) -> (
+    match type_check_exp env denv e1 with
+    | Type.Boolean, e1' -> (
+      match type_check_exp env denv e2 with
+      | Type.Void, e2' -> (Type.Void, While (e1', e2'))
+      | t, _ ->
+          typeerr
+            ( "R_typed.type_check_exp: while body " ^ R.string_of_exp e1
+            ^ " has type " ^ Type.to_string t
+            ^ " but an expression of type Void was expected" ) )
+    | t, _ ->
+        typeerr
+          ( "R_typed.type_check_exp: while condition " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Boolean was expected" ) )
 
 and type_check_prim env denv = function
   | R.Read -> (Type.Integer, Read)
@@ -872,168 +959,183 @@ let rec string_of_answer ?(nested = false) = function
 let rec interp ?(read = None) = function
   | Program (_, defs) as p ->
       let (Def (_, _, _, e)) = main_def p in
-      interp_exp empty_var_env defs e ~read
+      let menv = Hashtbl.create (module String) in
+      interp_exp menv empty_var_env defs e ~read
 
-and interp_exp ?(read = None) env defs = function
+and interp_exp ?(read = None) menv env defs = function
   | Int i -> `Int i
   | Bool b -> `Bool b
   | Void -> `Void
-  | Prim (p, _) -> interp_prim env defs p ~read
+  | Prim (p, _) -> interp_prim menv env defs p ~read
   | Var (v, _) -> (
-    match Map.find env v with
-    | None -> failwith ("R.interp_exp: var " ^ v ^ " is not bound")
-    | Some e -> e )
+    match Hashtbl.find menv v with
+    | Some e -> e
+    | None -> (
+      match Map.find env v with
+      | None -> failwith ("R.interp_exp: var " ^ v ^ " is not bound")
+      | Some e -> e ) )
   | Let (v, e1, e2, _) ->
-      let e1 = interp_exp env defs e1 ~read in
-      interp_exp (Map.set env v e1) defs e2 ~read
+      let e1 = interp_exp menv env defs e1 ~read in
+      interp_exp menv (Map.set env v e1) defs e2 ~read
   | If (e1, e2, e3, _) -> (
-    match interp_exp env defs e1 ~read with
-    | `Bool true -> interp_exp env defs e2 ~read
-    | `Bool false -> interp_exp env defs e3 ~read
+    match interp_exp menv env defs e1 ~read with
+    | `Bool true -> interp_exp menv env defs e2 ~read
+    | `Bool false -> interp_exp menv env defs e3 ~read
     | _ -> assert false )
   | Apply (e, es, _) -> (
-    match interp_exp env defs e ~read with
+    match interp_exp menv env defs e ~read with
     | `Def v ->
         let (Def (_, args, _, e')) =
           List.find_exn defs ~f:(function Def (v', _, _, _) ->
               Label.equal v v')
         in
         let args = List.map args ~f:fst in
-        let es = List.map es ~f:(interp_exp env defs ~read) in
+        let es = List.map es ~f:(interp_exp menv env defs ~read) in
         let env = List.zip_exn args es |> String.Map.of_alist_exn in
-        interp_exp env defs e' ~read
+        interp_exp menv env defs e' ~read
     | `Function (env', args, e') ->
-        let es = List.map es ~f:(interp_exp env defs ~read) in
+        let es = List.map es ~f:(interp_exp menv env defs ~read) in
         let env =
           List.zip_exn args es
           |> List.fold ~init:env' ~f:(fun acc (x, e) -> Map.set acc x e)
         in
-        interp_exp env defs e' ~read
+        interp_exp menv env defs e' ~read
     | _ -> assert false )
   | Funref (v, _) -> `Def v
   | Lambda (args, _, e) -> `Function (env, List.map args ~f:fst, e)
+  | Setbang (v, e) ->
+      let e' = interp_exp menv env defs e ~read in
+      Hashtbl.set menv v e'; `Void
+  | Begin (es, e, _) ->
+      List.iter es ~f:(fun e -> interp_exp menv env defs e ~read |> ignore);
+      interp_exp menv env defs e ~read
+  | While (e1, e2) ->
+      interp_exp menv env defs
+        (If (e1, Begin ([e2], While (e1, e2), Type.Void), Void, Type.Void))
+        ~read
 
-and interp_prim ?(read = None) env defs = function
+and interp_prim ?(read = None) menv env defs = function
   | Read -> (
     match read with
     | Some i -> `Int i
     | None -> `Int (read_int ()) )
   | Minus e -> (
-    match interp_exp env defs e ~read with
+    match interp_exp menv env defs e ~read with
     | `Int i -> `Int Int64.(-i)
     | _ -> assert false )
   | Plus (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 + i2)
       | _ -> assert false )
   | Subtract (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 - i2)
       | _ -> assert false )
   | Mult (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 * i2)
       | _ -> assert false )
   | Div (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 / i2)
       | _ -> assert false )
   | Rem (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(rem i1 i2)
       | _ -> assert false )
   | Land (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 land i2)
       | _ -> assert false )
   | Lor (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 lor i2)
       | _ -> assert false )
   | Lxor (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 lxor i2)
       | _ -> assert false )
   | Lnot e -> (
-    match interp_exp env defs e ~read with
+    match interp_exp menv env defs e ~read with
     | `Int i -> `Int Int64.(lnot i)
     | _ -> assert false )
   | Eq (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
       | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
       | _ -> assert false )
   | Lt (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 < i2)
       | _ -> assert false )
   | Le (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 <= i2)
       | _ -> assert false )
   | Gt (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 > i2)
       | _ -> assert false )
   | Ge (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 >= i2)
       | _ -> assert false )
   | Not e -> (
-    match interp_exp env defs e ~read with
+    match interp_exp menv env defs e ~read with
     | `Bool b -> `Bool (not b)
     | _ -> assert false )
   | And (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Bool b1, `Bool b2 -> `Bool (b1 && b2)
       | _ -> assert false )
   | Or (e1, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Bool b1, `Bool b2 -> `Bool (b1 || b2)
       | _ -> assert false )
   | Vector es ->
-      `Vector (List.map es ~f:(interp_exp env defs ~read) |> Array.of_list)
+      `Vector
+        (List.map es ~f:(interp_exp menv env defs ~read) |> Array.of_list)
   | Vectorlength e -> (
-    match interp_exp env defs e ~read with
+    match interp_exp menv env defs e ~read with
     | `Vector as' -> `Int Int64.(Array.length as' |> of_int)
     | _ -> assert false )
   | Vectorref (e, i) -> (
-    match interp_exp env defs e ~read with
+    match interp_exp menv env defs e ~read with
     | `Vector as' -> as'.(i)
     | _ -> assert false )
   | Vectorset (e1, i, e2) -> (
-      let a1 = interp_exp env defs e1 ~read in
-      let a2 = interp_exp env defs e2 ~read in
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
       match a1 with
       | `Vector as' -> as'.(i) <- a2; `Void
       | _ -> assert false )
@@ -1048,137 +1150,154 @@ and uniquify_def = function
         List.fold args ~init:(empty_var_env, []) ~f:(fun (m, args) (x, t) ->
             (Map.set m x n, (newvar x n, t) :: args))
       in
-      let _, e = uniquify_exp m e in
+      let m = ref m in
+      let e = uniquify_exp m e in
       Def (v, List.rev args, t, e)
 
 and uniquify_exp m = function
-  | Int _ as i -> (m, i)
-  | Bool _ as b -> (m, b)
-  | Void -> (m, Void)
+  | Int _ as i -> i
+  | Bool _ as b -> b
+  | Void -> Void
   | Prim (p, t) ->
-      let _, p = uniquify_prim m p in
-      (m, Prim (p, t))
+      let p = uniquify_prim m p in
+      Prim (p, t)
   | Var (v, t) -> (
-    match Map.find m v with
+    match Map.find !m v with
     | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
-    | Some n -> (m, Var (newvar v n, t)) )
+    | Some n -> Var (newvar v n, t) )
   | Let (v, e1, e2, t) ->
+      let e1 = uniquify_exp m e1 in
       let n =
-        match Map.find m v with
+        match Map.find !m v with
         | None -> 1
         | Some n -> n + 1
       in
-      let m' = Map.set m v n in
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m' e2 in
-      (m, Let (newvar v n, e1, e2, t))
+      m := Map.set !m v n;
+      let e2 = uniquify_exp m e2 in
+      Let (newvar v n, e1, e2, t)
   | If (e1, e2, e3, t) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      let _, e3 = uniquify_exp m e3 in
-      (m, If (e1, e2, e3, t))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      let e3 = uniquify_exp m e3 in
+      If (e1, e2, e3, t)
   | Apply (e, es, t) ->
-      let _, e = uniquify_exp m e in
-      let _, es = List.map es ~f:(uniquify_exp m) |> List.unzip in
-      (m, Apply (e, es, t))
-  | Funref _ as f -> (m, f)
+      let e = uniquify_exp m e in
+      let es = List.map es ~f:(uniquify_exp m) in
+      Apply (e, es, t)
+  | Funref _ as f -> f
   | Lambda (args, t, e) ->
-      let m', args =
-        List.fold args ~init:(m, []) ~f:(fun (m, args) (x, t) ->
+      let args =
+        List.fold args ~init:[] ~f:(fun args (x, t) ->
             let n =
-              match Map.find m x with
+              match Map.find !m x with
               | None -> 1
               | Some n -> n + 1
             in
-            (Map.set m x n, (newvar x n, t) :: args))
+            m := Map.set !m x n;
+            (newvar x n, t) :: args)
       in
-      let _, e = uniquify_exp m' e in
-      (m, Lambda (List.rev args, t, e))
+      let e = uniquify_exp m e in
+      Lambda (List.rev args, t, e)
+  | Setbang (v, e) -> (
+    match Map.find !m v with
+    | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
+    | Some n ->
+        let v = newvar v n in
+        let e = uniquify_exp m e in
+        Setbang (v, e) )
+  | Begin (es, e, t) ->
+      let es = List.map es ~f:(uniquify_exp m) in
+      let e = uniquify_exp m e in
+      Begin (es, e, t)
+  | While (e1, e2) ->
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      While (e1, e2)
 
 and uniquify_prim m = function
-  | Read -> (m, Read)
+  | Read -> Read
   | Minus e ->
-      let _, e = uniquify_exp m e in
-      (m, Minus e)
+      let e = uniquify_exp m e in
+      Minus e
   | Plus (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Plus (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Plus (e1, e2)
   | Subtract (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Subtract (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Subtract (e1, e2)
   | Mult (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Mult (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Mult (e1, e2)
   | Div (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Div (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Div (e1, e2)
   | Rem (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Rem (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Rem (e1, e2)
   | Land (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Land (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Land (e1, e2)
   | Lor (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Lor (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Lor (e1, e2)
   | Lxor (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Lxor (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Lxor (e1, e2)
   | Lnot e ->
-      let _, e = uniquify_exp m e in
-      (m, Lnot e)
+      let e = uniquify_exp m e in
+      Lnot e
   | Eq (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Eq (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Eq (e1, e2)
   | Lt (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Lt (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Lt (e1, e2)
   | Le (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Le (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Le (e1, e2)
   | Gt (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Gt (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Gt (e1, e2)
   | Ge (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Ge (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Ge (e1, e2)
   | Not e ->
-      let _, e = uniquify_exp m e in
-      (m, Not e)
+      let e = uniquify_exp m e in
+      Not e
   | And (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, And (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      And (e1, e2)
   | Or (e1, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Or (e1, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Or (e1, e2)
   | Vector es ->
-      let _, es = List.map es ~f:(uniquify_exp m) |> List.unzip in
-      (m, Vector es)
+      let es = List.map es ~f:(uniquify_exp m) in
+      Vector es
   | Vectorlength e ->
-      let _, e = uniquify_exp m e in
-      (m, Vectorlength e)
+      let e = uniquify_exp m e in
+      Vectorlength e
   | Vectorref (e, i) ->
-      let _, e = uniquify_exp m e in
-      (m, Vectorref (e, i))
+      let e = uniquify_exp m e in
+      Vectorref (e, i)
   | Vectorset (e1, i, e2) ->
-      let _, e1 = uniquify_exp m e1 in
-      let _, e2 = uniquify_exp m e2 in
-      (m, Vectorset (e1, i, e2))
+      let e1 = uniquify_exp m e1 in
+      let e2 = uniquify_exp m e2 in
+      Vectorset (e1, i, e2)
 
 and newvar v n = Printf.sprintf "%s.%d" v n
 
@@ -1203,6 +1322,10 @@ and escaped_defs_exp = function
       escaped_defs_exp e @ (List.map es ~f:escaped_defs_exp |> List.concat)
   | Funref (v, _) -> [v]
   | Lambda (_, _, e) -> escaped_defs_exp e
+  | Setbang (_, e) -> escaped_defs_exp e
+  | Begin (es, e, _) ->
+      (List.map es ~f:escaped_defs_exp |> List.concat) @ escaped_defs_exp e
+  | While (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
 
 and escaped_defs_prim = function
   | Read -> []
@@ -1231,11 +1354,10 @@ and escaped_defs_prim = function
 
 let rec recompute_types_def defs = function
   | Def (v, args, t, e) ->
-      Def
-        ( v
-        , args
-        , t
-        , recompute_types_exp defs (String.Map.of_alist_exn args) e )
+      let e = recompute_types_exp defs (String.Map.of_alist_exn args) e in
+      (* this sucks *)
+      let t = if String.equal v main then t else typeof_exp e in
+      Def (v, args, t, e)
 
 and recompute_types_exp defs env = function
   | Int _ as i -> i
@@ -1269,7 +1391,7 @@ and recompute_types_exp defs env = function
       let es = List.map es ~f:(recompute_types_exp defs env) in
       match typeof_exp e with
       | Type.Arrow (_, tret) -> Apply (e, es, tret)
-      | _ -> assert false )
+      | _ -> Apply (e, es, Type.Trustme) )
   | Funref (v, t) ->
       (* now that the top-level function has the correct type,
        * we need to update the type in the reference to it. *)
@@ -1279,7 +1401,23 @@ and recompute_types_exp defs env = function
       in
       let t = Type.Arrow (List.map args ~f:snd, t) in
       Funref (v, t)
-  | Lambda _ -> assert false
+  | Lambda (args, _, e) ->
+      let env =
+        List.fold args ~init:env ~f:(fun env (x, t) -> Map.set env x t)
+      in
+      let e = recompute_types_exp defs env e in
+      Lambda (args, typeof_exp e, e)
+  | Setbang (v, e) ->
+      let e = recompute_types_exp defs env e in
+      Setbang (v, e)
+  | Begin (es, e, t) ->
+      let es = List.map es ~f:(recompute_types_exp defs env) in
+      let e = recompute_types_exp defs env e in
+      Begin (es, e, typeof_exp e)
+  | While (e1, e2) ->
+      let e1 = recompute_types_exp defs env e1 in
+      let e2 = recompute_types_exp defs env e2 in
+      While (e1, e2)
 
 and recompute_types_prim defs env = function
   | Read -> (Read, Type.Integer)
@@ -1347,11 +1485,263 @@ and recompute_types_prim defs env = function
       let e = recompute_types_exp defs env e in
       match typeof_exp e with
       | Type.Vector ts -> (Vectorref (e, i), List.nth_exn ts i)
-      | t -> assert false )
+      | _ -> (Vectorref (e, i), Type.Trustme) )
   | Vectorset (e1, i, e2) ->
       let e1 = recompute_types_exp defs env e1 in
       let e2 = recompute_types_exp defs env e2 in
       (Vectorset (e1, i, e2), Type.Void)
+
+let rec assigned_and_free_exp e =
+  let default () = (String.Set.empty, String.Set.empty) in
+  match e with
+  | Int _ -> default ()
+  | Bool _ -> default ()
+  | Void -> default ()
+  | Prim (p, _) -> assigned_and_free_prim p
+  | Var _ -> default ()
+  | Let (_, e1, e2, _) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | If (e1, e2, e3, _) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      let a3, f3 = assigned_and_free_exp e3 in
+      (String.Set.union_list [a1; a2; a3], String.Set.union_list [f1; f2; f3])
+  | Apply (e, es, _) ->
+      let a, f = assigned_and_free_exp e in
+      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
+      (String.Set.union_list (a :: as'), String.Set.union_list (f :: fs))
+  | Funref _ -> default ()
+  | Lambda (args, _, e) ->
+      let fvs =
+        let bnd = List.map args ~f:fst |> String.Set.of_list in
+        free_vars_of_exp e ~bnd |> Map.to_alist
+      in
+      let a, f = assigned_and_free_exp e in
+      (a, String.Set.(union f (of_list (List.map fvs ~f:fst))))
+  | Setbang (v, e) ->
+      let a, f = assigned_and_free_exp e in
+      (Set.add a v, f)
+  | Begin (es, e, _) ->
+      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
+      let a, f = assigned_and_free_exp e in
+      (String.Set.union_list (a :: as'), String.Set.union_list (f :: fs))
+  | While (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+
+and assigned_and_free_prim p =
+  let default () = (String.Set.empty, String.Set.empty) in
+  match p with
+  | Read -> default ()
+  | Minus e -> assigned_and_free_exp e
+  | Plus (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Subtract (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Mult (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Div (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Rem (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Land (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Lor (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Lxor (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Lnot e -> assigned_and_free_exp e
+  | Eq (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Lt (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Le (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Gt (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Ge (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Not e -> assigned_and_free_exp e
+  | And (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Or (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Vector es ->
+      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
+      (String.Set.union_list as', String.Set.union_list fs)
+  | Vectorlength e -> assigned_and_free_exp e
+  | Vectorref (e, _) -> assigned_and_free_exp e
+  | Vectorset (e1, _, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+
+let rec convert_assignments = function
+  | Program (info, defs) ->
+      let defs = List.map defs ~f:convert_assignments_def in
+      (* should try to reach a fixed-point *)
+      let defs = List.map defs ~f:(recompute_types_def defs) in
+      Program (info, defs)
+
+and convert_assignments_def = function
+  | Def (v, args, typ, e) ->
+      let a, f = assigned_and_free_exp e in
+      let args', renamed_args =
+        let inter = Set.inter a f in
+        List.fold args ~init:([], []) ~f:(fun (args, renamed_args) (x, t) ->
+            if Set.mem inter x then
+              (("_param_" ^ x, t) :: args, (x, t) :: renamed_args)
+            else ((x, t) :: args, renamed_args))
+      in
+      let e = convert_assignments_exp a f e in
+      let renamed_args = List.rev renamed_args in
+      let e =
+        List.fold_right renamed_args ~init:e ~f:(fun (x, t) e ->
+            Let
+              ( x
+              , Prim (Vector [Var ("_param_" ^ x, t)], Type.Vector [t])
+              , e
+              , typ ))
+      in
+      Def (v, List.rev args', typ, e)
+
+and convert_assignments_exp a f = function
+  | Int _ as i -> i
+  | Bool _ as b -> b
+  | Void -> Void
+  | Prim (p, t) -> Prim (convert_assignments_prim a f p, t)
+  | Var (v, t) as var ->
+      if Set.mem a v && Set.mem f v then
+        Prim (Vectorref (Var (v, Type.Vector [t]), 0), t)
+      else var
+  | Let (v, e1, e2, t) ->
+      let e1 = convert_assignments_exp a f e1 in
+      let e2 = convert_assignments_exp a f e2 in
+      if Set.mem a v && Set.mem f v then
+        Let (v, Prim (Vector [e1], Type.Vector [typeof_exp e1]), e2, t)
+      else Let (v, e1, e2, t)
+  | If (e1, e2, e3, t) ->
+      let e1 = convert_assignments_exp a f e1 in
+      let e2 = convert_assignments_exp a f e2 in
+      let e3 = convert_assignments_exp a f e3 in
+      If (e1, e2, e3, t)
+  | Apply (e, es, t) ->
+      let e = convert_assignments_exp a f e in
+      let es = List.map es ~f:(convert_assignments_exp a f) in
+      Apply (e, es, t)
+  | Funref _ as f -> f
+  | Lambda (args, typ, e) ->
+      let args', renamed_args =
+        let inter = Set.inter a f in
+        List.fold args ~init:([], []) ~f:(fun (args, renamed_args) (x, t) ->
+            if Set.mem inter x then
+              (("_param_" ^ x, t) :: args, (x, t) :: renamed_args)
+            else ((x, t) :: args, renamed_args))
+      in
+      let e = convert_assignments_exp a f e in
+      let renamed_args = List.rev renamed_args in
+      let e =
+        List.fold_right renamed_args ~init:e ~f:(fun (x, t) e ->
+            Let
+              ( x
+              , Prim (Vector [Var ("_param_" ^ x, t)], Type.Vector [t])
+              , e
+              , typ ))
+      in
+      Lambda (List.rev args', typ, e)
+  | Setbang (v, e) as s ->
+      if Set.mem a v && Set.mem f v then
+        Prim
+          ( Vectorset
+              ( Var (v, Type.Vector [typeof_exp e])
+              , 0
+              , convert_assignments_exp a f e )
+          , Type.Void )
+      else s
+  | Begin (es, e, t) ->
+      let es = List.map es ~f:(convert_assignments_exp a f) in
+      let e = convert_assignments_exp a f e in
+      Begin (es, e, t)
+  | While (e1, e2) ->
+      let e1 = convert_assignments_exp a f e1 in
+      let e2 = convert_assignments_exp a f e2 in
+      While (e1, e2)
+
+and convert_assignments_prim a f = function
+  | Read -> Read
+  | Minus e -> Minus (convert_assignments_exp a f e)
+  | Plus (e1, e2) ->
+      Plus (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Subtract (e1, e2) ->
+      Subtract
+        (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Mult (e1, e2) ->
+      Mult (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Div (e1, e2) ->
+      Div (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Rem (e1, e2) ->
+      Rem (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Land (e1, e2) ->
+      Land (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Lor (e1, e2) ->
+      Lor (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Lxor (e1, e2) ->
+      Lxor (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Lnot e -> Lnot (convert_assignments_exp a f e)
+  | Eq (e1, e2) ->
+      Eq (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Lt (e1, e2) ->
+      Lt (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Le (e1, e2) ->
+      Le (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Gt (e1, e2) ->
+      Gt (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Ge (e1, e2) ->
+      Ge (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Not e -> Not (convert_assignments_exp a f e)
+  | And (e1, e2) ->
+      And (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Or (e1, e2) ->
+      Or (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Vector es -> Vector (List.map es ~f:(convert_assignments_exp a f))
+  | Vectorlength e -> Vectorlength (convert_assignments_exp a f e)
+  | Vectorref (e, i) -> Vectorref (convert_assignments_exp a f e, i)
+  | Vectorset (e1, i, e2) ->
+      Vectorset
+        (convert_assignments_exp a f e1, i, convert_assignments_exp a f e2)
 
 let rec needs_closures = function
   | Program (_, defs) -> List.exists defs ~f:needs_closures_def
@@ -1372,6 +1762,10 @@ and needs_closures_exp = function
       needs_closures_exp e || List.exists es ~f:needs_closures_exp
   | Funref _ -> false
   | Lambda _ -> true
+  | Setbang (_, e) -> needs_closures_exp e
+  | Begin (es, e, _) ->
+      List.exists es ~f:needs_closures_exp || needs_closures_exp e
+  | While (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
 
 and needs_closures_prim = function
   | Read -> false
@@ -1454,7 +1848,8 @@ and convert_to_closures_exp escaped env n = function
       let e2, new_defs2 =
         convert_to_closures_exp escaped (Map.set env v (typeof_exp e1)) n e2
       in
-      (Let (v, e1, e2, typeof_exp e2), new_defs1 @ new_defs2)
+      let t = typeof_exp e2 in
+      (Let (v, e1, e2, t), new_defs1 @ new_defs2)
   | If (e1, e2, e3, t) ->
       let e1, new_defs1 = convert_to_closures_exp escaped env n e1 in
       let e2, new_defs2 = convert_to_closures_exp escaped env n e2 in
@@ -1520,6 +1915,19 @@ and convert_to_closures_exp escaped env n = function
                   , ct ) ]
           , Type.Vector [ft; ct] )
       , new_defs )
+  | Setbang (v, e) ->
+      let e, new_defs = convert_to_closures_exp escaped env n e in
+      (Setbang (v, e), new_defs)
+  | Begin (es, e, t) ->
+      let es, new_defs_es =
+        List.map es ~f:(convert_to_closures_exp escaped env n) |> List.unzip
+      in
+      let e, new_defs = convert_to_closures_exp escaped env n e in
+      (Begin (es, e, typeof_exp e), List.concat new_defs_es @ new_defs)
+  | While (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp escaped env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp escaped env n e2 in
+      (While (e1, e2), new_defs1 @ new_defs2)
 
 and convert_to_closures_prim escaped env n = function
   | Read -> (Read, [])
@@ -1705,6 +2113,14 @@ and limit_functions_exp defs = function
       Funref (v, Type.Arrow (List.map args ~f:snd, t'))
   (* convert_to_closures should have erased all lambdas *)
   | Lambda _ -> assert false
+  | Setbang (v, e) -> Setbang (v, limit_functions_exp defs e)
+  | Begin (es, e, t) ->
+      Begin
+        ( List.map es ~f:(limit_functions_exp defs)
+        , limit_functions_exp defs e
+        , t )
+  | While (e1, e2) ->
+      While (limit_functions_exp defs e1, limit_functions_exp defs e2)
 
 and limit_functions_prim defs = function
   | Read -> Read
