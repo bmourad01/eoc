@@ -31,6 +31,7 @@ For building the project, run `dune build`. To compile a program, run `./compile
 - Let-binding
 - If-then-else expressions
 - Register allocation with move biasing
-- Tuples (`vector`) & garbage collection
+- Tuples (via `vector`) & garbage collection
 - Top-level functions via `define`
 - Anonymous functions via `lambda`
+- Loops (via `while`), sequencing (via `begin`), and assignment (via `set!`)
