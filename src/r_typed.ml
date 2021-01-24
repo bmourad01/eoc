@@ -70,34 +70,39 @@ let typeof_exp = function
   | Lambda (args, t, _) -> Type.Arrow (List.map args ~f:snd, t)
   | Funref (_, t) -> t
 
-let rec vars_of_exp = function
+let rec free_vars_of_exp ?(bnd = String.Map.empty) = function
   | Int _ -> empty_var_env
   | Bool _ -> empty_var_env
   | Void -> empty_var_env
-  | Prim (p, _) -> vars_of_prim p
-  | Var (v, t) -> String.Map.singleton v t
-  | Let (_, e1, e2, _) ->
-      let m1 = vars_of_exp e1 in
-      let m2 = vars_of_exp e2 in
+  | Prim (p, _) -> free_vars_of_prim p ~bnd
+  | Var (v, t) ->
+      if Map.mem bnd v then empty_var_env else String.Map.singleton v t
+  | Let (x, e1, e2, _) ->
+      let m1 = free_vars_of_exp e1 ~bnd in
+      let m2 = free_vars_of_exp e2 ~bnd:(Map.set bnd x (typeof_exp e1)) in
       Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
   | If (e1, e2, e3, _) ->
-      let m1 = vars_of_exp e1 in
-      let m2 = vars_of_exp e2 in
-      let m3 = vars_of_exp e3 in
+      let m1 = free_vars_of_exp e1 ~bnd in
+      let m2 = free_vars_of_exp e2 ~bnd in
+      let m3 = free_vars_of_exp e3 ~bnd in
       List.fold [m2; m3] ~init:m1 ~f:(fun acc m ->
           Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
   | Apply (e, es, _) ->
-      let m = vars_of_exp e in
-      let ms = List.map es ~f:vars_of_exp in
+      let m = free_vars_of_exp e ~bnd in
+      let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
       List.fold ms ~init:m ~f:(fun acc m ->
           Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
-  | Lambda (_, _, e) -> vars_of_exp e
+  | Lambda (args, _, e) ->
+      let bnd =
+        List.fold args ~init:bnd ~f:(fun bnd (x, t) -> Map.set bnd x t)
+      in
+      free_vars_of_exp e ~bnd
   | Funref _ -> empty_var_env
 
-and vars_of_prim = function
+and free_vars_of_prim ?(bnd = String.Map.empty) = function
   | Read -> empty_var_env
   | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
-      vars_of_exp e
+      free_vars_of_exp e ~bnd
   | Plus (e1, e2)
    |Subtract (e1, e2)
    |Mult (e1, e2)
@@ -114,12 +119,12 @@ and vars_of_prim = function
    |And (e1, e2)
    |Or (e1, e2)
    |Vectorset (e1, _, e2) ->
-      let m1 = vars_of_exp e1 in
-      let m2 = vars_of_exp e2 in
+      let m1 = free_vars_of_exp e1 ~bnd in
+      let m2 = free_vars_of_exp e2 ~bnd in
       Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
   | Vector [] -> empty_var_env
   | Vector es ->
-      let ms = List.map es ~f:vars_of_exp in
+      let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
       List.(
         fold (tl_exn ms) ~init:(hd_exn ms) ~f:(fun acc m ->
             Map.merge_skewed acc m ~combine:(fun ~key v _ -> v)))
@@ -1420,10 +1425,12 @@ and convert_to_closures_exp escaped env n = function
         , [] )
       else (f, [])
   | Lambda (args, t, e) ->
-      let vars = vars_of_exp e in
       let free_vars =
-        List.fold args ~init:vars ~f:(fun acc (x, _) -> Map.remove acc x)
-        |> Map.to_alist
+        let bnd =
+          List.fold args ~init:String.Map.empty ~f:(fun bnd (x, t) ->
+              Map.set bnd x t)
+        in
+        free_vars_of_exp e ~bnd |> Map.to_alist
       in
       let c, d = newclo n in
       let ct = Type.Vector (List.map free_vars ~f:snd) in
