@@ -70,16 +70,16 @@ let typeof_exp = function
   | Lambda (args, t, _) -> Type.Arrow (List.map args ~f:snd, t)
   | Funref (_, t) -> t
 
-let rec free_vars_of_exp ?(bnd = String.Map.empty) = function
+let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
   | Int _ -> empty_var_env
   | Bool _ -> empty_var_env
   | Void -> empty_var_env
   | Prim (p, _) -> free_vars_of_prim p ~bnd
   | Var (v, t) ->
-      if Map.mem bnd v then empty_var_env else String.Map.singleton v t
+      if Set.mem bnd v then empty_var_env else String.Map.singleton v t
   | Let (x, e1, e2, _) ->
       let m1 = free_vars_of_exp e1 ~bnd in
-      let m2 = free_vars_of_exp e2 ~bnd:(Map.set bnd x (typeof_exp e1)) in
+      let m2 = free_vars_of_exp e2 ~bnd:(Set.add bnd x) in
       Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
   | If (e1, e2, e3, _) ->
       let m1 = free_vars_of_exp e1 ~bnd in
@@ -94,12 +94,12 @@ let rec free_vars_of_exp ?(bnd = String.Map.empty) = function
           Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
   | Lambda (args, _, e) ->
       let bnd =
-        List.fold args ~init:bnd ~f:(fun bnd (x, t) -> Map.set bnd x t)
+        List.fold args ~init:bnd ~f:(fun bnd (x, _) -> Set.add bnd x)
       in
       free_vars_of_exp e ~bnd
   | Funref _ -> empty_var_env
 
-and free_vars_of_prim ?(bnd = String.Map.empty) = function
+and free_vars_of_prim ?(bnd = String.Set.empty) = function
   | Read -> empty_var_env
   | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
       free_vars_of_exp e ~bnd
@@ -354,7 +354,7 @@ exception Type_error of string
 
 let typeerr msg = raise (Type_error msg)
 
-let def_prefix = "def_"
+let def_prefix = "_def_"
 
 let fix_def_name =
   String.map ~f:(function
@@ -1220,41 +1220,35 @@ and escaped_defs_prim = function
   | Vectorref (e, _) -> escaped_defs_exp e
   | Vectorset (e1, _, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
 
-let rec convert_to_closures = function
-  | Program (info, defs) as p ->
-      let escaped = escaped_defs p in
-      let n = ref 0 in
-      let defs, new_defs =
-        List.(map defs ~f:(convert_to_closures_def escaped n) |> unzip)
-      in
-      let defs = List.concat new_defs @ defs in
-      Program (info, List.map defs ~f:(fix_types_def defs))
-
-and fix_types_def defs = function
+let rec recompute_types_def defs = function
   | Def (v, args, t, e) ->
-      Def (v, args, t, fix_types_exp defs (String.Map.of_alist_exn args) e)
+      Def
+        ( v
+        , args
+        , t
+        , recompute_types_exp defs (String.Map.of_alist_exn args) e )
 
-and fix_types_exp defs env = function
+and recompute_types_exp defs env = function
   | Int _ as i -> i
   | Bool _ as b -> b
   | Void -> Void
   | Prim (p, t) ->
-      let p, t = fix_types_prim defs env p in
+      let p, t = recompute_types_prim defs env p in
       Prim (p, t)
   | Var (v, t) -> (
     match Map.find env v with
     | None -> assert false
     | Some t -> Var (v, t) )
   | Let (v, e1, e2, t) ->
-      let e1 = fix_types_exp defs env e1 in
+      let e1 = recompute_types_exp defs env e1 in
       let t1 = typeof_exp e1 in
-      let e2 = fix_types_exp defs (Map.set env v t1) e2 in
+      let e2 = recompute_types_exp defs (Map.set env v t1) e2 in
       let t = typeof_exp e2 in
       Let (v, e1, e2, t)
   | If (e1, e2, e3, t) ->
-      let e1 = fix_types_exp defs env e1 in
-      let e2 = fix_types_exp defs env e2 in
-      let e3 = fix_types_exp defs env e3 in
+      let e1 = recompute_types_exp defs env e1 in
+      let e2 = recompute_types_exp defs env e2 in
+      let e3 = recompute_types_exp defs env e3 in
       (* we already passed the type-checker, but
        * `e2` and `e3` may contain different closure
        * environments. for now we just pick one of them.
@@ -1262,8 +1256,8 @@ and fix_types_exp defs env = function
       let t2 = typeof_exp e2 in
       If (e1, e2, e3, t2)
   | Apply (e, es, t) -> (
-      let e = fix_types_exp defs env e in
-      let es = List.map es ~f:(fix_types_exp defs env) in
+      let e = recompute_types_exp defs env e in
+      let es = List.map es ~f:(recompute_types_exp defs env) in
       match typeof_exp e with
       | Type.Arrow (_, tret) -> Apply (e, es, tret)
       | _ -> assert false )
@@ -1278,72 +1272,134 @@ and fix_types_exp defs env = function
       Funref (v, t)
   | Lambda _ -> assert false
 
-and fix_types_prim defs env = function
+and recompute_types_prim defs env = function
   | Read -> (Read, Type.Integer)
-  | Minus e -> (Minus (fix_types_exp defs env e), Type.Integer)
+  | Minus e -> (Minus (recompute_types_exp defs env e), Type.Integer)
   | Plus (e1, e2) ->
-      ( Plus (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Plus
+          (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
   | Subtract (e1, e2) ->
-      ( Subtract (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Subtract
+          (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
   | Mult (e1, e2) ->
-      ( Mult (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Mult
+          (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
   | Div (e1, e2) ->
-      ( Div (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Div (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
   | Rem (e1, e2) ->
-      ( Rem (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Rem (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
   | Land (e1, e2) ->
-      ( Land (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Land
+          (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
   | Lor (e1, e2) ->
-      ( Lor (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Lor (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
   | Lxor (e1, e2) ->
-      ( Lxor (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Lxor
+          (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
-  | Lnot e -> (Lnot (fix_types_exp defs env e), Type.Integer)
+  | Lnot e -> (Lnot (recompute_types_exp defs env e), Type.Integer)
   | Eq (e1, e2) ->
-      ( Eq (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Eq (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Boolean )
   | Lt (e1, e2) ->
-      ( Lt (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Lt (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Boolean )
   | Le (e1, e2) ->
-      ( Le (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Le (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Boolean )
   | Gt (e1, e2) ->
-      ( Gt (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Gt (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Boolean )
   | Ge (e1, e2) ->
-      ( Ge (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Ge (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Boolean )
-  | Not e -> (Not (fix_types_exp defs env e), Type.Boolean)
+  | Not e -> (Not (recompute_types_exp defs env e), Type.Boolean)
   | And (e1, e2) ->
-      ( And (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( And (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Boolean )
   | Or (e1, e2) ->
-      ( Or (fix_types_exp defs env e1, fix_types_exp defs env e2)
+      ( Or (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Boolean )
   | Vector es ->
-      let es = List.map es ~f:(fix_types_exp defs env) in
+      let es = List.map es ~f:(recompute_types_exp defs env) in
       let ts = List.map es ~f:typeof_exp in
       (Vector es, Type.Vector ts)
   | Vectorlength e ->
-      let e = fix_types_exp defs env e in
+      let e = recompute_types_exp defs env e in
       (Vectorlength e, Type.Integer)
   | Vectorref (e, i) -> (
-      let e = fix_types_exp defs env e in
+      let e = recompute_types_exp defs env e in
       match typeof_exp e with
       | Type.Vector ts -> (Vectorref (e, i), List.nth_exn ts i)
       | t -> assert false )
   | Vectorset (e1, i, e2) ->
-      let e1 = fix_types_exp defs env e1 in
-      let e2 = fix_types_exp defs env e2 in
+      let e1 = recompute_types_exp defs env e1 in
+      let e2 = recompute_types_exp defs env e2 in
       (Vectorset (e1, i, e2), Type.Void)
+
+let rec needs_closures = function
+  | Program (_, defs) -> List.exists defs ~f:needs_closures_def
+
+and needs_closures_def = function
+  | Def (_, _, _, e) -> needs_closures_exp e
+
+and needs_closures_exp = function
+  | Int _ -> false
+  | Bool _ -> false
+  | Void -> false
+  | Prim (p, _) -> needs_closures_prim p
+  | Var _ -> false
+  | Let (_, e1, e2, _) -> needs_closures_exp e1 || needs_closures_exp e2
+  | If (e1, e2, e3, _) ->
+      needs_closures_exp e1 || needs_closures_exp e2 || needs_closures_exp e3
+  | Apply (e, es, _) ->
+      needs_closures_exp e || List.exists es ~f:needs_closures_exp
+  | Funref _ -> false
+  | Lambda _ -> true
+
+and needs_closures_prim = function
+  | Read -> false
+  | Minus e -> needs_closures_exp e
+  | Plus (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Subtract (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Mult (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Div (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Rem (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Land (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Lor (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Lxor (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Lnot e -> needs_closures_exp e
+  | Eq (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Lt (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Le (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Gt (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Ge (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Not e -> needs_closures_exp e
+  | And (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Or (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Vector es -> List.exists es ~f:needs_closures_exp
+  | Vectorlength e -> needs_closures_exp e
+  | Vectorref (e, _) -> needs_closures_exp e
+  | Vectorset (e1, _, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+
+let rec convert_to_closures = function
+  | Program (info, defs) as p ->
+      if not (needs_closures p) then p
+      else
+        let escaped = escaped_defs p in
+        let n = ref 0 in
+        let defs, new_defs =
+          List.(map defs ~f:(convert_to_closures_def escaped n) |> unzip)
+        in
+        let defs = List.concat new_defs @ defs in
+        Program (info, List.map defs ~f:(recompute_types_def defs))
 
 and convert_to_closures_def escaped n = function
   | Def (v, args, t, e) ->
@@ -1426,15 +1482,12 @@ and convert_to_closures_exp escaped env n = function
       else (f, [])
   | Lambda (args, t, e) ->
       let free_vars =
-        let bnd =
-          List.fold args ~init:String.Map.empty ~f:(fun bnd (x, t) ->
-              Map.set bnd x t)
-        in
+        let bnd = List.map args ~f:fst |> String.Set.of_list in
         free_vars_of_exp e ~bnd |> Map.to_alist
       in
-      let c, d = newclo n in
+      let d = newclo n in
       let ct = Type.Vector (List.map free_vars ~f:snd) in
-      let clo_arg = (c, ct) in
+      let clo_arg = ("_c", ct) in
       let e, new_defs =
         let env =
           List.fold args ~init:env ~f:(fun env (x, t) -> Map.set env x t)
@@ -1446,7 +1499,7 @@ and convert_to_closures_exp escaped env n = function
         List.fold_right free_vars
           ~init:(e, List.length free_vars - 1)
           ~f:(fun (x, t) (e, i) ->
-            (Let (x, Prim (Vectorref (Var (c, ct), i), t), e, et), i - 1))
+            (Let (x, Prim (Vectorref (Var ("_c", ct), i), t), e, et), i - 1))
       in
       let ft = Type.Arrow (List.map args ~f:snd, t) in
       let new_defs = Def (d, clo_arg :: args, t, new_body) :: new_defs in
@@ -1547,9 +1600,8 @@ and convert_to_closures_prim escaped env n = function
       (Vectorset (e1, i, e2), new_defs1 @ new_defs2)
 
 and newclo n =
-  let c = Printf.sprintf "_clo%d" !n in
-  let d = Printf.sprintf "_def%d" !n in
-  incr n; (c, d)
+  let d = Printf.sprintf "_clo%d" !n in
+  incr n; d
 
 let rec limit_functions = function
   | Program (info, defs) ->
