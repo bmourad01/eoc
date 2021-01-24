@@ -1168,11 +1168,61 @@ and uniquify_prim m = function
 
 and newvar v n = Printf.sprintf "%s.%d" v n
 
-let rec convert_to_closures = function
+let rec indirect_refs = function
   | Program (info, defs) ->
+      List.map defs ~f:indirect_refs_def |> List.concat |> String.Set.of_list
+
+and indirect_refs_def = function
+  | Def (_, _, _, e) -> indirect_refs_exp e
+
+and indirect_refs_exp = function
+  | Int _ -> []
+  | Bool _ -> []
+  | Void -> []
+  | Prim (p, _) -> indirect_refs_prim p
+  | Var _ -> []
+  | Let (_, e1, e2, _) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | If (e1, e2, e3, _) ->
+      indirect_refs_exp e1 @ indirect_refs_exp e2 @ indirect_refs_exp e3
+  | Apply (Funref _, es, _) ->
+      List.map es ~f:indirect_refs_exp |> List.concat
+  | Apply (e, es, _) ->
+      indirect_refs_exp e @ (List.map es ~f:indirect_refs_exp |> List.concat)
+  | Funref (v, _) -> [v]
+  | Lambda (_, _, e) -> indirect_refs_exp e
+
+and indirect_refs_prim = function
+  | Read -> []
+  | Minus e -> indirect_refs_exp e
+  | Plus (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Subtract (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Mult (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Div (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Rem (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Land (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Lor (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Lxor (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Lnot e -> indirect_refs_exp e
+  | Eq (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Lt (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Le (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Gt (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Ge (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Not e -> indirect_refs_exp e
+  | And (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Or (e1, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+  | Vector es -> List.map es ~f:indirect_refs_exp |> List.concat
+  | Vectorlength e -> indirect_refs_exp e
+  | Vectorref (e, _) -> indirect_refs_exp e
+  | Vectorset (e1, _, e2) -> indirect_refs_exp e1 @ indirect_refs_exp e2
+
+let rec convert_to_closures = function
+  | Program (info, defs) as p ->
+      let indirect = indirect_refs p in
+      Set.iter indirect ~f:(fun v -> Printf.eprintf "%s\n" v);
       let n = ref 0 in
       let defs, new_defs =
-        List.(map defs ~f:(convert_to_closures_def n) |> unzip)
+        List.(map defs ~f:(convert_to_closures_def indirect n) |> unzip)
       in
       let defs = List.concat new_defs @ defs in
       Program (info, List.map defs ~f:(fix_types_def defs))
@@ -1286,14 +1336,15 @@ and fix_types_prim defs env = function
       let e = fix_types_exp defs env e in
       match typeof_exp e with
       | Type.Vector ts -> (Vectorref (e, i), List.nth_exn ts i)
-      | _ -> assert false )
+      | t -> assert false )
   | Vectorset (e1, i, e2) ->
       let e1 = fix_types_exp defs env e1 in
       let e2 = fix_types_exp defs env e2 in
       (Vectorset (e1, i, e2), Type.Void)
 
-and convert_to_closures_def n = function
+and convert_to_closures_def indirect n = function
   | Def (v, args, t, e) ->
+      let is_indirect = Set.mem indirect v in
       let args =
         (* if we encounter a function as an argument, then
          * it's not possible to know the type of the closure
@@ -1305,22 +1356,23 @@ and convert_to_closures_def n = function
             | _ -> (x, t))
       in
       let e', new_defs =
-        convert_to_closures_exp (String.Map.of_alist_exn args) n e
+        convert_to_closures_exp indirect (String.Map.of_alist_exn args) n e
       in
       let args =
-        if Label.equal v main then args else ("_", Type.Vector []) :: args
+        if (not is_indirect) || Label.equal v main then args
+        else ("_", Type.Vector []) :: args
       in
       let t = typeof_exp e' in
       (Def (v, args, t, e'), new_defs)
 
 (* IMPORTANT: the types in the AST will be partly junk
  * after running this, so it's our job to fix them *)
-and convert_to_closures_exp env n = function
+and convert_to_closures_exp indirect env n = function
   | Int _ as i -> (i, [])
   | Bool _ as b -> (b, [])
   | Void -> (Void, [])
   | Prim (p, t) ->
-      let p, new_defs = convert_to_closures_prim env n p in
+      let p, new_defs = convert_to_closures_prim indirect env n p in
       (Prim (p, t), new_defs)
   | Var (v, t) ->
       let t =
@@ -1330,20 +1382,25 @@ and convert_to_closures_exp env n = function
       in
       (Var (v, t), [])
   | Let (v, e1, e2, t) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
       let e2, new_defs2 =
-        convert_to_closures_exp (Map.set env v (typeof_exp e1)) n e2
+        convert_to_closures_exp indirect (Map.set env v (typeof_exp e1)) n e2
       in
       (Let (v, e1, e2, typeof_exp e2), new_defs1 @ new_defs2)
   | If (e1, e2, e3, t) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
-      let e3, new_defs3 = convert_to_closures_exp env n e3 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
+      let e3, new_defs3 = convert_to_closures_exp indirect env n e3 in
       (If (e1, e2, e3, t), new_defs1 @ new_defs2 @ new_defs3)
-  | Apply (e, es, t) ->
-      let e, new_defs = convert_to_closures_exp env n e in
+  | Apply ((Funref (v, _) as f), es, t) when not (Set.mem indirect v) ->
       let es, new_defs_es =
-        List.(map es ~f:(convert_to_closures_exp env n) |> unzip)
+        List.(map es ~f:(convert_to_closures_exp indirect env n) |> unzip)
+      in
+      (Apply (f, es, t), List.concat new_defs_es)
+  | Apply (e, es, t) ->
+      let e, new_defs = convert_to_closures_exp indirect env n e in
+      let es, new_defs_es =
+        List.(map es ~f:(convert_to_closures_exp indirect env n) |> unzip)
       in
       let et = typeof_exp e in
       let e' =
@@ -1357,11 +1414,13 @@ and convert_to_closures_exp env n = function
           , t )
       in
       (e', new_defs @ List.concat new_defs_es)
-  | Funref (v, t) ->
-      ( Prim
-          ( Vector [Funref (v, t); Prim (Vector [], Type.Vector [])]
-          , Type.(Vector [t; Vector []]) )
-      , [] )
+  | Funref (v, t) as f ->
+      if Set.mem indirect v then
+        ( Prim
+            ( Vector [Funref (v, t); Prim (Vector [], Type.Vector [])]
+            , Type.(Vector [t; Vector []]) )
+        , [] )
+      else (f, [])
   | Lambda (args, t, e) ->
       let vars = vars_of_exp e in
       let free_vars =
@@ -1371,7 +1430,7 @@ and convert_to_closures_exp env n = function
       let c, d = newclo n in
       let ct = Type.Vector (List.map free_vars ~f:snd) in
       let clo_arg = (c, ct) in
-      let e, new_defs = convert_to_closures_exp env n e in
+      let e, new_defs = convert_to_closures_exp indirect env n e in
       let et = typeof_exp e in
       let new_body, _ =
         List.fold_right free_vars
@@ -1390,91 +1449,91 @@ and convert_to_closures_exp env n = function
           , Type.Vector [ft; ct] )
       , new_defs )
 
-and convert_to_closures_prim env n = function
+and convert_to_closures_prim indirect env n = function
   | Read -> (Read, [])
   | Minus e ->
-      let e, new_defs = convert_to_closures_exp env n e in
+      let e, new_defs = convert_to_closures_exp indirect env n e in
       (Minus e, new_defs)
   | Plus (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Plus (e1, e2), new_defs1 @ new_defs2)
   | Subtract (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Subtract (e1, e2), new_defs1 @ new_defs2)
   | Mult (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Mult (e1, e2), new_defs1 @ new_defs2)
   | Div (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Div (e1, e2), new_defs1 @ new_defs2)
   | Rem (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Rem (e1, e2), new_defs1 @ new_defs2)
   | Land (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Land (e1, e2), new_defs1 @ new_defs2)
   | Lor (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Lor (e1, e2), new_defs1 @ new_defs2)
   | Lxor (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Lxor (e1, e2), new_defs1 @ new_defs2)
   | Lnot e ->
-      let e, new_defs = convert_to_closures_exp env n e in
+      let e, new_defs = convert_to_closures_exp indirect env n e in
       (Lnot e, new_defs)
   | Eq (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Eq (e1, e2), new_defs1 @ new_defs2)
   | Lt (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Lt (e1, e2), new_defs1 @ new_defs2)
   | Le (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Le (e1, e2), new_defs1 @ new_defs2)
   | Gt (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Gt (e1, e2), new_defs1 @ new_defs2)
   | Ge (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Ge (e1, e2), new_defs1 @ new_defs2)
   | Not e ->
-      let e, new_defs = convert_to_closures_exp env n e in
+      let e, new_defs = convert_to_closures_exp indirect env n e in
       (Not e, new_defs)
   | And (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (And (e1, e2), new_defs1 @ new_defs2)
   | Or (e1, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Or (e1, e2), new_defs1 @ new_defs2)
   | Vector es ->
       let es, new_defs =
-        List.(map es ~f:(convert_to_closures_exp env n) |> unzip)
+        List.(map es ~f:(convert_to_closures_exp indirect env n) |> unzip)
       in
       (Vector es, List.concat new_defs)
   | Vectorlength e ->
-      let e, new_defs = convert_to_closures_exp env n e in
+      let e, new_defs = convert_to_closures_exp indirect env n e in
       (Vectorlength e, new_defs)
   | Vectorref (e, i) ->
-      let e, new_defs = convert_to_closures_exp env n e in
+      let e, new_defs = convert_to_closures_exp indirect env n e in
       (Vectorref (e, i), new_defs)
   | Vectorset (e1, i, e2) ->
-      let e1, new_defs1 = convert_to_closures_exp env n e1 in
-      let e2, new_defs2 = convert_to_closures_exp env n e2 in
+      let e1, new_defs1 = convert_to_closures_exp indirect env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp indirect env n e2 in
       (Vectorset (e1, i, e2), new_defs1 @ new_defs2)
 
 and newclo n =
