@@ -29,7 +29,7 @@ rule token = parse
   | "lxor" { LXOR }
   | "lnot" { LNOT }
   | "(define" { DEFINE }
-  | "(lambda:" { LAMBDA }
+  | "lambda:" { LAMBDA }
   | '(' { LPAREN }
   | ')' { RPAREN }
   | '[' { LSQUARE }

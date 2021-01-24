@@ -123,7 +123,7 @@ exp:
     { If ($3, $4, $5) }
   | LPAREN exp list(exp) RPAREN
     { Apply ($2, $3) }
-  | LAMBDA LPAREN args = list(def_arg) RPAREN COLON t = typ e = exp RPAREN
+  | LPAREN LAMBDA LPAREN args = list(def_arg) RPAREN COLON t = typ e = exp RPAREN
     {
       let open Core_kernel in
       let s = Hash_set.create (module String) in
