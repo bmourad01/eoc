@@ -1202,36 +1202,12 @@ and fix_types_exp defs env = function
       let e1 = fix_types_exp defs env e1 in
       let e2 = fix_types_exp defs env e2 in
       let e3 = fix_types_exp defs env e3 in
+      (* we already passed the type-checker, but
+       * `e2` and `e3` may contain different closure
+       * environments. for now we just pick one of them.
+       * (there should be a better way to do this...) *)
       let t2 = typeof_exp e2 in
-      let t3 = typeof_exp e3 in
-      let t =
-        (* if both branches returned closures, they could have
-         * different closure environments but share the same
-         * function signature, so we need a "trust me" type here too.
-         *
-         * it's important to note that this would never actually be
-         * accepted by the type-checker. we're only doing this
-         * for internal use by the compiler so that we have
-         * access to types like Vector which are needed by the runtime. *)
-        match (t2, t3) with
-        | ( Type.(Vector [Arrow (Vector tv1 :: ts1, tret1); Vector tv1'])
-          , Type.(Vector [Arrow (Vector tv2 :: ts2, tret2); Vector tv2']) )
-          ->
-            if
-              List.equal Type.equal ts1 ts2
-              && Type.equal tret1 tret2
-              && List.equal Type.equal tv1 tv1'
-              && List.equal Type.equal tv2 tv2'
-            then
-              Type.(
-                Vector
-                  [Arrow (Vector [Trustme] :: ts1, tret1); Vector [Trustme]])
-            else assert false
-        | _ ->
-            assert (Type.(equal t2 t3));
-            t2
-      in
-      If (e1, e2, e3, t)
+      If (e1, e2, e3, t2)
   | Apply (e, es, t) -> (
       let e = fix_types_exp defs env e in
       let es = List.map es ~f:(fix_types_exp defs env) in
