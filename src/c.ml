@@ -662,7 +662,9 @@ and do_assign fn tails nv n t x cont =
   | Return (Globalvalue (v, t)) -> Seq (Assign (x, Globalvalue (v, t)), cont)
   | Seq (s, t) -> Seq (s, do_assign fn tails nv n t x cont)
   | Tailcall (a, as', t) -> Seq (Assign (x, Call (a, as', t)), cont)
-  | _ -> assert false
+  | _ ->
+      (* XXX: what if cont is needed? *)
+      t
 
 and fresh_label v n =
   let l = Printf.sprintf ".L%s%d" v !n in
