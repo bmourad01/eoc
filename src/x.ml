@@ -933,6 +933,13 @@ and patch_instructions_def type_map = function
 and patch_instructions_block l w type_map info = function
   | Block (label, block_info, instrs) ->
       let is_main = Label.equal l R_typed.main in
+      let w =
+        (* R15 should only be preserved in the `main` function
+         * in order to be compatible with the System V ABI.
+         * other functions should not preserve R15 on the stack. *)
+        if is_main then Set.add w (Arg.Reg R15)
+        else Set.remove w (Arg.Reg R15)
+      in
       let instrs =
         if Label.equal label info.main then
           function_prologue is_main info.rootstack_spills info.stack_space w
