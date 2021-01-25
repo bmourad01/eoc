@@ -1000,7 +1000,7 @@ let analyze_dataflow cfg ~transfer ~bottom ~join ~equal =
         let output = transfer node input in
         if not (equal output (Hashtbl.find_exn mapping node)) then (
           Hashtbl.set mapping node output;
-          Cfg.iter_pred (fun pred -> Queue.enqueue worklist pred) cfg node );
+          Cfg.iter_pred (Queue.enqueue worklist) cfg node );
         loop ()
   in
   loop (); mapping
