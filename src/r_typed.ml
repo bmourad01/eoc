@@ -1393,7 +1393,9 @@ and recompute_types_exp defs env = function
       let es = List.map es ~f:(recompute_types_exp defs env) in
       match typeof_exp e with
       | Type.Arrow (_, tret) -> Apply (e, es, tret)
-      | _ -> Apply (e, es, Type.Trustme) )
+      | _ ->
+          (* XXX: this is a runtime failure waiting to happen *)
+          Apply (e, es, Type.Trustme) )
   | Funref (v, t) ->
       (* now that the top-level function has the correct type,
        * we need to update the type in the reference to it. *)
