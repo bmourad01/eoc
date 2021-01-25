@@ -417,13 +417,15 @@ let rec explicate_control = function
 
 and explicate_control_def nvars = function
   | R_anf.Def (v, args, t, e) ->
-      let cfg = Cfg.(add_vertex empty v) in
+      (* compile to a C program by flattening control flow *)
       let tails = Hashtbl.create (module Label) in
-      let n = ref (Map.find_exn nvars v) in
-      let tail = explicate_tail v tails n (ref 0) e in
-      Hashtbl.set tails v tail;
+      let nv = ref (Map.find_exn nvars v) in
+      Hashtbl.set tails v (explicate_tail v tails nv (ref 0) e);
+      (* construct the CFG *)
       let cfg =
-        Hashtbl.fold tails ~init:cfg ~f:(fun ~key:label ~data:tail cfg ->
+        Hashtbl.fold tails
+          ~init:Cfg.(add_vertex empty v)
+          ~f:(fun ~key:label ~data:tail cfg ->
             let rec aux = function
               | Return _ -> cfg
               | Seq (_, t) -> aux t
@@ -434,6 +436,10 @@ and explicate_control_def nvars = function
             in
             aux tail)
       in
+      (* reorder the tails according to a reverse post-order
+       * DFS traversal, starting from the entry node. this will
+       * give a structure to the program that is amenable to
+       * optimizing jumps later when we compile to X. *)
       let rec traverse_dfs_post v s res =
         let s, res =
           Cfg.fold_succ
@@ -445,16 +451,18 @@ and explicate_control_def nvars = function
         (s, v :: res)
       in
       let visited, labels = traverse_dfs_post v Label.Set.(singleton v) [] in
+      let tails =
+        List.fold_right labels ~init:[] ~f:(fun l acc ->
+            (l, Hashtbl.find_exn tails l) :: acc)
+      in
+      (* purge unreachable nodes from the CFG *)
       let cfg =
         Cfg.fold_vertex
           (fun v acc ->
             if Set.mem visited v then acc else Cfg.remove_vertex acc v)
           cfg cfg
       in
-      let tails =
-        List.fold_right labels ~init:[] ~f:(fun l acc ->
-            (l, Hashtbl.find_exn tails l) :: acc)
-      in
+      (* map local variables to their types *)
       let locals_types =
         List.fold args ~init:String.Map.empty ~f:(fun locals_types (x, t) ->
             Map.set locals_types x t)
