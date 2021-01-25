@@ -1012,27 +1012,26 @@ and uncover_live_def = function
   | Def (info, l, blocks) ->
       let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
       let la_map = Hashtbl.create (module Label) in
-      let _ =
-        analyze_dataflow info.cfg
-          ~transfer:(fun label la ->
-            let (Block (_, _, instrs)) = Hashtbl.find_exn blocks' label in
-            let live_after, live_before =
-              List.fold_right instrs
-                ~init:([], [la])
-                ~f:(fun instr (live_after, live_before) ->
-                  let live_after' = List.hd_exn live_before in
-                  let live_before' =
-                    Set.(
-                      union
-                        (diff live_after' (write_set instr))
-                        (read_set instr))
-                  in
-                  (live_after' :: live_after, live_before' :: live_before))
-            in
-            Hashtbl.set la_map label live_after;
-            List.hd_exn live_before)
-          ~bottom:Args.empty ~join:Set.union ~equal:Args.equal
-      in
+      analyze_dataflow info.cfg
+        ~transfer:(fun label la ->
+          let (Block (_, _, instrs)) = Hashtbl.find_exn blocks' label in
+          let live_after, live_before =
+            List.fold_right instrs
+              ~init:([], [la])
+              ~f:(fun instr (live_after, live_before) ->
+                let live_after' = List.hd_exn live_before in
+                let live_before' =
+                  Set.(
+                    union
+                      (diff live_after' (write_set instr))
+                      (read_set instr))
+                in
+                (live_after' :: live_after, live_before' :: live_before))
+          in
+          Hashtbl.set la_map label live_after;
+          List.hd_exn live_before)
+        ~bottom:Args.empty ~join:Set.union ~equal:Args.equal
+      |> ignore;
       let blocks =
         List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
             let live_after =
