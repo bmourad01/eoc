@@ -217,8 +217,9 @@ and expand_alloc n t ts es =
       in
       Begin (sets, vec, t)
     in
-    (* hardcode the idiom that allocates the vector triggering
-     * the GC beforehand if there is not enough space *)
+    (* hardcode the idiom for allocating a heap object.
+     * this includes a call to `collect` if there is
+     * not enough space beforehand. *)
     let bytes = (len + total_tag_offset) * word_size in
     Begin
       ( [ If
