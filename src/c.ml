@@ -436,7 +436,21 @@ and explicate_control_def nvars = function
             in
             aux tail)
       in
-      let tails = Map.to_alist tails |> List.rev in
+      let rec traverse_dfs_post v s res =
+        let s, res =
+          Cfg.fold_succ
+            (fun v (s, res) ->
+              if Set.mem s v then (s, res)
+              else traverse_dfs_post v Set.(add s v) res)
+            cfg v (s, res)
+        in
+        (s, v :: res)
+      in
+      let _, labels = traverse_dfs_post v Label.Set.(singleton v) [] in
+      let tails =
+        List.fold_right labels ~init:[] ~f:(fun l acc ->
+            (l, Map.find_exn tails l) :: acc)
+      in
       let locals_types =
         List.fold args ~init:String.Map.empty ~f:(fun locals_types (x, t) ->
             Map.set locals_types x t)
