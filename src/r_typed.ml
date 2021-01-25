@@ -1301,6 +1301,7 @@ and uniquify_prim m = function
 
 and newvar v n = Printf.sprintf "%s.%d" v n
 
+(* find all function references which are used outside of direct calls *)
 let rec escaped_defs = function
   | Program (info, defs) ->
       List.map defs ~f:escaped_defs_def |> List.concat |> String.Set.of_list
@@ -1352,6 +1353,7 @@ and escaped_defs_prim = function
   | Vectorref (e, _) -> escaped_defs_exp e
   | Vectorset (e1, _, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
 
+(* update the type information in the AST *)
 let rec recompute_types_def defs = function
   | Def (v, args, t, e) ->
       let e = recompute_types_exp defs (String.Map.of_alist_exn args) e in
@@ -1485,12 +1487,16 @@ and recompute_types_prim defs env = function
       let e = recompute_types_exp defs env e in
       match typeof_exp e with
       | Type.Vector ts -> (Vectorref (e, i), List.nth_exn ts i)
-      | _ -> (Vectorref (e, i), Type.Trustme) )
+      | _ ->
+          (* XXX: this is bad *)
+          (Vectorref (e, i), Type.Trustme) )
   | Vectorset (e1, i, e2) ->
       let e1 = recompute_types_exp defs env e1 in
       let e2 = recompute_types_exp defs env e2 in
       (Vectorset (e1, i, e2), Type.Void)
 
+(* get all variables that are assigned to 
+ * and appear as free variables in lambdas *)
 let rec assigned_and_free_exp e =
   let default () = (String.Set.empty, String.Set.empty) in
   match e with
@@ -1743,6 +1749,10 @@ and convert_assignments_prim a f = function
       Vectorset
         (convert_assignments_exp a f e1, i, convert_assignments_exp a f e2)
 
+(* this just inspects the AST to see if we used lambdas at all
+ * in the program. if none were used, then we don't need to
+ * run the closure conversion pass, which allows us to use
+ * references to top-level functions with minimal overhead. *)
 let rec needs_closures = function
   | Program (_, defs) -> List.exists defs ~f:needs_closures_def
 
