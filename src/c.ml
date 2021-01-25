@@ -418,14 +418,12 @@ let rec explicate_control = function
 and explicate_control_def nvars = function
   | R_anf.Def (v, args, t, e) ->
       let cfg = Cfg.(add_vertex empty v) in
-      (* we're not using a Hashtbl here because we 
-       * want a specific ordering for each block *)
-      let tails = ref Label.Map.empty in
+      let tails = Hashtbl.create (module Label) in
       let n = ref (Map.find_exn nvars v) in
       let tail = explicate_tail v tails n (ref 0) e in
-      let tails = Map.set !tails v tail in
+      Hashtbl.set tails v tail;
       let cfg =
-        Map.fold tails ~init:cfg ~f:(fun ~key:label ~data:tail cfg ->
+        Hashtbl.fold tails ~init:cfg ~f:(fun ~key:label ~data:tail cfg ->
             let rec aux = function
               | Return _ -> cfg
               | Seq (_, t) -> aux t
@@ -449,7 +447,7 @@ and explicate_control_def nvars = function
       let _, labels = traverse_dfs_post v Label.Set.(singleton v) [] in
       let tails =
         List.fold_right labels ~init:[] ~f:(fun l acc ->
-            (l, Map.find_exn tails l) :: acc)
+            (l, Hashtbl.find_exn tails l) :: acc)
       in
       let locals_types =
         List.fold args ~init:String.Map.empty ~f:(fun locals_types (x, t) ->
@@ -698,7 +696,7 @@ and fresh_var n =
   let v = Printf.sprintf "%%%d" !n in
   incr n; v
 
-and add_tail tails l t = tails := Map.set !tails l t
+and add_tail tails l t = Hashtbl.set tails l t
 
 let rec optimize_jumps = function
   | Program (info, defs) ->
