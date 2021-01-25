@@ -10,10 +10,12 @@
         expose_allocation
         resolve_complex
         explicate_control
+        optimize_jumps
         select_instructions
         uncover_live
         color_graph
         allocate_registers
+        remove_jumps
         print_x86)
  (flags -w -33)
  (modes byte native)

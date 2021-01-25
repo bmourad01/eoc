@@ -1387,8 +1387,16 @@ and remove_jumps_aux cfg blocks =
           match List.last_exn instrs with
           | JMP label' when not (Label.equal label label') -> (
               if
-                (* if the in-degree is 1 then we can safely merge the blocks *)
+                (* if the in-degree is 1 then we can safely merge the blocks.
+                 * NOTE: we could actually have more than one jump from this
+                 * block to the target (currently only via a Jcc instruction).
+                 * the graph representation doesn't capture this, so we have
+                 * to inspect for this manually. *)
                 Cfg.in_degree cfg label' = 1
+                && not
+                     (List.exists instrs ~f:(function
+                       | JCC (_, label'') -> Label.equal label' label''
+                       | _ -> false))
               then (
                 let (Block (_, info', instrs')) =
                   Hashtbl.find_exn blocks' label'

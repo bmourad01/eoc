@@ -576,6 +576,10 @@ and explicate_assign fn tails nv n e x cont =
       let tt = explicate_assign fn tails nv n e2 x (Goto l) in
       let tf = explicate_assign fn tails nv n e3 x (Goto l) in
       explicate_pred fn tails nv n e1 tt tf
+  | R_anf.(Begin (es, e, _)) ->
+      let e' = explicate_assign fn tails nv n e x cont in
+      List.fold_right es ~init:e' ~f:(fun e cont ->
+          explicate_effect fn tails nv n e cont)
   | _ ->
       let t = explicate_tail fn tails nv n e in
       do_assign fn tails nv n t x cont
@@ -662,9 +666,7 @@ and do_assign fn tails nv n t x cont =
   | Return (Globalvalue (v, t)) -> Seq (Assign (x, Globalvalue (v, t)), cont)
   | Seq (s, t) -> Seq (s, do_assign fn tails nv n t x cont)
   | Tailcall (a, as', t) -> Seq (Assign (x, Call (a, as', t)), cont)
-  | _ ->
-      (* XXX: what if cont is needed? *)
-      t
+  | _ -> assert false
 
 and fresh_label v n =
   let l = Printf.sprintf ".L%s%d" v !n in
