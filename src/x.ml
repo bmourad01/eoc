@@ -885,12 +885,15 @@ let function_epilogue is_main type_map rootstack_spills typ label stack_space
           ("X.function_epilogue: block " ^ label ^ " is not well-formed")
     | ((RET | JMPt _) as t) :: _ ->
         let print =
+          (* RAX holds the "answer" to the program, but actually
+           * we just want to print it. we should zero RAX because
+           * it now holds the return code. usually, a return code 
+           * of zero indicates success. *)
           if is_main then
-            [ PUSH (Reg RAX)
-            ; LEA (Reg RDI, Var (Map.find_exn type_map typ))
+            [ LEA (Reg RDI, Var (Map.find_exn type_map typ))
             ; MOV (Reg RSI, Reg RAX)
             ; CALL (Extern.print_value, 2)
-            ; POP (Reg RAX) ]
+            ; XOR (Reg RAX, Reg RAX) ]
           else []
         in
         List.rev acc @ print @ epilogue @ [t]
