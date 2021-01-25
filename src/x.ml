@@ -1237,10 +1237,12 @@ and allocate_registers_def = function
         | None -> 0
         | Some c -> -c
       in
-      Def
-        ( {info with stack_space; rootstack_spills= Map.length vector_locs}
-        , l
-        , blocks )
+      let rootstack_spills =
+        match Map.data vector_locs |> Int.Set.of_list |> Set.min_elt with
+        | None -> 0
+        | Some c -> -c / word_size
+      in
+      Def ({info with stack_space; rootstack_spills}, l, blocks)
 
 (* since we may have spilled variables both to the regular stack
  * and the root stack, we need to normalize the colors of each
