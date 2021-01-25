@@ -218,24 +218,12 @@ and expand_alloc n t ts es =
       Begin (sets, vec, t)
     in
     (* hardcode the idiom that allocates the vector triggering
-     * the GC beforehand if there is not enough space *)
+     * the GC beforehand if there is not enough space
+     *
+     * XXX: can we do this with `begin`? something goes wrong
+     * with explicate-control when we try it
+     * (perhaps not well-formed?) *)
     let bytes = (len + total_tag_offset) * word_size in
-    (* Begin
-     *   ( [ If
-     *       ( Prim
-     *           ( Lt
-     *               ( Prim
-     *                   ( Plus
-     *                       ( Globalvalue (free_ptr, Type.Integer)
-     *                       , Int (Int64.of_int bytes) )
-     *                   , Type.Integer )
-     *               , Globalvalue (fromspace_end, Type.Integer) )
-     *           , Type.Boolean )
-     *       , Void
-     *       , Collect bytes
-     *       , Type.Void ) ]
-     *   , Let (v, Allocate (len, t), base, t)
-     *   , t) *)
     Let
       ( newvar n
       , If

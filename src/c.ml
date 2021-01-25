@@ -509,14 +509,11 @@ and explicate_effect fn tails nv n e cont =
       let cont = explicate_effect fn tails nv n e2 cont in
       explicate_assign fn tails nv n e1 v cont
   | R_anf.If (e1, e2, e3, _) ->
-      (* FIXME *)
       let l = fresh_label fn n in
       add_tail tails l cont;
       let tt = explicate_effect fn tails nv n e2 (Goto l) in
       let tf = explicate_effect fn tails nv n e3 (Goto l) in
-      let p = explicate_pred fn tails nv n e1 tt tf in
-      let l' = fresh_label fn n in
-      add_tail tails l' p; cont
+      explicate_pred fn tails nv n e1 tt tf
   | R_anf.Apply (a, as', _) ->
       Seq (Callstmt (translate_atom a, List.map as' ~f:translate_atom), cont)
   | R_anf.Funref _ -> cont
