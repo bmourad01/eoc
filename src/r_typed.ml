@@ -1488,7 +1488,7 @@ and recompute_types_prim defs env = function
       match typeof_exp e with
       | Type.Vector ts -> (Vectorref (e, i), List.nth_exn ts i)
       | _ ->
-          (* XXX: this is a runtime failure waiting happen *)
+          (* XXX: this is a runtime failure waiting to happen *)
           (Vectorref (e, i), Type.Trustme) )
   | Vectorset (e1, i, e2) ->
       let e1 = recompute_types_exp defs env e1 in
