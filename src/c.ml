@@ -444,12 +444,11 @@ and explicate_control_def nvars = function
         in
         (s, v :: res)
       in
-      let _, labels = traverse_dfs_post v Label.Set.(singleton v) [] in
-      let reachable = Hash_set.of_list (module Label) labels in
+      let visited, labels = traverse_dfs_post v Label.Set.(singleton v) [] in
       let cfg =
         Cfg.fold_vertex
           (fun v acc ->
-            if Hash_set.mem reachable v then acc else Cfg.remove_vertex acc v)
+            if Set.mem visited v then acc else Cfg.remove_vertex acc v)
           cfg cfg
       in
       let tails =
