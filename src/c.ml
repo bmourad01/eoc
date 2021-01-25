@@ -580,6 +580,14 @@ and explicate_assign fn tails nv n e x cont =
       let e' = explicate_assign fn tails nv n e x cont in
       List.fold_right es ~init:e' ~f:(fun e cont ->
           explicate_effect fn tails nv n e cont)
+  | R_anf.(While (e1, e2)) ->
+      let l = fresh_label fn n in
+      let loop = fresh_label fn n in
+      add_tail tails l cont;
+      let tt = explicate_effect fn tails nv n e2 (Goto loop) in
+      let top = explicate_pred fn tails nv n e1 tt (Goto l) in
+      add_tail tails loop top;
+      Seq (Assign (x, Atom Void), Goto loop)
   | _ ->
       let t = explicate_tail fn tails nv n e in
       do_assign fn tails nv n t x cont
