@@ -200,6 +200,11 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   DBGPRINT("GC: checking for sufficient space\n");
 
   // check if we need to resize the heap
+  // NOTE:
+  //  we don't actually need to wrap this in a while loop.
+  //  we could just round up the new size of the heap to the
+  //  next power of 2 which will fit the requested amount of
+  //  data. this is purely just to stress-test the GC.
   while (((uint64_t)_free_ptr + bytes) >= (uint64_t)_fromspace_end) {
     DBGPRINT("GC: resizing the heap from %ld to %ld bytes\n", _heap_size,
              _heap_size << 1);
