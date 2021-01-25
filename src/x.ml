@@ -1060,7 +1060,11 @@ let rec build_interference = function
 and build_interference_def = function
   | Def (info, l, blocks) ->
       let conflicts =
-        let init = Interference_graph.empty in
+        let init =
+          Map.fold info.locals_types ~init:Interference_graph.empty
+            ~f:(fun ~key ~data:_ g ->
+              Interference_graph.add_vertex g (Arg.Var key))
+        in
         List.fold blocks ~init ~f:(fun g (_, block) ->
             build_interference_block info.locals_types g block)
       in
