@@ -283,7 +283,7 @@ let typ_vector = 3
 
 let typ_arrow = 4
 
-let typ_clo = 5
+let typ_unk = 5
 
 let rec to_string = function
   | Program (info, defs) ->
@@ -319,7 +319,7 @@ let rec to_string = function
          TYPE_VOID equ %d\n\
          TYPE_VECTOR equ %d\n\
          TYPE_ARROW equ %d\n\
-         TYPE_CLO equ %d\n\n\
+         TYPE_UNK equ %d\n\n\
          global %s\n\n\
          %s\n\n\
          %s\n\n\
@@ -327,7 +327,7 @@ let rec to_string = function
          %s\n\n\
          section .data\n\
          %s"
-        typ_int typ_bool typ_void typ_vector typ_arrow typ_clo R_typed.main
+        typ_int typ_bool typ_void typ_vector typ_arrow typ_unk R_typed.main
         extern_fns extern_vars blks typ_info
 
 and string_of_def = function
@@ -349,7 +349,7 @@ and emit_type type_map = function
               | Some l -> [Printf.sprintf "dq %s" l])
         |> List.concat )
   | C.Type.Arrow (ts, t) -> ["dq TYPE_ARROW"]
-  | C.Type.Trustme -> ["dq TYPE_CLO"]
+  | C.Type.Trustme -> ["dq TYPE_UNK"]
 
 and string_of_block = function
   | Block (l, _, is) ->
