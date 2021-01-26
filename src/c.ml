@@ -4,8 +4,6 @@ module Type_map = R_anf.Type_map
 
 type type_env = R_anf.type_env
 
-module Cfg = Graph.Persistent.Digraph.Concrete (Label)
-
 type var = R.var
 
 type info = {main: Label.t}

@@ -58,8 +58,6 @@ module Arg_map : module type of Map.Make (Arg)
 module Interference_graph :
     module type of Graph.Persistent.Graph.Concrete (Arg)
 
-module Cfg : module type of C.Cfg
-
 type info = {type_map: Label.t C.Type_map.t}
 
 (* the X language, representing a subset of x86-64 programs.

@@ -123,7 +123,6 @@ end
 module Args = Set.Make (Arg)
 module Arg_map = Map.Make (Arg)
 module Interference_graph = Graph.Persistent.Graph.Concrete (Arg)
-module Cfg = C.Cfg
 
 type info = {type_map: Label.t C.Type_map.t}
 
@@ -964,37 +963,6 @@ and patch_instructions_instr = function
   | MOVZX ((Deref _ as d), a) -> [MOVZX (Reg RAX, a); MOV (d, Reg RAX)]
   | instr -> [instr]
 
-let analyze_dataflow cfg ~transfer ~bottom ~join ~equal =
-  let mapping = Hashtbl.create (module Label) in
-  let worklist = Queue.create () in
-  Cfg.iter_vertex
-    (fun v ->
-      Hashtbl.set mapping v bottom;
-      Queue.enqueue worklist v)
-    cfg;
-  let trans_cfg =
-    let trans_cfg =
-      Cfg.fold_vertex (fun v acc -> Cfg.add_vertex acc v) cfg Cfg.empty
-    in
-    Cfg.fold_edges (fun u v acc -> Cfg.add_edge acc v u) cfg trans_cfg
-  in
-  let rec loop () =
-    match Queue.dequeue worklist with
-    | None -> ()
-    | Some node ->
-        let input =
-          Cfg.fold_pred
-            (fun pred state -> join state (Hashtbl.find_exn mapping pred))
-            trans_cfg node bottom
-        in
-        let output = transfer node input in
-        if not (equal output (Hashtbl.find_exn mapping node)) then (
-          Hashtbl.set mapping node output;
-          Cfg.iter_pred (Queue.enqueue worklist) cfg node );
-        loop ()
-  in
-  loop (); mapping
-
 let rec uncover_live = function
   | Program (info, defs) -> Program (info, List.map defs ~f:uncover_live_def)
 
@@ -1002,7 +970,7 @@ and uncover_live_def = function
   | Def (info, l, blocks) ->
       let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
       let la_map = Hashtbl.create (module Label) in
-      analyze_dataflow info.cfg
+      Cfg.analyze_dataflow info.cfg
         ~transfer:(fun label la ->
           let (Block (_, _, instrs)) = Hashtbl.find_exn blocks' label in
           let live_after, live_before =
