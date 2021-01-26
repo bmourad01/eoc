@@ -1864,8 +1864,6 @@ and convert_to_closures_def escaped n = function
       let t = typeof_exp e' in
       (Def (v, args, t, e'), new_defs)
 
-(* IMPORTANT: the types in the AST will be partly junk
- * after running this, so it's our job to fix them *)
 and convert_to_closures_exp escaped env n = function
   | Int _ as i -> (i, [])
   | Bool _ as b -> (b, [])
