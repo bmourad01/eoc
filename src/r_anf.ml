@@ -446,11 +446,8 @@ and resolve_complex_exp m n = function
       let nv, a = resolve_complex_atom m n e in
       unfold nv (Prim (Vectorlength a, t))
   | R_alloc.Prim (Vectorref (e, i), t) ->
-      (* we still have to expand this expression anyway
-       * since it can be the predicate of an if expression *)
       let nv, a = resolve_complex_atom m n e in
-      let x = fresh_var n in
-      unfold (nv @ [(x, Prim (Vectorref (a, i), t))]) (Atom (Var (x, t)))
+      unfold nv (Prim (Vectorref (a, i), t))
   | R_alloc.Prim (Vectorset (e1, i, e2), t) ->
       let nv1, a1 = resolve_complex_atom m n e1 in
       let nv2, a2 = resolve_complex_atom m n e2 in

@@ -664,6 +664,12 @@ and explicate_pred fn tails nv n cnd thn els =
       add_tail tails lt thn;
       add_tail tails lf els;
       If ((Cmp.Ge, tr a1, tr a2), lt, lf)
+  | R_anf.(Prim (Vectorref _, t)) as r ->
+      let x = fresh_var nv in
+      let t =
+        explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
+      in
+      explicate_assign fn tails nv n r x t
   | R_anf.(Let (x, e1, e2, _)) ->
       let t = explicate_pred fn tails nv n e2 thn els in
       explicate_assign fn tails nv n e1 x t
@@ -675,14 +681,14 @@ and explicate_pred fn tails nv n cnd thn els =
       let tt = explicate_pred fn tails nv n e2 (Goto lt) (Goto lf) in
       let tf = explicate_pred fn tails nv n e3 (Goto lt) (Goto lf) in
       explicate_pred fn tails nv n e1 tt tf
-  | R_anf.(Apply (_, _, t) as a) ->
+  | R_anf.Apply (_, _, t) as a ->
       (* this is a case where we're not in tail position for a call *)
       let x = fresh_var nv in
       let t =
         explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
       in
       explicate_assign fn tails nv n a x t
-  | R_anf.Begin (es, e, t) as b ->
+  | R_anf.Begin (_, _, t) as b ->
       let x = fresh_var nv in
       let t =
         explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
