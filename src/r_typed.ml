@@ -429,8 +429,12 @@ let fix_def_name' denv name =
 let rec type_check = function
   | R.Program (_, defs, exp) ->
       let denv =
+        let names = Hash_set.create (module String) in
         List.map defs ~f:(function R.Def (v, args, t, _) ->
-            (v, Type.Arrow (List.map args ~f:snd, t)))
+            ( match Hash_set.strict_add names v with
+            | Error _ ->
+                typeerr ("R_typed.type_check: redefined function " ^ v)
+            | Ok () -> (v, Type.Arrow (List.map args ~f:snd, t)) ))
         |> String.Map.of_alist_exn
       in
       let defs = List.map defs ~f:(type_check_def denv) in
