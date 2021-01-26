@@ -1374,9 +1374,7 @@ and escaped_defs_prim = function
 let rec recompute_types_def defs = function
   | Def (v, args, t, e) ->
       let e = recompute_types_exp defs (String.Map.of_alist_exn args) e in
-      (* the return type of our toplevel `main` should NOT change *)
-      let t = if String.equal v main then t else typeof_exp e in
-      Def (v, args, t, e)
+      Def (v, args, typeof_exp e, e)
 
 and recompute_types_exp defs env = function
   | Int _ as i -> i
