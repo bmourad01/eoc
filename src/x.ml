@@ -988,7 +988,7 @@ and uncover_live_def = function
           in
           Hashtbl.set la_map label live_after;
           List.hd_exn live_before)
-        ~bottom:Args.empty ~join:Set.union ~equal:Args.equal ~rev:true
+        ~bottom:exit_live_set ~join:Set.union ~equal:Args.equal ~rev:true
       |> ignore;
       let blocks =
         List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
@@ -1000,6 +1000,8 @@ and uncover_live_def = function
             (label, Block (label, {live_after}, instrs)))
       in
       Def (info, l, blocks)
+
+and exit_live_set = Args.of_list [Reg RAX; Reg RSP; Reg RBP; Reg R15]
 
 let rec build_interference = function
   | Program (info, defs) ->
