@@ -415,6 +415,7 @@ let fix_def_name =
   String.map ~f:(function
     | '-' -> '_'
     | '\'' -> 'p'
+    | '?' -> 'q'
     | c -> c)
 
 (* make sure that there are no name conflicts *)
