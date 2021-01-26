@@ -407,14 +407,17 @@ exception Type_error of string
 
 let typeerr msg = raise (Type_error msg)
 
+(* distinguish declared functions from `main` *)
 let def_prefix = "_def_"
 
+(* replace symbols that aren't valid for an assembly program *)
 let fix_def_name =
   String.map ~f:(function
     | '-' -> '_'
     | '\'' -> 'p'
     | c -> c)
 
+(* make sure that there are no name conflicts *)
 let fix_def_name' denv name =
   let name' = fix_def_name name in
   let rec loop i name =
