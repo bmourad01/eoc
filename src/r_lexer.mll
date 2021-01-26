@@ -15,6 +15,7 @@ let digit = ['0'-'9']
 let alpha = ['a'-'z' 'A'-'Z']
 let ident = ['a'-'z'] (alpha | '-' | '\'' | '?' | digit)*
 let integer = digit+
+let hexnum = "0x" ['0'-'9' 'a'-'f' 'A'-'F']+ 
 
 rule token = parse
   | '\n' { newline lexbuf; token lexbuf }
@@ -64,5 +65,6 @@ rule token = parse
   | ':' { COLON }
   | eof { EOF }
   | integer as n { INT (Int64.of_string n) }
+  | hexnum as n { INT (Int64.of_string n) }
   | ident as id { VAR id }
   | _ { raise Error }
