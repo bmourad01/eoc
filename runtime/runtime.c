@@ -13,17 +13,6 @@
 #define DBGPRINT(x...)
 #endif
 
-/*
- * input/output
- */
-
-int64_t _read_int() {
-  char buf[64];
-  fgets(buf, sizeof(buf), stdin);
-  buf[strcspn(buf, "\n")] = '\0';
-  return atoll(buf);
-}
-
 enum {
   TYPE_INTEGER,
   TYPE_BOOLEAN,
@@ -48,6 +37,17 @@ static bool is_pointer_type(uint64_t ty, bool rec) {
     // use 'rec' to see ultimately what type is being pointed to.
     return rec ? is_pointer_type(*(uint64_t *)ty, rec) : true;
   }
+}
+
+/*
+ * input/output
+ */
+
+int64_t _read_int() {
+  char buf[64];
+  fgets(buf, sizeof(buf), stdin);
+  buf[strcspn(buf, "\n")] = '\0';
+  return atoll(buf);
 }
 
 static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
