@@ -502,7 +502,18 @@ and type_check_exp env denv = function
                     ^ " has type " ^ Type.to_string t2
                     ^ " but an expression of type " ^ Type.to_string t1
                     ^ " was expected" ));
-            (tret, Apply (e', es', tret)) )
+            let exp =
+              (* we can avoid actually creating a closure when
+               * we encounter a lambda that is applied directly *)
+              match e' with
+              | Lambda (args, tret, body) ->
+                  let xs = List.map args ~f:fst in
+                  let m = List.zip_exn xs es' in
+                  List.fold_right m ~init:body ~f:(fun (x, e) acc ->
+                      Let (x, e, acc, tret))
+              | _ -> Apply (e', es', tret)
+            in
+            (tret, exp) )
       | _ ->
           typeerr
             ( "R_typed.type_check_exp: apply of " ^ R.string_of_exp e
@@ -2056,14 +2067,14 @@ and limit_functions_def = function
         in
         let args1 = List.rev args1 in
         let args2 = List.rev args2 in
-        let vec_arg = (".args", Type.Vector (List.map args2 ~f:snd)) in
+        let vec_arg = ("_args", Type.Vector (List.map args2 ~f:snd)) in
         let e', _ =
           List.fold_right args2
             ~init:(e, List.length args2 - 1)
             ~f:(fun (x, t') (e, i) ->
               ( Let
                   ( x
-                  , Prim (Vectorref (Var (".args", snd vec_arg), i), t')
+                  , Prim (Vectorref (Var ("_args", snd vec_arg), i), t')
                   , e
                   , t )
               , i - 1 ))
