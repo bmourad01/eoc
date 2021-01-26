@@ -1364,11 +1364,17 @@ and escaped_defs_prim = function
   | Vectorref (e, _) -> escaped_defs_exp e
   | Vectorset (e1, _, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
 
-(* update the type information in the AST *)
+(* update the type information in the AST.
+ * this is needed after the assignment and
+ * closure conversion passes, since we end up
+ * changing the representation of certain values
+ * to their boxed counterparts. the type information
+ * is needed in later passes (most importantly for
+ * tracking heap-allocated objects). *)
 let rec recompute_types_def defs = function
   | Def (v, args, t, e) ->
       let e = recompute_types_exp defs (String.Map.of_alist_exn args) e in
-      (* this sucks *)
+      (* the return type of our toplevel `main` should NOT change *)
       let t = if String.equal v main then t else typeof_exp e in
       Def (v, args, t, e)
 
