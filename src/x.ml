@@ -988,7 +988,7 @@ and uncover_live_def = function
           in
           Hashtbl.set la_map label live_after;
           List.hd_exn live_before)
-        ~bottom:Args.empty ~join:Set.union ~equal:Args.equal
+        ~bottom:Args.empty ~join:Set.union ~equal:Args.equal ~rev:true
       |> ignore;
       let blocks =
         List.map blocks ~f:(fun (label, Block (_, info, instrs)) ->
