@@ -13,6 +13,15 @@
 #define DBGPRINT(x...)
 #endif
 
+/* input/output */
+
+int64_t _read_int() {
+  char buf[64];
+  fgets(buf, sizeof(buf), stdin);
+  buf[strcspn(buf, "\n")] = '\0';
+  return atoll(buf);
+}
+
 enum {
   TYPE_INTEGER,
   TYPE_BOOLEAN,
@@ -95,6 +104,8 @@ void _print_value(uint64_t *ty, int64_t val) {
   printf("\n");
 }
 
+/* garbage collection */
+
 static uint64_t _heap_size;
 static void *_heap_base;
 int64_t *_free_ptr;
@@ -104,13 +115,6 @@ static int64_t *_tospace_begin;
 static int64_t *_tospace_end;
 int64_t **_rootstack_begin;
 static int64_t **_rootstack_end;
-
-int64_t _read_int() {
-  char buf[64];
-  fgets(buf, sizeof(buf), stdin);
-  buf[strcspn(buf, "\n")] = '\0';
-  return atoll(buf);
-}
 
 void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _heap_size = heap_size;
