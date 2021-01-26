@@ -72,7 +72,6 @@ and prim =
   | Not of atom
   | Vectorlength of atom
   | Vectorref of atom * int
-  | Vectorset of atom * int * atom
 
 and cmp = Cmp.t * atom * atom
 

@@ -775,26 +775,6 @@ and select_instructions_exp type_map a p =
       [ MOV (Reg R11, Var v)
       ; MOV (a, Deref (Reg.R11, (i + total_tag_offset) * word_size)) ]
   | C.(Prim (Vectorref _, _)) -> assert false
-  (* vector-set! *)
-  | C.(Prim (Vectorset (Var (v1, _), i, Int n), _)) ->
-      [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm n)
-      ; XOR (a, a) ]
-  | C.(Prim (Vectorset (Var (v1, _), i, Bool b), _)) ->
-      [ MOV (Reg R11, Var v1)
-      ; MOV
-          ( Deref (Reg.R11, (i + total_tag_offset) * word_size)
-          , Imm (Bool.to_int b |> Int64.of_int) )
-      ; XOR (a, a) ]
-  | C.(Prim (Vectorset (Var (v1, _), i, Void), _)) ->
-      [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm 0L)
-      ; XOR (a, a) ]
-  | C.(Prim (Vectorset (Var (v1, _), i, Var (v2, _)), _)) ->
-      [ MOV (Reg R11, Var v1)
-      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2)
-      ; XOR (a, a) ]
-  | C.(Prim (Vectorset _, _)) -> assert false
   (* fun-ref *)
   | C.(Funref (v, _)) -> [LEA (a, Var v)]
   (* call *)

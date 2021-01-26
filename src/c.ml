@@ -73,7 +73,6 @@ and prim =
   | Not of atom
   | Vectorlength of atom
   | Vectorref of atom * int
-  | Vectorset of atom * int * atom
 
 and cmp = Cmp.t * atom * atom
 
@@ -185,9 +184,6 @@ and string_of_prim = function
   | Vectorlength a -> Printf.sprintf "(vector-length %s)" (string_of_atom a)
   | Vectorref (a, i) ->
       Printf.sprintf "(vector-ref %s %d)" (string_of_atom a) i
-  | Vectorset (a1, i, a2) ->
-      Printf.sprintf "(vector-set! %s %d %s)" (string_of_atom a1) i
-        (string_of_atom a2)
 
 and string_of_cmp (cmp, a1, a2) =
   Printf.sprintf "(%s %s %s)" (Cmp.to_string cmp) (string_of_atom a1)
@@ -393,10 +389,6 @@ and interp_prim ?(read = None) env defs = function
     match interp_atom env defs a with
     | `Vector v -> v.(i)
     | _ -> assert false )
-  | Vectorset (a1, i, a2) -> (
-    match (interp_atom env defs a1, interp_atom env defs a2) with
-    | `Vector v, v' -> v.(i) <- v'; `Void
-    | _ -> assert false )
 
 and interp_cmp ?(read = None) env defs (cmp, a1, a2) =
   let e =
@@ -493,6 +485,10 @@ and explicate_control_def nvars = function
 
 and explicate_tail fn tails nv n = function
   | R_anf.(Atom a) -> Return (Atom (translate_atom a))
+  | R_anf.(Prim (Vectorset (a1, i, a2), _)) ->
+      Seq
+        ( Vectorsetstmt (translate_atom a1, i, translate_atom a2)
+        , Return (Atom Void) )
   | R_anf.(Prim (p, t)) -> Return (Prim (translate_prim p, t))
   | R_anf.(Let (v, e1, e2, _)) ->
       let cont = explicate_tail fn tails nv n e2 in
@@ -587,7 +583,7 @@ and translate_prim p =
   | R_anf.Not a -> Not (tr a)
   | R_anf.Vectorlength a -> Vectorlength (tr a)
   | R_anf.Vectorref (a, i) -> Vectorref (tr a, i)
-  | R_anf.Vectorset (a1, i, a2) -> Vectorset (tr a1, i, tr a2)
+  | R_anf.Vectorset _ -> assert false
 
 and explicate_assign fn tails nv n e x cont =
   match e with
