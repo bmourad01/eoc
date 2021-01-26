@@ -1620,7 +1620,6 @@ and assigned_and_free_prim p =
 let rec convert_assignments = function
   | Program (info, defs) ->
       let defs = List.map defs ~f:convert_assignments_def in
-      (* should try to reach a fixed-point *)
       let defs = List.map defs ~f:(recompute_types_def defs) in
       Program (info, defs)
 
@@ -1814,7 +1813,16 @@ let rec convert_to_closures = function
           List.(map defs ~f:(convert_to_closures_def escaped n) |> unzip)
         in
         let defs = List.concat new_defs @ defs in
-        Program (info, List.map defs ~f:(recompute_types_def defs))
+        let defs = List.map defs ~f:(recompute_types_def defs) in
+        (* should try to reach a fixed point.
+         *
+         * the reason we compute twice is that function signatures
+         * may have changed, so we need to recompute based on
+         * those new signatures. in practice we should try to
+         * keep doing this until nothing changes.
+         * (e.g. mutually recursive functions) *)
+        let defs = List.map defs ~f:(recompute_types_def defs) in
+        Program (info, defs)
 
 and convert_to_closures_def escaped n = function
   | Def (v, args, t, e) ->
