@@ -524,8 +524,22 @@ and type_check_exp env denv = function
               match e' with
               | Lambda (args, tret, body) ->
                   let xs = List.map args ~f:fst in
-                  let m = List.zip_exn xs es' in
-                  List.fold_right m ~init:body ~f:(fun (x, e) acc ->
+                  (* we need to bind the arguments to temporaries
+                   * in the case that they mention vars which appear
+                   * in the arguments of the lambda. *)
+                  let vs', vars =
+                    List.mapi ts ~f:(fun i t ->
+                        let v = "_t" ^ Int.to_string i in
+                        (Var (v, t), v))
+                    |> List.unzip
+                  in
+                  let m = List.zip_exn xs vs' in
+                  let exp =
+                    List.fold_right m ~init:body ~f:(fun (x, e) acc ->
+                        Let (x, e, acc, tret))
+                  in
+                  let m = List.zip_exn vars es' in
+                  List.fold_right m ~init:exp ~f:(fun (x, e) acc ->
                       Let (x, e, acc, tret))
               | _ -> Apply (e', es', tret)
             in
