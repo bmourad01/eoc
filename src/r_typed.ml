@@ -412,7 +412,16 @@ let def_prefix = "_def_"
 let fix_def_name =
   String.map ~f:(function
     | '-' -> '_'
+    | '\'' -> 'p'
     | c -> c)
+
+let fix_def_name' denv name =
+  let name' = fix_def_name name in
+  let rec loop i name =
+    let name' = name ^ Int.to_string i in
+    if Map.mem denv name' then loop (i + 1) name else name'
+  in
+  def_prefix ^ loop 0 name'
 
 let rec type_check = function
   | R.Program (_, defs, exp) ->
@@ -430,8 +439,7 @@ and type_check_def denv = function
   | R.Def (v, args, t, e) -> (
       let env = String.Map.of_alist_exn args in
       match type_check_exp env denv e with
-      | t', e' when Type.equal t t' ->
-          Def (def_prefix ^ fix_def_name v, args, t, e')
+      | t', e' when Type.equal t t' -> Def (fix_def_name' denv v, args, t, e')
       | t', _ ->
           typeerr
             ( "R_typed.type_check_def: def " ^ v ^ " body "
@@ -458,7 +466,7 @@ and type_check_exp env denv = function
     | Some t -> (t, Var (v, t))
     | None -> (
       match Map.find denv v with
-      | Some t -> (t, Funref (def_prefix ^ fix_def_name v, t))
+      | Some t -> (t, Funref (fix_def_name' denv v, t))
       | None -> typeerr ("R_typed.type_check_exp: var " ^ v ^ " is not bound")
       ) )
   | R.Let (v, e1, e2) ->
