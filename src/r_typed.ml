@@ -1831,13 +1831,12 @@ let rec convert_to_closures = function
         in
         let defs = List.concat new_defs @ defs in
         let defs = List.map defs ~f:(recompute_types_def defs) in
-        (* should try to reach a fixed point.
-         *
-         * the reason we compute twice is that function signatures
+        (* the reason we compute twice is that function signatures
          * may have changed, so we need to recompute based on
-         * those new signatures. in practice we should try to
-         * keep doing this until nothing changes.
-         * (e.g. mutually recursive functions) *)
+         * those new signatures. an actually better solution
+         * would be to implement HM-style type inference,
+         * which would come in handy for implementing other
+         * language features down the road. *)
         let defs = List.map defs ~f:(recompute_types_def defs) in
         Program (info, defs)
 
