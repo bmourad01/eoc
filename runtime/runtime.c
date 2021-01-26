@@ -13,7 +13,9 @@
 #define DBGPRINT(x...)
 #endif
 
-/* input/output */
+/*
+ * input/output
+ */
 
 int64_t _read_int() {
   char buf[64];
@@ -104,7 +106,9 @@ void _print_value(uint64_t *ty, int64_t val) {
   printf("\n");
 }
 
-/* garbage collection */
+/*
+ * garbage collection
+ */
 
 static uint64_t _heap_size;
 static void *_heap_base;
