@@ -1321,157 +1321,146 @@ let rec uniquify = function
 and uniquify_def = function
   | Def (v, args, t, e) ->
       let m, args =
-        let n = 1 in
+        let n = 0 in
         List.fold args ~init:(empty_var_env, []) ~f:(fun (m, args) (x, t) ->
             (Map.set m x n, (newvar x n, t) :: args))
       in
-      let m = ref m in
-      let e = uniquify_exp m e in
+      let e = uniquify_exp m (ref 0) e in
       Def (v, List.rev args, t, e)
 
-and uniquify_exp m = function
+and uniquify_exp m n = function
   | Int _ as i -> i
   | Bool _ as b -> b
   | Void -> Void
   | Prim (p, t) ->
-      let p = uniquify_prim m p in
+      let p = uniquify_prim m n p in
       Prim (p, t)
   | Var (v, t) -> (
-    match Map.find !m v with
+    match Map.find m v with
     | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
     | Some n -> Var (newvar v n, t) )
   | Let (v, e1, e2, t) ->
-      let e1 = uniquify_exp m e1 in
-      let n =
-        match Map.find !m v with
-        | None -> 1
-        | Some n -> n + 1
-      in
-      m := Map.set !m v n;
-      let e2 = uniquify_exp m e2 in
-      Let (newvar v n, e1, e2, t)
+      let e1 = uniquify_exp m n e1 in
+      let n' = incr n; !n in
+      let e2 = uniquify_exp (Map.set m v n') n e2 in
+      Let (newvar v n', e1, e2, t)
   | If (e1, e2, e3, t) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
-      let e3 = uniquify_exp m e3 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
+      let e3 = uniquify_exp m n e3 in
       If (e1, e2, e3, t)
   | Apply (e, es, t) ->
-      let e = uniquify_exp m e in
-      let es = List.map es ~f:(uniquify_exp m) in
+      let e = uniquify_exp m n e in
+      let es = List.map es ~f:(uniquify_exp m n) in
       Apply (e, es, t)
   | Funref _ as f -> f
   | Lambda (args, t, e) ->
-      let args =
-        List.fold args ~init:[] ~f:(fun args (x, t) ->
-            let n =
-              match Map.find !m x with
-              | None -> 1
-              | Some n -> n + 1
-            in
-            m := Map.set !m x n;
-            (newvar x n, t) :: args)
+      let args, m =
+        List.fold args ~init:([], m) ~f:(fun (args, m) (x, t) ->
+            let n = incr n; !n in
+            ((newvar x n, t) :: args, Map.set m x n))
       in
-      let e = uniquify_exp m e in
+      let e = uniquify_exp m n e in
       Lambda (List.rev args, t, e)
   | Setbang (v, e) -> (
-    match Map.find !m v with
+    match Map.find m v with
     | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
-    | Some n ->
-        let v = newvar v n in
-        let e = uniquify_exp m e in
+    | Some n' ->
+        let v = newvar v n' in
+        let e = uniquify_exp m n e in
         Setbang (v, e) )
   | Begin (es, e, t) ->
-      let es = List.map es ~f:(uniquify_exp m) in
-      let e = uniquify_exp m e in
+      let es = List.map es ~f:(uniquify_exp m n) in
+      let e = uniquify_exp m n e in
       Begin (es, e, t)
   | While (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       While (e1, e2)
 
-and uniquify_prim m = function
+and uniquify_prim m n = function
   | Read -> Read
   | Minus e ->
-      let e = uniquify_exp m e in
+      let e = uniquify_exp m n e in
       Minus e
   | Plus (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Plus (e1, e2)
   | Subtract (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Subtract (e1, e2)
   | Mult (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Mult (e1, e2)
   | Div (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Div (e1, e2)
   | Rem (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Rem (e1, e2)
   | Land (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Land (e1, e2)
   | Lor (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Lor (e1, e2)
   | Lxor (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Lxor (e1, e2)
   | Lnot e ->
-      let e = uniquify_exp m e in
+      let e = uniquify_exp m n e in
       Lnot e
   | Eq (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Eq (e1, e2)
   | Lt (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Lt (e1, e2)
   | Le (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Le (e1, e2)
   | Gt (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Gt (e1, e2)
   | Ge (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Ge (e1, e2)
   | Not e ->
-      let e = uniquify_exp m e in
+      let e = uniquify_exp m n e in
       Not e
   | And (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       And (e1, e2)
   | Or (e1, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Or (e1, e2)
   | Vector es ->
-      let es = List.map es ~f:(uniquify_exp m) in
+      let es = List.map es ~f:(uniquify_exp m n) in
       Vector es
   | Vectorlength e ->
-      let e = uniquify_exp m e in
+      let e = uniquify_exp m n e in
       Vectorlength e
   | Vectorref (e, i) ->
-      let e = uniquify_exp m e in
+      let e = uniquify_exp m n e in
       Vectorref (e, i)
   | Vectorset (e1, i, e2) ->
-      let e1 = uniquify_exp m e1 in
-      let e2 = uniquify_exp m e2 in
+      let e1 = uniquify_exp m n e1 in
+      let e2 = uniquify_exp m n e2 in
       Vectorset (e1, i, e2)
 
 and newvar v n = Printf.sprintf "%s.%d" v n
