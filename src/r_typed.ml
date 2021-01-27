@@ -423,8 +423,7 @@ let fix_def_name' denv name =
   let name' = fix_def_name name ~d:false in
   let rec loop i name =
     let name' = name ^ Int.to_string i in
-    if Map.mem denv name' then loop (i + 1) name
-    else fix_def_name name' ~d:true
+    if Map.mem denv name' then loop (i + 1) name else fix_def_name name'
   in
   def_prefix ^ loop 0 name'
 
