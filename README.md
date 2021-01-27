@@ -1,6 +1,6 @@
 # eoc
 
-Implementation of a compiler from a subset of Racket to AMD64, based on the book [Essentials of Compilation](https://github.com/IUCompilerCourse/Essentials-of-Compilation) by Jeremy Siek.
+Implementation of a compiler from a subset of Typed Racket to AMD64, based on the book [Essentials of Compilation](https://github.com/IUCompilerCourse/Essentials-of-Compilation) by Jeremy Siek.
 
 ## Requirements
 
