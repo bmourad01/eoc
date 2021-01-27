@@ -254,125 +254,245 @@ and string_of_prim = function
       Printf.sprintf "(vector-set! %s %d %s)" (string_of_exp e1) i
         (string_of_exp e2)
 
+(* get all variables that are assigned to 
+ * and appear as free variables in lambdas *)
+let rec assigned_and_free_exp e =
+  let default () = (String.Set.empty, String.Set.empty) in
+  match e with
+  | Int _ -> default ()
+  | Bool _ -> default ()
+  | Void -> default ()
+  | Prim (p, _) -> assigned_and_free_prim p
+  | Var _ -> default ()
+  | Let (_, e1, e2, _) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | If (e1, e2, e3, _) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      let a3, f3 = assigned_and_free_exp e3 in
+      (String.Set.union_list [a1; a2; a3], String.Set.union_list [f1; f2; f3])
+  | Apply (e, es, _) ->
+      let a, f = assigned_and_free_exp e in
+      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
+      (String.Set.union_list (a :: as'), String.Set.union_list (f :: fs))
+  | Funref _ -> default ()
+  | Lambda (args, _, e) ->
+      let fvs =
+        let bnd = List.map args ~f:fst |> String.Set.of_list in
+        free_vars_of_exp e ~bnd |> Map.to_alist
+      in
+      let a, f = assigned_and_free_exp e in
+      (a, String.Set.(union f (of_list (List.map fvs ~f:fst))))
+  | Setbang (v, e) ->
+      let a, f = assigned_and_free_exp e in
+      (Set.add a v, f)
+  | Begin (es, e, _) ->
+      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
+      let a, f = assigned_and_free_exp e in
+      (String.Set.union_list (a :: as'), String.Set.union_list (f :: fs))
+  | While (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+
+and assigned_and_free_prim p =
+  let default () = (String.Set.empty, String.Set.empty) in
+  match p with
+  | Read -> default ()
+  | Minus e -> assigned_and_free_exp e
+  | Plus (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Subtract (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Mult (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Div (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Rem (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Land (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Lor (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Lxor (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Lnot e -> assigned_and_free_exp e
+  | Eq (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Lt (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Le (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Gt (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Ge (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Not e -> assigned_and_free_exp e
+  | And (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Or (e1, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+  | Vector es ->
+      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
+      (String.Set.union_list as', String.Set.union_list fs)
+  | Vectorlength e -> assigned_and_free_exp e
+  | Vectorref (e, _) -> assigned_and_free_exp e
+  | Vectorset (e1, _, e2) ->
+      let a1, f1 = assigned_and_free_exp e1 in
+      let a2, f2 = assigned_and_free_exp e2 in
+      (Set.union a1 a2, Set.union f1 f2)
+
 let rec opt = function
   | Program (info, defs) -> Program (info, List.map defs ~f:opt_def)
 
 and opt_def = function
   | Def (v, args, t, e) ->
-      let mutated = Hash_set.create (module String) in
-      Def (v, args, t, opt_exp mutated empty_var_env e)
+      let a, _ = assigned_and_free_exp e in
+      Def (v, args, t, opt_exp a empty_var_env e)
 
-and opt_exp mutated env = function
+and opt_exp a env = function
   | Int _ as i -> i
   | Bool _ as b -> b
   | Void -> Void
   | Prim (Read, _) as r -> r
   | Prim (Minus e, t) -> (
-    match opt_exp mutated env e with
+    match opt_exp a env e with
     | Int i -> Int Int64.(-i)
     | Prim (Minus e, _) -> e
     | e -> Prim (Minus e, t) )
   | Prim (Plus (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 + i2)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 - i2)
     | Int i1, Prim (Plus (Int i2, e2), _)
      |Prim (Plus (Int i1, e2), _), Int i2 ->
-        opt_exp mutated env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
+        opt_exp a env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 + i2)
     | e1, e2 -> Prim (Plus (e1, e2), t) )
   | Prim (Subtract (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 - i2)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 + i2)
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 - i2)
     | e1, e2 -> Prim (Subtract (e1, e2), t) )
   | Prim (Mult (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(i1 * i2)
     | e1, e2 -> Prim (Mult (e1, e2), t) )
   | Prim (Div (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
     | Int i1, Int i2 -> Int Int64.(i1 / i2)
     | e1, e2 -> Prim (Div (e1, e2), t) )
   | Prim (Rem (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
     | Int i1, Int i2 -> Int Int64.(rem i1 i2)
     | e1, e2 -> Prim (Rem (e1, e2), t) )
   | Prim (Land (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(i1 land i2)
     | e1, e2 -> Prim (Land (e1, e2), t) )
   | Prim (Lor (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, e -> e
     | e, Int 0L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(i1 lor i2)
     | e1, e2 -> Prim (Lor (e1, e2), t) )
   | Prim (Lxor (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 lxor i2)
     | e1, e2 -> Prim (Lxor (e1, e2), t) )
   | Prim (Lnot e, t) -> (
-    match opt_exp mutated env e with
+    match opt_exp a env e with
     | Int i -> Int Int64.(lnot i)
     | e -> Prim (Lnot e, t) )
   | Prim (Eq (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 = i2)
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2)
     | e1, e2 -> Prim (Eq (e1, e2), t) )
   | Prim (Lt (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 < i2)
     | e1, e2 -> Prim (Lt (e1, e2), t) )
   | Prim (Le (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 <= i2)
     | e1, e2 -> Prim (Le (e1, e2), t) )
   | Prim (Gt (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 > i2)
     | e1, e2 -> Prim (Gt (e1, e2), t) )
   | Prim (Ge (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 >= i2)
     | e1, e2 -> Prim (Ge (e1, e2), t) )
   | Prim (Not e, t) -> (
-    match opt_exp mutated env e with
+    match opt_exp a env e with
     | Bool b -> Bool (not b)
     | e -> Prim (Not e, t) )
   | Prim (And (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
+    match (opt_exp a env e1, opt_exp a env e2) with
     | Bool false, _ -> Bool false
-    | Bool true, e -> opt_exp mutated env e
+    | Bool true, e -> opt_exp a env e
     | e1, e2 -> Prim (And (e1, e2), t) )
   | Prim (Or (e1, e2), t) -> (
-    match (opt_exp mutated env e1, opt_exp mutated env e2) with
-    | Bool false, e -> opt_exp mutated env e
+    match (opt_exp a env e1, opt_exp a env e2) with
+    | Bool false, e -> opt_exp a env e
     | Bool true, _ -> Bool true
     | e1, e2 -> Prim (Or (e1, e2), t) )
-  | Prim (Vector es, t) ->
-      Prim (Vector (List.map es ~f:(opt_exp mutated env)), t)
+  | Prim (Vector es, t) -> Prim (Vector (List.map es ~f:(opt_exp a env)), t)
   | Prim (Vectorlength e, t) -> (
-    match opt_exp mutated env e with
+    match opt_exp a env e with
     | Prim (Vector es, _) -> Int Int64.(List.length es |> of_int)
     | e -> Prim (Vectorlength e, t) )
   | Prim (Vectorref (e, i), t) -> (
-    match opt_exp mutated env e with
-    | Prim (Vector es, _) -> opt_exp mutated env (List.nth_exn es i)
+    match opt_exp a env e with
+    | Prim (Vector es, _) -> opt_exp a env (List.nth_exn es i)
     | e -> Prim (Vectorref (e, i), t) )
   | Prim (Vectorset (e1, i, e2), t) ->
-      Prim (Vectorset (opt_exp mutated env e1, i, opt_exp mutated env e2), t)
-  | Var (v, _) as var when Hash_set.mem mutated v -> var
+      Prim (Vectorset (opt_exp a env e1, i, opt_exp a env e2), t)
+  (* this var is mutated, so don't try to do any optimization *)
+  | Var (v, _) as var when Set.mem a v -> var
   | Var (v, _) as var -> (
     (* assuming the program has been type-checked,
      * we know that the var is not actually free
@@ -382,24 +502,22 @@ and opt_exp mutated env = function
     | None -> var
     | Some e -> e )
   | Let (v, e1, e2, t) ->
-      let e1 = opt_exp mutated env e1 in
-      let e2 = opt_exp mutated (Map.set env v e1) e2 in
+      let e1 = opt_exp a env e1 in
+      let e2 = opt_exp a (Map.set env v e1) e2 in
       Let (v, e1, e2, t)
   | If (e1, e2, e3, t) -> (
-    match opt_exp mutated env e1 with
-    | Bool true -> opt_exp mutated env e2
-    | Bool false -> opt_exp mutated env e3
+    match opt_exp a env e1 with
+    | Bool true -> opt_exp a env e2
+    | Bool false -> opt_exp a env e3
     | e1 -> If (e1, e2, e3, t) )
   | Apply (e, es, t) ->
-      Apply (opt_exp mutated env e, List.map es ~f:(opt_exp mutated env), t)
+      Apply (opt_exp a env e, List.map es ~f:(opt_exp a env), t)
   | Funref _ as f -> f
-  | Lambda (args, t, e) -> Lambda (args, t, opt_exp mutated env e)
-  | Setbang (v, e) ->
-      let e' = Setbang (v, opt_exp mutated env e) in
-      Hash_set.add mutated v; e'
+  | Lambda (args, t, e) -> Lambda (args, t, opt_exp a env e)
+  | Setbang (v, e) -> Setbang (v, opt_exp a env e)
   | Begin (es, e, t) ->
-      let es = List.map es ~f:(opt_exp mutated env) in
-      let e = opt_exp mutated env e in
+      let es = List.map es ~f:(opt_exp a env) in
+      let e = opt_exp a env e in
       Begin (es, e, t)
   | While _ as w -> w
 
@@ -1549,126 +1667,6 @@ and recompute_types_prim defs env = function
       let e1 = recompute_types_exp defs env e1 in
       let e2 = recompute_types_exp defs env e2 in
       (Vectorset (e1, i, e2), Type.Void)
-
-(* get all variables that are assigned to 
- * and appear as free variables in lambdas *)
-let rec assigned_and_free_exp e =
-  let default () = (String.Set.empty, String.Set.empty) in
-  match e with
-  | Int _ -> default ()
-  | Bool _ -> default ()
-  | Void -> default ()
-  | Prim (p, _) -> assigned_and_free_prim p
-  | Var _ -> default ()
-  | Let (_, e1, e2, _) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | If (e1, e2, e3, _) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      let a3, f3 = assigned_and_free_exp e3 in
-      (String.Set.union_list [a1; a2; a3], String.Set.union_list [f1; f2; f3])
-  | Apply (e, es, _) ->
-      let a, f = assigned_and_free_exp e in
-      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
-      (String.Set.union_list (a :: as'), String.Set.union_list (f :: fs))
-  | Funref _ -> default ()
-  | Lambda (args, _, e) ->
-      let fvs =
-        let bnd = List.map args ~f:fst |> String.Set.of_list in
-        free_vars_of_exp e ~bnd |> Map.to_alist
-      in
-      let a, f = assigned_and_free_exp e in
-      (a, String.Set.(union f (of_list (List.map fvs ~f:fst))))
-  | Setbang (v, e) ->
-      let a, f = assigned_and_free_exp e in
-      (Set.add a v, f)
-  | Begin (es, e, _) ->
-      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
-      let a, f = assigned_and_free_exp e in
-      (String.Set.union_list (a :: as'), String.Set.union_list (f :: fs))
-  | While (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-
-and assigned_and_free_prim p =
-  let default () = (String.Set.empty, String.Set.empty) in
-  match p with
-  | Read -> default ()
-  | Minus e -> assigned_and_free_exp e
-  | Plus (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Subtract (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Mult (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Div (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Rem (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Land (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Lor (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Lxor (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Lnot e -> assigned_and_free_exp e
-  | Eq (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Lt (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Le (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Gt (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Ge (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Not e -> assigned_and_free_exp e
-  | And (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Or (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Vector es ->
-      let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
-      (String.Set.union_list as', String.Set.union_list fs)
-  | Vectorlength e -> assigned_and_free_exp e
-  | Vectorref (e, _) -> assigned_and_free_exp e
-  | Vectorset (e1, _, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
 
 let rec convert_assignments = function
   | Program (info, defs) ->
