@@ -411,19 +411,20 @@ let typeerr msg = raise (Type_error msg)
 let def_prefix = "_def_"
 
 (* replace symbols that aren't valid for an assembly program *)
-let fix_def_name =
+let fix_def_name ?(d = true) =
   String.map ~f:(function
-    | '-' -> '_'
+    | '-' when d -> '_'
     | '\'' -> 'p'
     | '?' -> 'q'
     | c -> c)
 
 (* make sure that there are no name conflicts *)
 let fix_def_name' denv name =
-  let name' = fix_def_name name in
+  let name' = fix_def_name name ~d:false in
   let rec loop i name =
     let name' = name ^ Int.to_string i in
-    if Map.mem denv name' then loop (i + 1) name else name'
+    if Map.mem denv name' then loop (i + 1) name
+    else fix_def_name name' ~d:true
   in
   def_prefix ^ loop 0 name'
 
