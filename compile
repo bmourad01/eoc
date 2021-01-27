@@ -17,7 +17,7 @@ CFLAGS="-std=c99 -Wall -Wextra -g"
 mkdir -p $DIR
 
 # compile and assemble the program
-dune exec bin/print_x86.exe $1 > $ASMFILE
+dune exec bin/print_x86.exe $INPROG > $ASMFILE
 nasm -g -f elf64 -o $OBJFILE $ASMFILE
 
 # compile the C runtime
