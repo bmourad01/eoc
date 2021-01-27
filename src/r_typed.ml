@@ -503,7 +503,13 @@ and opt_exp a env = function
     | Some e -> e )
   | Let (v, e1, e2, t) ->
       let e1 = opt_exp a env e1 in
-      let e2 = opt_exp a (Map.set env v e1) e2 in
+      (* only try to propagate constant values *)
+      let env =
+        match e1 with
+        | Int _ | Bool _ | Void -> Map.set env v e1
+        | _ -> env
+      in
+      let e2 = opt_exp a env e2 in
       Let (v, e1, e2, t)
   | If (e1, e2, e3, t) -> (
     match opt_exp a env e1 with
