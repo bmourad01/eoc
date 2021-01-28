@@ -16,6 +16,8 @@ module Cmp : sig
   val to_string : t -> string
 end
 
+module Cfg : module type of Cfg.Make (Label)
+
 (* the C intermediate language *)
 
 type t = Program of info * def list

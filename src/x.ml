@@ -123,6 +123,7 @@ end
 module Args = Set.Make (Arg)
 module Arg_map = Map.Make (Arg)
 module Interference_graph = Graph.Persistent.Graph.Concrete (Arg)
+module Cfg = C.Cfg
 
 type info = {type_map: Label.t C.Type_map.t}
 

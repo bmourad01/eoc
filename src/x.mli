@@ -60,6 +60,8 @@ module Interference_graph :
 
 type info = {type_map: Label.t C.Type_map.t}
 
+module Cfg : module type of C.Cfg
+
 (* the X language, representing a subset of x86-64 programs.
  * X programs are printed in NASM syntax. *)
 

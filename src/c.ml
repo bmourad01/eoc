@@ -19,6 +19,8 @@ module Cmp = struct
     | Ge -> ">="
 end
 
+module Cfg = Cfg.Make (Label)
+
 type t = Program of info * def list
 
 and def = Def of Label.t * (var * Type.t) list * Type.t * def_info * tails
