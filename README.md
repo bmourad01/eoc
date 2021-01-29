@@ -24,6 +24,12 @@ Additionally, the following OCaml packages are required:
 
 For building the project, run `dune build`. To compile a program, run `./compile <program>.rkt`. To execute the compiled program, run `./output/<program>`.
 
+### Target Machine
+
+First of all, the compiler targets AMD64 (otherwise known as x86-64 to mindless plebians).
+
+The output assembly programs should work fine on a Linux system that uses the System V ABI. BSD and macOS systems have not been tested, so your mileage may vary. Windows is a non-starter since it uses a different ABI.
+
 ## Features Implemented
 
 - Integers, booleans
@@ -35,3 +41,9 @@ For building the project, run `dune build`. To compile a program, run `./compile
 - Top-level functions via `define`
 - Anonymous functions via `lambda`
 - Loops (via `while`), sequencing (via `begin`), and assignment (via `set!`)
+
+## Why are you using `nasm`?
+
+Partly for familiarity, partly because it resembles Intel syntax for x86 assembly. I find AT&T syntax to be very ugly, and the mnemonics it uses conflict with those found in the official Intel manuals.
+
+I'm aware that GNU `as` can allow for Intel syntax. I just haven't implemented such a backend (yet).
