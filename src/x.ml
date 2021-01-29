@@ -174,13 +174,13 @@ and instr =
 
 and arg = Arg.t
 
-let filter_non_locations args =
+let filter_non_locations ?(write = false) args =
   Set.to_list args
-  |> List.filter_map ~f:(function
-       | Arg.Imm _ -> None
-       | Arg.Deref (r, _) -> Some (Arg.Reg r)
-       | a -> Some a)
-  |> Args.of_list
+  |> List.map ~f:(function
+       | Arg.Imm _ -> []
+       | Arg.Deref (r, _) as d -> if write then [d] else [Arg.Reg r; d]
+       | a -> [a])
+  |> List.concat |> Args.of_list
 
 let caller_save_set =
   List.map Reg.caller_save ~f:(fun r -> Arg.Reg r) |> Args.of_list
@@ -216,16 +216,20 @@ let write_set instr =
     | POP a -> Args.of_list [a; Reg RSP]
     | JMP _ | JMPt _ | JCC _ | CMP _ | TEST _ -> Args.empty
   in
-  aux instr |> filter_non_locations |> Args.map ~f:convert_bytereg
+  aux instr
+  |> filter_non_locations ~write:true
+  |> Args.map ~f:convert_bytereg
 
 let read_set instr =
   let aux = function
-    | XOR (a1, a2) when Arg.equal a1 a2 ->
-        (* special case: it DOES read the source register
-         * in order to compute the result, but in effect
-         * it's just zeroing the destination, so we should
-         * treat it as if it's not actually reading anything. *)
-        Args.empty
+    | XOR (a1, a2) when Arg.equal a1 a2 -> (
+      (* special case: it DOES read the source register
+       * in order to compute the result, but in effect
+       * it's just zeroing the destination, so we should
+       * treat it as if it's not actually reading anything. *)
+      match a1 with
+      | Arg.Deref (r, _) -> Args.singleton (Reg r)
+      | _ -> Args.empty )
     | ADD (a1, a2)
      |SUB (a1, a2)
      |IMUL (a1, a2)
@@ -235,6 +239,7 @@ let read_set instr =
      |CMP (a1, a2)
      |TEST (a1, a2) -> Args.of_list [a1; a2]
     | IDIV a -> Args.of_list [a; Reg RAX; Reg RDX]
+    | MOV (Deref (r, _), a) -> Args.of_list [Reg r; a]
     | NEG a | MOV (_, a) | LEA (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a)
       -> Args.singleton a
     | CALL (_, arity) ->
