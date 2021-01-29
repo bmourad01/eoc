@@ -337,18 +337,23 @@ and string_of_def = function
         |> List.map ~f:string_of_block
         |> String.concat ~sep:"\n" )
 
-and emit_type type_map = function
+and emit_type type_map t =
+  let ind t =
+    match Map.find type_map t with
+    | None -> emit_type type_map t
+    | Some l -> [Printf.sprintf "dq %s" l]
+  in
+  match t with
   | C.Type.Integer -> ["dq TYPE_INTEGER"]
   | C.Type.Boolean -> ["dq TYPE_BOOLEAN"]
   | C.Type.Void -> ["dq TYPE_VOID"]
   | C.Type.Vector ts ->
       ["dq TYPE_VECTOR"; Printf.sprintf "dq %d" (List.length ts)]
-      @ ( List.map ts ~f:(fun t ->
-              match Map.find type_map t with
-              | None -> emit_type type_map t
-              | Some l -> [Printf.sprintf "dq %s" l])
-        |> List.concat )
-  | C.Type.Arrow (ts, t) -> ["dq TYPE_ARROW"]
+      @ (List.map ts ~f:ind |> List.concat)
+  | C.Type.Arrow (targs, tret) ->
+      ["dq TYPE_ARROW"; Printf.sprintf "dq %d" (List.length targs)]
+      @ (List.map targs ~f:ind |> List.concat)
+      @ ind tret
   | C.Type.Trustme -> ["dq TYPE_UNK"]
 
 and string_of_block = function
@@ -408,6 +413,13 @@ and make_type type_map t =
   match Map.find !type_map t with
   | Some l -> l
   | None ->
+      ( match t with
+      | C.Type.Vector ts ->
+          List.iter ts ~f:(fun t -> make_type type_map t |> ignore)
+      | C.Type.Arrow (targs, tret) ->
+          List.iter targs ~f:(fun t -> make_type type_map t |> ignore);
+          make_type type_map tret |> ignore
+      | _ -> () );
       let n = Map.length !type_map in
       let l = Printf.sprintf "type%d" n in
       type_map := Map.set !type_map t l;
