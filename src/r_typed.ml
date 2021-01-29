@@ -1356,10 +1356,7 @@ and uniquify_exp m n = function
   | Setbang (v, e) -> (
     match Map.find m v with
     | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
-    | Some n' ->
-        let v = newvar v n' in
-        let e = uniquify_exp m n e in
-        Setbang (v, e) )
+    | Some n' -> Setbang (newvar v n', uniquify_exp m n e) )
   | Begin (es, e, t) ->
       Begin (List.map es ~f:(uniquify_exp m n), uniquify_exp m n e, t)
   | While (e1, e2) -> While (uniquify_exp m n e1, uniquify_exp m n e2)
