@@ -129,9 +129,10 @@ void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _free_ptr = _fromspace_begin;
   _tospace_begin = _fromspace_end;
   _tospace_end = (int64_t *)((uint64_t)_fromspace_begin + heap_size);
-  _rootstack_begin = (int64_t **)malloc(rootstack_size);
+  // it's important that we zero the entire rootstack so
+  // that we can mark locations that are uninitialized
+  _rootstack_begin = (int64_t **)calloc(rootstack_size, sizeof(uint8_t));
   assert(_rootstack_begin);
-  memset(_rootstack_begin, 0, rootstack_size);
   _rootstack_end = (int64_t **)((uint64_t)_rootstack_begin + rootstack_size);
 }
 

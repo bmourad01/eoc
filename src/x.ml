@@ -821,11 +821,13 @@ let function_prologue is_main rootstack_spills stack_space w =
     else [SUB (Reg RSP, Imm (Int64.of_int (stack_space + (word_size * adj))))]
   in
   let init =
-    let mov_rootstk = [MOV (Reg R15, Var Extern.rootstack_begin)] in
     let adj_rootstk =
       if rootstack_spills > 0 then
         (* bump the rootstack pointer and zero out
-         * the locations for this stack frame *)
+         * the locations for this stack frame.
+         * this will actually leave the word
+         * at the beginning of the rootstack
+         * unused when we run this in `main`. *)
         [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
         @ List.init rootstack_spills ~f:(fun i ->
               MOV (Deref (R15, i * -word_size), Imm 0L))
@@ -833,10 +835,11 @@ let function_prologue is_main rootstack_spills stack_space w =
     in
     if is_main then
       [ MOV (Reg RDI, Imm 0x4000L)
-        (* let's use a very small number to trigger the GC *)
+        (* let's use a very small initial heap to trigger the GC *)
       ; MOV (Reg RSI, Imm 16L)
-      ; CALL (Extern.initialize, 2) ]
-      @ mov_rootstk @ adj_rootstk
+      ; CALL (Extern.initialize, 2)
+      ; MOV (Reg R15, Var Extern.rootstack_begin) ]
+      @ adj_rootstk
     else adj_rootstk
   in
   setup_frame @ callee_save_in_use @ adj_sp @ init
