@@ -26,9 +26,9 @@ For building the project, run `dune build`. To compile a program, run `./compile
 
 ### Target Machine
 
-First of all, the compiler targets AMD64 (otherwise known as x86-64 to mindless plebians).
+First of all, the compiler targets AMD64 (otherwise known as x86-64 to mindless plebians) and follows the System V ABI.
 
-The output assembly programs should work fine on a Linux system that uses the System V ABI. BSD and macOS systems have not been tested, so your mileage may vary. Windows is a non-starter since it uses a different ABI.
+Given this, the output assembly programs should work fine on a corresponding Linux system. BSD and macOS systems have not been tested, so your mileage may vary. Windows is a non-starter since it follows a non-standard ABI.
 
 ## Features Implemented
 
