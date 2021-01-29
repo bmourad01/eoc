@@ -965,9 +965,9 @@ and patch_instructions_instr = function
       [MOV (Reg RAX, d); IMUL (Reg RAX, a); MOV (d, Reg RAX)]
   | IMULi ((Deref _ as d), a, i) ->
       [MOV (Reg RAX, d); IMULi (Reg RAX, a, i); MOV (d, Reg RAX)]
+  | MOV (a1, a2) when Arg.equal a1 a2 -> []
   | MOV ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
-  | MOV (a1, a2) when Arg.equal a1 a2 -> []
   | LEA ((Deref _ as d), a) -> [LEA (Reg RAX, a); MOV (d, Reg RAX)]
   | XOR ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); XOR (d1, Reg RAX)]
