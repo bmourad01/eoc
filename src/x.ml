@@ -410,15 +410,13 @@ let rec select_instructions = function
       Program ({type_map= !type_map}, defs)
 
 and make_type type_map t =
+  let flat t = make_type type_map t |> ignore in
   match Map.find !type_map t with
   | Some l -> l
   | None ->
       ( match t with
-      | C.Type.Vector ts ->
-          List.iter ts ~f:(fun t -> make_type type_map t |> ignore)
-      | C.Type.Arrow (targs, tret) ->
-          List.iter targs ~f:(fun t -> make_type type_map t |> ignore);
-          make_type type_map tret |> ignore
+      | C.Type.Vector ts -> List.iter ts ~f:flat
+      | C.Type.Arrow (targs, tret) -> List.iter targs ~f:flat; flat tret
       | _ -> () );
       let n = Map.length !type_map in
       let l = Printf.sprintf "type%d" n in
