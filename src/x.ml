@@ -1244,74 +1244,29 @@ and allocate_registers_block colors stack_locs vector_locs = function
 and allocate_registers_instr colors stack_locs vector_locs instr =
   let color = color_arg colors stack_locs vector_locs in
   match instr with
-  | ADD (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      ADD (a1, a2)
-  | SUB (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      SUB (a1, a2)
-  | IMUL (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      IMUL (a1, a2)
-  | IMULi (a1, a2, a3) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      IMULi (a1, a2, a3)
-  | IDIV a ->
-      let a = color a in
-      IDIV a
-  | NEG a ->
-      let a = color a in
-      NEG a
-  | MOV (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      MOV (a1, a2)
-  | LEA (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      LEA (a1, a2)
+  | ADD (a1, a2) -> ADD (color a1, color a2)
+  | SUB (a1, a2) -> SUB (color a1, color a2)
+  | IMUL (a1, a2) -> IMUL (color a1, color a2)
+  | IMULi (a1, a2, a3) -> IMULi (color a1, color a2, a3)
+  | IDIV a -> IDIV (color a)
+  | NEG a -> NEG (color a)
+  | MOV (a1, a2) -> MOV (color a1, color a2)
+  | LEA (a1, a2) -> LEA (color a1, color a2)
   | CALL _ as c -> c
   | CALLi (a, n) -> CALLi (color a, n)
-  | PUSH a ->
-      let a = color a in
-      PUSH a
-  | POP a ->
-      let a = color a in
-      POP a
+  | PUSH a -> PUSH (color a)
+  | POP a -> POP (color a)
   | RET -> RET
   | JMP _ as j -> j
   | JMPt (a, n) -> JMPt (color a, n)
-  | NOT a ->
-      let a = color a in
-      NOT a
-  | XOR (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      XOR (a1, a2)
-  | AND (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      AND (a1, a2)
-  | OR (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      OR (a1, a2)
-  | CMP (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      CMP (a1, a2)
-  | TEST (a1, a2) ->
-      let a1 = color a1 in
-      let a2 = color a2 in
-      TEST (a1, a2)
+  | NOT a -> NOT (color a)
+  | XOR (a1, a2) -> XOR (color a1, color a2)
+  | AND (a1, a2) -> AND (color a1, color a2)
+  | OR (a1, a2) -> OR (color a1, color a2)
+  | CMP (a1, a2) -> CMP (color a1, color a2)
+  | TEST (a1, a2) -> TEST (color a1, color a2)
   | SETCC _ as s -> s
-  | MOVZX (a1, a2) ->
-      let a1 = color a1 in
-      MOVZX (a1, a2)
+  | MOVZX (a1, a2) -> MOVZX (color a1, a2)
   | JCC _ as j -> j
 
 and color_arg colors stack_locs vector_locs = function

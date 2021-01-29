@@ -174,18 +174,18 @@ and expose_allocation_exp n = function
   | R_typed.Prim (p, t) -> Prim (expose_allocation_prim n p, t)
   | R_typed.Var (v, t) -> Var (v, t)
   | R_typed.Let (v, e1, e2, t) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Let (v, e1, e2, t)
+      Let (v, expose_allocation_exp n e1, expose_allocation_exp n e2, t)
   | R_typed.If (e1, e2, e3, t) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      let e3 = expose_allocation_exp n e3 in
-      If (e1, e2, e3, t)
+      If
+        ( expose_allocation_exp n e1
+        , expose_allocation_exp n e2
+        , expose_allocation_exp n e3
+        , t )
   | R_typed.Apply (e, es, t) ->
-      let e = expose_allocation_exp n e in
-      let es = List.map es ~f:(expose_allocation_exp n) in
-      Apply (e, es, t)
+      Apply
+        ( expose_allocation_exp n e
+        , List.map es ~f:(expose_allocation_exp n)
+        , t )
   | R_typed.Funref (v, t) -> Funref (v, t)
   | R_typed.Lambda _ -> assert false
   | R_typed.Setbang (v, e) -> Setbang (v, expose_allocation_exp n e)
@@ -245,74 +245,43 @@ and expose_allocation_prim n = function
   | R_typed.Read -> Read
   | R_typed.Minus e -> Minus (expose_allocation_exp n e)
   | R_typed.Plus (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Plus (e1, e2)
+      Plus (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Subtract (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Subtract (e1, e2)
+      Subtract (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Mult (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Mult (e1, e2)
+      Mult (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Div (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Div (e1, e2)
+      Div (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Rem (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Rem (e1, e2)
+      Rem (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Land (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Land (e1, e2)
+      Land (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Lor (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Lor (e1, e2)
+      Lor (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Lxor (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Lxor (e1, e2)
+      Lxor (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Lnot e -> Lnot (expose_allocation_exp n e)
   | R_typed.Eq (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Eq (e1, e2)
+      Eq (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Lt (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Lt (e1, e2)
+      Lt (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Le (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Le (e1, e2)
+      Le (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Gt (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Gt (e1, e2)
+      Gt (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Ge (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Ge (e1, e2)
+      Ge (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Not e -> Not (expose_allocation_exp n e)
   | R_typed.And (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      And (e1, e2)
+      And (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Or (e1, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Or (e1, e2)
+      Or (expose_allocation_exp n e1, expose_allocation_exp n e2)
+  (* should be handled above *)
   | R_typed.Vector es -> assert false
   | R_typed.Vectorlength e -> Vectorlength (expose_allocation_exp n e)
   | R_typed.Vectorref (e, i) -> Vectorref (expose_allocation_exp n e, i)
   | R_typed.Vectorset (e1, i, e2) ->
-      let e1 = expose_allocation_exp n e1 in
-      let e2 = expose_allocation_exp n e2 in
-      Vectorset (e1, i, e2)
+      Vectorset (expose_allocation_exp n e1, i, expose_allocation_exp n e2)
 
 and nvars n = function
   | 0 -> []

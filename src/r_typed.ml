@@ -1325,16 +1325,13 @@ and uniquify_def = function
         List.fold args ~init:(empty_var_env, []) ~f:(fun (m, args) (x, t) ->
             (Map.set m x n, (newvar x n, t) :: args))
       in
-      let e = uniquify_exp m (ref 0) e in
-      Def (v, List.rev args, t, e)
+      Def (v, List.rev args, t, uniquify_exp m (ref 0) e)
 
 and uniquify_exp m n = function
   | Int _ as i -> i
   | Bool _ as b -> b
   | Void -> Void
-  | Prim (p, t) ->
-      let p = uniquify_prim m n p in
-      Prim (p, t)
+  | Prim (p, t) -> Prim (uniquify_prim m n p, t)
   | Var (v, t) -> (
     match Map.find m v with
     | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
@@ -1345,14 +1342,9 @@ and uniquify_exp m n = function
       let e2 = uniquify_exp (Map.set m v n') n e2 in
       Let (newvar v n', e1, e2, t)
   | If (e1, e2, e3, t) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      let e3 = uniquify_exp m n e3 in
-      If (e1, e2, e3, t)
+      If (uniquify_exp m n e1, uniquify_exp m n e2, uniquify_exp m n e3, t)
   | Apply (e, es, t) ->
-      let e = uniquify_exp m n e in
-      let es = List.map es ~f:(uniquify_exp m n) in
-      Apply (e, es, t)
+      Apply (uniquify_exp m n e, List.map es ~f:(uniquify_exp m n), t)
   | Funref _ as f -> f
   | Lambda (args, t, e) ->
       let args, m =
@@ -1360,8 +1352,7 @@ and uniquify_exp m n = function
             let n = incr n; !n in
             ((newvar x n, t) :: args, Map.set m x n))
       in
-      let e = uniquify_exp m n e in
-      Lambda (List.rev args, t, e)
+      Lambda (List.rev args, t, uniquify_exp m n e)
   | Setbang (v, e) -> (
     match Map.find m v with
     | None -> failwith ("R.uniquify_exp: var " ^ v ^ " is not bound")
@@ -1370,98 +1361,34 @@ and uniquify_exp m n = function
         let e = uniquify_exp m n e in
         Setbang (v, e) )
   | Begin (es, e, t) ->
-      let es = List.map es ~f:(uniquify_exp m n) in
-      let e = uniquify_exp m n e in
-      Begin (es, e, t)
-  | While (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      While (e1, e2)
+      Begin (List.map es ~f:(uniquify_exp m n), uniquify_exp m n e, t)
+  | While (e1, e2) -> While (uniquify_exp m n e1, uniquify_exp m n e2)
 
 and uniquify_prim m n = function
   | Read -> Read
-  | Minus e ->
-      let e = uniquify_exp m n e in
-      Minus e
-  | Plus (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Plus (e1, e2)
-  | Subtract (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Subtract (e1, e2)
-  | Mult (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Mult (e1, e2)
-  | Div (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Div (e1, e2)
-  | Rem (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Rem (e1, e2)
-  | Land (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Land (e1, e2)
-  | Lor (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Lor (e1, e2)
-  | Lxor (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Lxor (e1, e2)
-  | Lnot e ->
-      let e = uniquify_exp m n e in
-      Lnot e
-  | Eq (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Eq (e1, e2)
-  | Lt (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Lt (e1, e2)
-  | Le (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Le (e1, e2)
-  | Gt (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Gt (e1, e2)
-  | Ge (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Ge (e1, e2)
-  | Not e ->
-      let e = uniquify_exp m n e in
-      Not e
-  | And (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      And (e1, e2)
-  | Or (e1, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Or (e1, e2)
-  | Vector es ->
-      let es = List.map es ~f:(uniquify_exp m n) in
-      Vector es
-  | Vectorlength e ->
-      let e = uniquify_exp m n e in
-      Vectorlength e
-  | Vectorref (e, i) ->
-      let e = uniquify_exp m n e in
-      Vectorref (e, i)
+  | Minus e -> Minus (uniquify_exp m n e)
+  | Plus (e1, e2) -> Plus (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Subtract (e1, e2) -> Subtract (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Mult (e1, e2) -> Mult (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Div (e1, e2) -> Div (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Rem (e1, e2) -> Rem (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Land (e1, e2) -> Land (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Lor (e1, e2) -> Lor (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Lxor (e1, e2) -> Lxor (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Lnot e -> Lnot (uniquify_exp m n e)
+  | Eq (e1, e2) -> Eq (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Lt (e1, e2) -> Lt (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Le (e1, e2) -> Le (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Gt (e1, e2) -> Gt (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Ge (e1, e2) -> Ge (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Not e -> Not (uniquify_exp m n e)
+  | And (e1, e2) -> And (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Or (e1, e2) -> Or (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Vector es -> Vector (List.map es ~f:(uniquify_exp m n))
+  | Vectorlength e -> Vectorlength (uniquify_exp m n e)
+  | Vectorref (e, i) -> Vectorref (uniquify_exp m n e, i)
   | Vectorset (e1, i, e2) ->
-      let e1 = uniquify_exp m n e1 in
-      let e2 = uniquify_exp m n e2 in
-      Vectorset (e1, i, e2)
+      Vectorset (uniquify_exp m n e1, i, uniquify_exp m n e2)
 
 and newvar v n = Printf.sprintf "%s.%d" v n
 
@@ -1542,8 +1469,7 @@ and recompute_types_exp defs env = function
       let e1 = recompute_types_exp defs env e1 in
       let t1 = typeof_exp e1 in
       let e2 = recompute_types_exp defs (Map.set env v t1) e2 in
-      let t = typeof_exp e2 in
-      Let (v, e1, e2, t)
+      Let (v, e1, e2, typeof_exp e2)
   | If (e1, e2, e3, t) ->
       let e1 = recompute_types_exp defs env e1 in
       let e2 = recompute_types_exp defs env e2 in
@@ -1552,8 +1478,7 @@ and recompute_types_exp defs env = function
        * `e2` and `e3` may contain different closure
        * environments. for now we just pick one of them.
        * (there should be a better way to do this...) *)
-      let t2 = typeof_exp e2 in
-      If (e1, e2, e3, t2)
+      If (e1, e2, e3, typeof_exp e2)
   | Apply (e, es, t) -> (
       let e = recompute_types_exp defs env e in
       let es = List.map es ~f:(recompute_types_exp defs env) in
@@ -1585,9 +1510,7 @@ and recompute_types_exp defs env = function
       let e = recompute_types_exp defs env e in
       Begin (es, e, typeof_exp e)
   | While (e1, e2) ->
-      let e1 = recompute_types_exp defs env e1 in
-      let e2 = recompute_types_exp defs env e2 in
-      While (e1, e2)
+      While (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
 
 and recompute_types_prim defs env = function
   | Read -> (Read, Type.Integer)
@@ -1666,8 +1589,7 @@ and recompute_types_prim defs env = function
 let rec convert_assignments = function
   | Program (info, defs) ->
       let defs = List.map defs ~f:convert_assignments_def in
-      let defs = List.map defs ~f:(recompute_types_def defs) in
-      Program (info, defs)
+      Program (info, List.map defs ~f:(recompute_types_def defs))
 
 and convert_assignments_def = function
   | Def (v, args, typ, e) ->
@@ -1707,10 +1629,11 @@ and convert_assignments_exp a f = function
         Let (v, Prim (Vector [e1], Type.Vector [typeof_exp e1]), e2, t)
       else Let (v, e1, e2, t)
   | If (e1, e2, e3, t) ->
-      let e1 = convert_assignments_exp a f e1 in
-      let e2 = convert_assignments_exp a f e2 in
-      let e3 = convert_assignments_exp a f e3 in
-      If (e1, e2, e3, t)
+      If
+        ( convert_assignments_exp a f e1
+        , convert_assignments_exp a f e2
+        , convert_assignments_exp a f e3
+        , t )
   | Apply (e, es, t) ->
       let e = convert_assignments_exp a f e in
       let es = List.map es ~f:(convert_assignments_exp a f) in
@@ -1745,13 +1668,12 @@ and convert_assignments_exp a f = function
           , Type.Void )
       else s
   | Begin (es, e, t) ->
-      let es = List.map es ~f:(convert_assignments_exp a f) in
-      let e = convert_assignments_exp a f e in
-      Begin (es, e, t)
+      Begin
+        ( List.map es ~f:(convert_assignments_exp a f)
+        , convert_assignments_exp a f e
+        , t )
   | While (e1, e2) ->
-      let e1 = convert_assignments_exp a f e1 in
-      let e2 = convert_assignments_exp a f e2 in
-      While (e1, e2)
+      While (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
 
 and convert_assignments_prim a f = function
   | Read -> Read
