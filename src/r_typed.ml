@@ -411,30 +411,38 @@ and opt_exp a env = function
     match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
+    | Int 1L, e -> e
+    | e, Int 1L -> e
     | Int i1, Int i2 -> Int Int64.(i1 * i2)
     | e1, e2 -> Prim (Mult (e1, e2), t) )
   | Prim (Div (e1, e2), t) -> (
     match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
+    | e, Int 1L -> e
     | Int i1, Int i2 -> Int Int64.(i1 / i2)
     | e1, e2 -> Prim (Div (e1, e2), t) )
   | Prim (Rem (e1, e2), t) -> (
     match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
+    | e, Int 1L -> e
     | Int i1, Int i2 -> Int Int64.(rem i1 i2)
     | e1, e2 -> Prim (Rem (e1, e2), t) )
   | Prim (Land (e1, e2), t) -> (
     match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
+    | Int 0xFFFFFFFFFFFFFFFFL, e -> e
+    | e, Int 0xFFFFFFFFFFFFFFFFL -> e
     | Int i1, Int i2 -> Int Int64.(i1 land i2)
     | e1, e2 -> Prim (Land (e1, e2), t) )
   | Prim (Lor (e1, e2), t) -> (
     match (opt_exp a env e1, opt_exp a env e2) with
     | Int 0L, e -> e
-    | e, Int 0L -> Int 0L
+    | e, Int 0L -> e
+    | (Int 0xFFFFFFFFFFFFFFFFL as i), e -> i
+    | e, (Int 0xFFFFFFFFFFFFFFFFL as i) -> i
     | Int i1, Int i2 -> Int Int64.(i1 lor i2)
     | e1, e2 -> Prim (Lor (e1, e2), t) )
   | Prim (Lxor (e1, e2), t) -> (
