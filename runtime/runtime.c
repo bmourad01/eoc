@@ -53,8 +53,7 @@ int64_t _read_int() {
 static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
   uint64_t i, len, tyv, v;
 
-  tyv = ty[0];
-  switch (tyv) {
+  switch (tyv = ty[0]) {
   case TYPE_INTEGER:
     printf("%ld", val);
     return;
