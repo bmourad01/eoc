@@ -1176,12 +1176,14 @@ and interp_exp ?(read = None) menv env defs = function
         let args = List.map args ~f:fst in
         let es = List.map es ~f:(interp_exp menv env defs ~read) in
         let env = List.zip_exn args es |> String.Map.of_alist_exn in
+        let menv = Hashtbl.create (module String) in
         interp_exp menv env defs e' ~read
     | `Function (env', args, e') ->
         let es = List.map es ~f:(interp_exp menv env defs ~read) in
         let env =
-          List.zip_exn args es
-          |> List.fold ~init:env' ~f:(fun acc (x, e) -> Map.set acc x e)
+          List.(
+            fold (zip_exn args es) ~init:env' ~f:(fun acc (x, e) ->
+                Map.set acc x e))
         in
         interp_exp menv env defs e' ~read
     | _ -> assert false )
