@@ -179,7 +179,7 @@ static void cheney(int64_t **rootstack_ptr) {
   DBGPRINT("GC: copying roots\n");
 
   // copy all roots first
-  for (r = rootstack_ptr; r >= _rootstack_begin; --r) {
+  for (r = _rootstack_begin; r < rootstack_ptr; ++r) {
     if ((p = *r)) {
       *r = collect_copy(p);
     }
