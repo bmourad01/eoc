@@ -136,12 +136,13 @@ void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
 }
 
 static int64_t *collect_copy(int64_t *obj) {
-  uint64_t size;
+  uint64_t fwd, size;
   int64_t *new_obj;
 
   // has the object been copied yet?
-  if ((uint64_t)*obj < (uint64_t)_fromspace_begin ||
-      (uint64_t)*obj >= (uint64_t)_fromspace_end) {
+  fwd = (uint64_t)*obj;
+  if (fwd < (uint64_t)_fromspace_begin ||
+      fwd >= (uint64_t)_fromspace_end) {
     size = (((int64_t *)*obj)[1] + 1) << 3;
     // copy the object
     new_obj = _free_ptr;
@@ -154,7 +155,7 @@ static int64_t *collect_copy(int64_t *obj) {
     // to distinguish them as seen above.
     *obj = (int64_t)new_obj;
   } else {
-    new_obj = (int64_t *)*obj;
+    new_obj = (int64_t *)fwd;
   }
 
   return new_obj;
