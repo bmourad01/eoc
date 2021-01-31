@@ -457,6 +457,7 @@ and opt_exp a env = function
     match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 = i2)
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2)
+    | Void, Void -> Bool true
     | e1, e2 -> Prim (Eq (e1, e2), t) )
   | Prim (Lt (e1, e2), t) -> (
     match (opt_exp a env e1, opt_exp a env e2) with
