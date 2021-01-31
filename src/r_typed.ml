@@ -424,9 +424,9 @@ and opt_exp a env = function
     | e1, e2 -> Prim (Div (e1, e2), t) )
   | Prim (Rem (e1, e2), t) -> (
     match (opt_exp a env e1, opt_exp a env e2) with
-    | Int 0L, _ -> Int 0L
+    | (Int 0L as i), _ -> i
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
-    | e, Int 1L -> e
+    | _, Int 1L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(rem i1 i2)
     | e1, e2 -> Prim (Rem (e1, e2), t) )
   | Prim (Land (e1, e2), t) -> (
