@@ -838,14 +838,9 @@ let function_prologue is_main rootstack_spills stack_space w =
   let init =
     let adj_rootstk =
       if rootstack_spills > 0 then
-        (* bump the rootstack pointer and zero out
-         * the locations for this stack frame.
-         * this will actually leave the word
-         * at the beginning of the rootstack
-         * unused when we run this in `main`. *)
-        [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
-        @ List.init rootstack_spills ~f:(fun i ->
-              MOV (Deref (R15, i * -word_size), Imm 0L))
+        List.init rootstack_spills ~f:(fun i ->
+            MOV (Deref (R15, i * word_size), Imm 0L))
+        @ [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
       else []
     in
     if is_main then
@@ -1293,7 +1288,7 @@ and color_arg colors stack_locs vector_locs = function
     | Some loc -> Deref (RBP, loc)
     | None -> (
       match Map.find vector_locs a with
-      | Some loc -> Deref (R15, loc + word_size)
+      | Some loc -> Deref (R15, loc)
       | None -> (
         match Map.find colors a with
         | None -> failwith ("X.color_arg: var " ^ v ^ " was not colored")
