@@ -93,6 +93,8 @@ val string_of_cmp : cmp -> string
 
 type answer = R_typed.answer
 
+val string_of_answer : ?nested:bool -> answer -> string
+
 val interp : ?read:Int64.t option -> t -> answer
 
 (* compile an R_anf program to a C program *)

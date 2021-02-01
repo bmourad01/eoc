@@ -195,6 +195,8 @@ let read_int () =
 
 type answer = R_typed.answer
 
+let string_of_answer = R_typed.string_of_answer
+
 let rec interp ?(read = None) = function
   | Program (info, defs) -> (
       let (Def (_, _, _, info', tails)) =
@@ -257,8 +259,7 @@ and interp_stmt ?(read = None) env defs = function
         let as' = List.map as' ~f:(interp_atom env defs ~read) in
         let env =
           List.zip_exn (List.map args ~f:fst) as'
-          |> List.fold ~init:!env ~f:(fun env (x, a) -> Map.set env x a)
-          |> ref
+          |> String.Map.of_alist_exn |> ref
         in
         let tails = Label.Map.of_alist_exn tails in
         ( match Map.find tails info'.main with
@@ -290,8 +291,7 @@ and interp_exp ?(read = None) env defs = function
         let as' = List.map as' ~f:(interp_atom env defs ~read) in
         let env =
           List.zip_exn (List.map args ~f:fst) as'
-          |> List.fold ~init:!env ~f:(fun env (x, a) -> Map.set env x a)
-          |> ref
+          |> String.Map.of_alist_exn |> ref
         in
         let tails = Label.Map.of_alist_exn tails in
         match Map.find tails info'.main with
