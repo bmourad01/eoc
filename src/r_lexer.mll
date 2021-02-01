@@ -50,6 +50,8 @@ rule token = parse
   | "if" { IF }
   | "set!" { SETBANG }
   | "begin" { BEGIN }
+  | "when" { WHEN }
+  | "unless" { UNLESS }
   | "while" { WHILE }
   | "vector" { VECTOR }
   | "vector-length" { VECTORLENGTH }

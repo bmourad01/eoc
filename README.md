@@ -40,7 +40,7 @@ Given this, the output assembly programs should work fine on a corresponding Lin
 - Tuples (via `vector`) & garbage collection
 - Top-level functions via `define`
 - Anonymous functions via `lambda`
-- Loops (via `while`), sequencing (via `begin`), and assignment (via `set!`)
+- Loops (via `while`), sequencing (via `begin`, `when`, and `unless`), and assignment (via `set!`)
 
 ## Why are you using `nasm`?
 

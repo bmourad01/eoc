@@ -22,7 +22,7 @@
 %token <int64> INT
 %token <string> VAR
 %token PLUS MINUS STAR FSLASH REM LAND LOR LXOR LNOT 
-%token SETBANG BEGIN WHILE
+%token SETBANG BEGIN WHEN UNLESS WHILE
 %token VECTOR VECTORLENGTH VECTORREF VECTORSETBANG PROCEDUREARITY VOID
 %token TINTEGER TBOOLEAN TVOID TVECTOR ARROW COLON
 %token READ LET
@@ -145,6 +145,10 @@ exp:
       let len = List.length $3 in
       Begin (List.take $3 (len - 1), List.last_exn $3)
     }
+  | LPAREN WHEN exp nonempty_list(exp) RPAREN
+    { When ($3, $4) }
+  | LPAREN UNLESS exp nonempty_list(exp) RPAREN
+    { Unless ($3, $4) }
   | LPAREN WHILE exp exp RPAREN
     { While ($3, $4) }
 

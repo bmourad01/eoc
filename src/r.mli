@@ -37,6 +37,8 @@ and exp =
   | Lambda of (var * Type.t) list * Type.t * exp
   | Setbang of var * exp
   | Begin of exp list * exp
+  | When of exp * exp list
+  | Unless of exp * exp list
   | While of exp * exp
 
 and prim =

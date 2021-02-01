@@ -726,6 +726,60 @@ and type_check_exp n env denv = function
                   ^ " but an expression of type Void was expected" )));
       let t', e' = type_check_exp n env denv e in
       (t', Begin (es', e', t'))
+  | R.When (e, es) -> (
+    match type_check_exp n env denv e with
+    | Type.Boolean, e' ->
+        let ts', es' =
+          List.map es ~f:(type_check_exp n env denv) |> List.unzip
+        in
+        List.(
+          iter (zip_exn ts' es) ~f:(fun (t, e) ->
+              match t with
+              | Type.Void -> ()
+              | _ ->
+                  typeerr
+                    ( "R_typed.type_check_exp: when expression "
+                    ^ R.string_of_exp e ^ " has type " ^ Type.to_string t
+                    ^ " but an expression of type Void was expected" )));
+        let len = List.length es' in
+        ( Type.Void
+        , If
+            ( e'
+            , Begin (List.take es' (len - 1), List.last_exn es', Type.Void)
+            , Void
+            , Type.Void ) )
+    | t, _ ->
+        typeerr
+          ( "R_typed.type_check_exp: when condition " ^ R.string_of_exp e
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Boolean was expected" ) )
+  | R.Unless (e, es) -> (
+    match type_check_exp n env denv e with
+    | Type.Boolean, e' ->
+        let ts', es' =
+          List.map es ~f:(type_check_exp n env denv) |> List.unzip
+        in
+        List.(
+          iter (zip_exn ts' es) ~f:(fun (t, e) ->
+              match t with
+              | Type.Void -> ()
+              | _ ->
+                  typeerr
+                    ( "R_typed.type_check_exp: unless expression "
+                    ^ R.string_of_exp e ^ " has type " ^ Type.to_string t
+                    ^ " but an expression of type Void was expected" )));
+        let len = List.length es' in
+        ( Type.Void
+        , If
+            ( e'
+            , Void
+            , Begin (List.take es' (len - 1), List.last_exn es', Type.Void)
+            , Type.Void ) )
+    | t, _ ->
+        typeerr
+          ( "R_typed.type_check_exp: unless condition " ^ R.string_of_exp e
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Boolean was expected" ) )
   | R.While (e1, e2) -> (
     match type_check_exp n env denv e1 with
     | Type.Boolean, e1' -> (
