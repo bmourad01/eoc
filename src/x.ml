@@ -269,6 +269,8 @@ module Extern = struct
 
   let extern_fns = [read_int; print_value; initialize; collect]
 
+  let is_extern_fn = List.mem extern_fns ~equal:String.equal
+
   let free_ptr = R_alloc.free_ptr
 
   let fromspace_end = R_alloc.fromspace_end
@@ -1071,15 +1073,7 @@ and build_interference_block locals_types g = function
                        if Arg.equal v d then g
                        else Interference_graph.add_edge g v d)
                  in
-                 match instr with
-                 | MOV (d, s) | MOVZX (d, s) ->
-                     if Arg.(equal v d || equal v s) then g
-                     else Interference_graph.add_edge g v d
-                 | XOR (d, s) when Arg.(equal d s) ->
-                     (* special case, treat this like a MOV *)
-                     if Arg.(equal v d) then g
-                     else Interference_graph.add_edge g v d
-                 | CALL _ -> (
+                 let spill_vec () =
                    match v with
                    | Arg.Var v' when is_temp_var_name v' -> (
                      match Map.find_exn locals_types v' with
@@ -1088,7 +1082,24 @@ and build_interference_block locals_types g = function
                          Set.fold callee_save_set ~init:g ~f:(fun g d ->
                              Interference_graph.add_edge g v d)
                      | _ -> default () )
-                   | _ -> default () )
+                   | _ -> default ()
+                 in
+                 match instr with
+                 | MOV (d, s) | MOVZX (d, s) ->
+                     if Arg.(equal v d || equal v s) then g
+                     else Interference_graph.add_edge g v d
+                 | XOR (d, s) when Arg.(equal d s) ->
+                     (* special case, treat this like a MOV *)
+                     if Arg.(equal v d) then g
+                     else Interference_graph.add_edge g v d
+                 | CALL (l, _) ->
+                     if
+                       Extern.is_extern_fn l
+                       && not (String.equal l Extern.collect)
+                     then default ()
+                     else spill_vec ()
+                 | CALLi _ -> spill_vec ()
+                 | JMPt _ -> spill_vec ()
                  | _ -> default ()))
 
 let allocatable_regs =
