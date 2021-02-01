@@ -35,7 +35,7 @@ static bool is_pointer_type(uint64_t ty, bool rec) {
   default:
     // assume that ty points to another type information struct.
     // use 'rec' to see ultimately what type is being pointed to.
-    return rec ? is_pointer_type(*(uint64_t *)ty, rec) : true;
+    return !rec || is_pointer_type(*(uint64_t *)ty, rec);
   }
 }
 
