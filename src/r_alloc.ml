@@ -40,6 +40,7 @@ and exp =
 
 and prim =
   | Read
+  | Print of exp
   | Minus of exp
   | Plus of exp * exp
   | Subtract of exp * exp
@@ -111,6 +112,7 @@ and string_of_exp = function
 
 and string_of_prim = function
   | Read -> "(read)"
+  | Print e -> Printf.sprintf "(print %s)" (string_of_exp e)
   | Minus e -> Printf.sprintf "(- %s)" (string_of_exp e)
   | Plus (e1, e2) ->
       Printf.sprintf "(+ %s %s)" (string_of_exp e1) (string_of_exp e2)
@@ -243,6 +245,7 @@ and expand_alloc n t ts es =
 
 and expose_allocation_prim n = function
   | R_typed.Read -> Read
+  | R_typed.Print e -> Print (expose_allocation_exp n e)
   | R_typed.Minus e -> Minus (expose_allocation_exp n e)
   | R_typed.Plus (e1, e2) ->
       Plus (expose_allocation_exp n e1, expose_allocation_exp n e2)

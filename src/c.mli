@@ -41,6 +41,7 @@ and stmt =
   | Callstmt of atom * atom list
   | Vectorsetstmt of atom * int * atom
   | Readstmt
+  | Printstmt of atom
 
 and exp =
   | Atom of atom

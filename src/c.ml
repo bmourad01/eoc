@@ -42,6 +42,7 @@ and stmt =
   | Callstmt of atom * atom list
   | Vectorsetstmt of atom * int * atom
   | Readstmt
+  | Printstmt of atom
 
 and exp =
   | Atom of atom
@@ -132,6 +133,7 @@ and string_of_stmt = function
       Printf.sprintf "(vector-set! %s %d %s)" (string_of_atom a1) i
         (string_of_atom a2)
   | Readstmt -> "(read)"
+  | Printstmt a -> Printf.sprintf "(print %s)" (string_of_atom a)
 
 and string_of_exp = function
   | Atom a -> string_of_atom a
@@ -276,6 +278,8 @@ and interp_stmt ?(read = None) env defs = function
     match read with
     | None -> read_int () |> ignore
     | Some _ -> () )
+  | Printstmt a ->
+      interp_atom env defs a ~read |> string_of_answer |> print_endline
 
 and interp_exp ?(read = None) env defs = function
   | Atom a -> interp_atom env defs a
@@ -473,6 +477,7 @@ and explicate_control_def nvars = function
               | Callstmt _ -> env
               | Vectorsetstmt _ -> env
               | Readstmt -> env
+              | Printstmt _ -> env
             in
             aux_tail locals_types tail)
       in
@@ -485,6 +490,8 @@ and explicate_control_def nvars = function
 
 and explicate_tail fn tails nv n = function
   | R_anf.(Atom a) -> Return (Atom (translate_atom a))
+  | R_anf.(Prim (Print a, _)) ->
+      Seq (Printstmt (translate_atom a), Return (Atom Void))
   | R_anf.(Prim (Vectorset (a1, i, a2), _)) ->
       Seq
         ( Vectorsetstmt (translate_atom a1, i, translate_atom a2)
@@ -524,6 +531,7 @@ and explicate_effect fn tails nv n e cont =
   match e with
   | R_anf.Atom _ -> cont
   | R_anf.Prim (Read, _) -> Seq (Readstmt, cont)
+  | R_anf.Prim (Print a, _) -> Seq (Printstmt (translate_atom a), cont)
   | R_anf.Prim (Vectorset (a1, i, a2), _) ->
       Seq (Vectorsetstmt (translate_atom a1, i, translate_atom a2), cont)
   | R_anf.Prim _ -> cont
@@ -565,6 +573,7 @@ and translate_prim p =
   let tr = translate_atom in
   match p with
   | R_anf.Read -> Read
+  | R_anf.Print _ -> assert false
   | R_anf.Minus a -> Minus (tr a)
   | R_anf.Plus (a1, a2) -> Plus (tr a1, tr a2)
   | R_anf.Subtract (a1, a2) -> Subtract (tr a1, tr a2)

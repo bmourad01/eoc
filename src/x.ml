@@ -561,6 +561,32 @@ and select_instructions_stmt type_map s =
   | C.Vectorsetstmt _ -> assert false
   (* read *)
   | C.Readstmt -> [CALL (Extern.read_int, 0)]
+  (* print *)
+  | C.(Printstmt (Int i)) ->
+      let l = make_type type_map C.Type.Integer in
+      [ LEA (Reg RDI, Var l)
+      ; MOV (Reg RSI, Imm i)
+      ; CALL (Extern.print_value, 2) ]
+  | C.(Printstmt (Bool true)) ->
+      let l = make_type type_map C.Type.Boolean in
+      [ LEA (Reg RDI, Var l)
+      ; MOV (Reg RSI, Imm 1L)
+      ; CALL (Extern.print_value, 2) ]
+  | C.(Printstmt (Bool false)) ->
+      let l = make_type type_map C.Type.Boolean in
+      [ LEA (Reg RDI, Var l)
+      ; XOR (Reg RSI, Reg RSI)
+      ; CALL (Extern.print_value, 2) ]
+  | C.(Printstmt (Var (x, t))) ->
+      let l = make_type type_map t in
+      [ LEA (Reg RDI, Var l)
+      ; MOV (Reg RSI, Var x)
+      ; CALL (Extern.print_value, 2) ]
+  | C.(Printstmt Void) ->
+      let l = make_type type_map C.Type.Void in
+      [ LEA (Reg RDI, Var l)
+      ; XOR (Reg RSI, Reg RSI)
+      ; CALL (Extern.print_value, 2) ]
 
 and select_instructions_exp type_map a p =
   let open Arg in

@@ -44,6 +44,7 @@ and exp =
 
 and prim =
   | Read
+  | Print of exp
   | Minus of exp
   | Plus of exp * exp
   | Subtract of exp * exp

@@ -52,6 +52,7 @@ rule token = parse
   | "begin" { BEGIN }
   | "when" { WHEN }
   | "unless" { UNLESS }
+  | "print" { PRINT }
   | "while" { WHILE }
   | "vector" { VECTOR }
   | "vector-length" { VECTORLENGTH }

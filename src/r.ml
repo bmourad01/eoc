@@ -57,6 +57,7 @@ and exp =
 
 and prim =
   | Read
+  | Print of exp
   | Minus of exp
   | Plus of exp * exp
   | Subtract of exp * exp
@@ -142,6 +143,7 @@ and string_of_exp = function
 
 and string_of_prim = function
   | Read -> "(read)"
+  | Print e -> Printf.sprintf "(print %s)" (string_of_exp e)
   | Minus e -> Printf.sprintf "(- %s)" (string_of_exp e)
   | Plus (e1, e2) ->
       Printf.sprintf "(+ %s %s)" (string_of_exp e1) (string_of_exp e2)

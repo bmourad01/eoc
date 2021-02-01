@@ -31,6 +31,7 @@ and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
 
 and prim =
   | Read
+  | Print of atom
   | Minus of atom
   | Plus of atom * atom
   | Subtract of atom * atom
@@ -103,6 +104,7 @@ and string_of_atom = function
 
 and string_of_prim = function
   | Read -> "(read)"
+  | Print a -> Printf.sprintf "(print %s)" (string_of_atom a)
   | Minus a -> Printf.sprintf "(- %s)" (string_of_atom a)
   | Plus (a1, a2) ->
       Printf.sprintf "(+ %s %s)" (string_of_atom a1) (string_of_atom a2)
@@ -171,6 +173,10 @@ and resolve_complex_atom m n = function
   | R_alloc.(Prim (Read, t)) ->
       let x = fresh_var n in
       ([(x, Prim (Read, t))], Var (x, t))
+  | R_alloc.(Prim (Print e, t)) ->
+      let nv, a = resolve_complex_atom m n e in
+      let x = fresh_var n in
+      (nv @ [(x, Prim (Print a, t))], Var (x, t))
   | R_alloc.(Prim (Minus e, t)) ->
       let nv, a = resolve_complex_atom m n e in
       let x = fresh_var n in
@@ -369,6 +375,9 @@ and resolve_complex_exp m n = function
   | R_alloc.Bool b -> Atom (Bool b)
   | R_alloc.Void -> Atom Void
   | R_alloc.Prim (Read, t) -> Prim (Read, t)
+  | R_alloc.Prim (Print e, t) ->
+      let nv, a = resolve_complex_atom m n e in
+      unfold nv (Prim (Print a, t))
   | R_alloc.Prim (Minus e, t) ->
       let nv, a = resolve_complex_atom m n e in
       unfold nv (Prim (Minus a, t))

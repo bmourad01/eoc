@@ -40,6 +40,7 @@ and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
 
 and prim =
   | Read
+  | Print of atom
   | Minus of atom
   | Plus of atom * atom
   | Subtract of atom * atom

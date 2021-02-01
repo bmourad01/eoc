@@ -38,6 +38,7 @@ and exp =
 
 and prim =
   | Read
+  | Print of exp
   | Minus of exp
   | Plus of exp * exp
   | Subtract of exp * exp
@@ -124,6 +125,7 @@ let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
 
 and free_vars_of_prim ?(bnd = String.Set.empty) = function
   | Read -> empty_var_env
+  | Print e -> free_vars_of_exp e ~bnd
   | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
       free_vars_of_exp e ~bnd
   | Plus (e1, e2)
@@ -210,6 +212,7 @@ and string_of_exp = function
 
 and string_of_prim = function
   | Read -> "(read)"
+  | Print e -> Printf.sprintf "(print %s)" (string_of_exp e)
   | Minus e -> Printf.sprintf "(- %s)" (string_of_exp e)
   | Plus (e1, e2) ->
       Printf.sprintf "(+ %s %s)" (string_of_exp e1) (string_of_exp e2)
@@ -301,6 +304,7 @@ and assigned_and_free_prim p =
   let default () = (String.Set.empty, String.Set.empty) in
   match p with
   | Read -> default ()
+  | Print e -> assigned_and_free_exp e
   | Minus e -> assigned_and_free_exp e
   | Plus (e1, e2) ->
       let a1, f1 = assigned_and_free_exp e1 in
@@ -387,6 +391,7 @@ and opt_exp a env = function
   | Bool _ as b -> b
   | Void -> Void
   | Prim (Read, _) as r -> r
+  | Prim (Print e, t) -> Prim (Print (opt_exp a env e), t)
   | Prim (Minus e, t) -> (
     match opt_exp a env e with
     | Int i -> Int Int64.(-i)
@@ -798,6 +803,9 @@ and type_check_exp n env denv = function
 
 and type_check_prim n env denv = function
   | R.Read -> (Type.Integer, Read)
+  | R.Print e ->
+      let _, e' = type_check_exp n env denv e in
+      (Type.Void, Print e')
   | R.Minus e -> (
     match type_check_exp n env denv e with
     | Type.Integer, e' -> (Type.Integer, Minus e')
@@ -1259,6 +1267,9 @@ and interp_prim ?(read = None) menv env defs = function
     match read with
     | Some i -> `Int i
     | None -> `Int (read_int ()) )
+  | Print e ->
+      interp_exp menv env defs e ~read |> string_of_answer |> print_endline;
+      `Void
   | Minus e -> (
     match interp_exp menv env defs e ~read with
     | `Int i -> `Int Int64.(-i)
@@ -1428,6 +1439,7 @@ and uniquify_exp m n = function
 
 and uniquify_prim m n = function
   | Read -> Read
+  | Print e -> Print (uniquify_exp m n e)
   | Minus e -> Minus (uniquify_exp m n e)
   | Plus (e1, e2) -> Plus (uniquify_exp m n e1, uniquify_exp m n e2)
   | Subtract (e1, e2) -> Subtract (uniquify_exp m n e1, uniquify_exp m n e2)
@@ -1483,6 +1495,7 @@ and escaped_defs_exp = function
 
 and escaped_defs_prim = function
   | Read -> []
+  | Print e -> escaped_defs_exp e
   | Minus e -> escaped_defs_exp e
   | Plus (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
   | Subtract (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
@@ -1576,6 +1589,7 @@ and recompute_types_exp defs env = function
 
 and recompute_types_prim defs env = function
   | Read -> (Read, Type.Integer)
+  | Print e -> (Print (recompute_types_exp defs env e), Type.Void)
   | Minus e -> (Minus (recompute_types_exp defs env e), Type.Integer)
   | Plus (e1, e2) ->
       ( Plus
@@ -1739,6 +1753,7 @@ and convert_assignments_exp a f = function
 
 and convert_assignments_prim a f = function
   | Read -> Read
+  | Print e -> Print (convert_assignments_exp a f e)
   | Minus e -> Minus (convert_assignments_exp a f e)
   | Plus (e1, e2) ->
       Plus (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
@@ -1810,6 +1825,7 @@ and needs_closures_exp = function
 
 and needs_closures_prim = function
   | Read -> false
+  | Print e -> needs_closures_exp e
   | Minus e -> needs_closures_exp e
   | Plus (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
   | Subtract (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
@@ -1978,6 +1994,9 @@ and convert_to_closures_exp escaped env n = function
 
 and convert_to_closures_prim escaped env n = function
   | Read -> (Read, [])
+  | Print e ->
+      let e, new_defs = convert_to_closures_exp escaped env n e in
+      (Print e, new_defs)
   | Minus e ->
       let e, new_defs = convert_to_closures_exp escaped env n e in
       (Minus e, new_defs)
@@ -2171,6 +2190,7 @@ and limit_functions_exp defs = function
 
 and limit_functions_prim defs = function
   | Read -> Read
+  | Print e -> Print (limit_functions_exp defs e)
   | Minus e -> Minus (limit_functions_exp defs e)
   | Plus (e1, e2) ->
       Plus (limit_functions_exp defs e1, limit_functions_exp defs e2)
