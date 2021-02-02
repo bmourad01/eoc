@@ -2162,13 +2162,19 @@ and limit_functions_exp defs = function
         in
         let e =
           match e with
+          | Int _ -> assert false
+          | Bool _ -> assert false
+          | Void -> assert false
           | Prim (p, _) -> Prim (p, et)
+          | Var (v, _) -> Var (v, et)
           | Let (v, e1, e2, _) -> Let (v, e1, e2, et)
           | If (e1, e2, e3, _) -> If (e1, e2, e3, et)
           | Apply (e, es, _) -> Apply (e, es, et)
-          | Funref _ as f -> f
-          | Lambda _ as l -> l
-          | _ -> assert false
+          | Funref (v, t) -> Funref (v, et)
+          | Lambda _ -> assert false
+          | Setbang _ -> assert false
+          | Begin (es, e, _) -> Begin (es, e, et)
+          | While _ -> assert false
         in
         Apply (e, args1 @ [Prim (Vector args2, final_arg_t)], t)
   | Funref (v, t) ->
