@@ -948,6 +948,23 @@ and patch_instructions_def type_map = function
             let instrs =
               List.map instrs ~f:patch_instructions_instr |> List.concat
             in
+            let instrs, _ =
+              List.fold instrs ~init:([], None)
+                ~f:(fun (instrs, r11) instr ->
+                  match instr with
+                  | MOV (Reg R11, a) -> (
+                    match r11 with
+                    | Some a' when Arg.equal a a' -> (instrs, r11)
+                    | _ -> (instr :: instrs, Some a) )
+                  | _ -> (
+                    match r11 with
+                    | None -> (instr :: instrs, r11)
+                    | Some a ->
+                        let w = write_set instr in
+                        if Set.mem w a then (instr :: instrs, None)
+                        else (instr :: instrs, r11) ))
+            in
+            let instrs = List.rev instrs in
             (label, Block (label, info, instrs)))
       in
       (* 'w' is a set which exploits the ordering
