@@ -148,6 +148,8 @@ and block_info = {live_after: Args.t list}
 
 and instr =
   | ADD of arg * arg
+  | INC of arg
+  | DEC of arg
   | SUB of arg * arg
   | IMUL of arg * arg
   | IMULi of arg * arg * arg
@@ -198,6 +200,8 @@ let convert_bytereg = function
 let write_set instr =
   let aux = function
     | ADD (a, _)
+     |INC a
+     |DEC a
      |SUB (a, _)
      |NEG a
      |MOV (a, _)
@@ -240,8 +244,14 @@ let read_set instr =
      |TEST (a1, a2) -> Args.of_list [a1; a2]
     | IDIV a -> Args.of_list [a; Reg RAX; Reg RDX]
     | MOV (Deref (r, _), a) -> Args.of_list [Reg r; a]
-    | NEG a | MOV (_, a) | LEA (_, a) | IMULi (_, a, _) | NOT a | MOVZX (_, a)
-      -> Args.singleton a
+    | NEG a
+     |MOV (_, a)
+     |LEA (_, a)
+     |IMULi (_, a, _)
+     |NOT a
+     |MOVZX (_, a)
+     |INC a
+     |DEC a -> Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
         |> List.map ~f:(fun r -> Arg.Reg r)
@@ -371,6 +381,8 @@ and string_of_block = function
 and string_of_instr = function
   | ADD (a1, a2) ->
       Printf.sprintf "add %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | INC a -> Printf.sprintf "inc %s" (Arg.to_string a)
+  | DEC a -> Printf.sprintf "dec %s" (Arg.to_string a)
   | SUB (a1, a2) ->
       Printf.sprintf "sub %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | IMUL (a1, a2) ->
@@ -613,6 +625,8 @@ and select_instructions_exp type_map a p =
   | C.(Prim (Plus (Int i1, Int i2), _)) ->
       let i = Int64.(i1 + i2) in
       if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Plus (Var (v, t), Int 1L), _))
+   |C.(Prim (Plus (Int 1L, Var (v, t)), _)) -> [MOV (a, Var v); INC a]
   | C.(Prim (Plus (Var (v, t), Int i), _))
    |C.(Prim (Plus (Int i, Var (v, t)), _)) -> [MOV (a, Var v); ADD (a, Imm i)]
   | C.(Prim (Plus (Var (v1, _), Var (v2, _)), _)) ->
@@ -622,6 +636,7 @@ and select_instructions_exp type_map a p =
   | C.(Prim (Subtract (Int i1, Int i2), _)) ->
       let i = Int64.(i1 - i2) in
       if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Subtract (Var (v, _), Int 1L), _)) -> [MOV (a, Var v); DEC a]
   | C.(Prim (Subtract (Var (v, _), Int i), _)) ->
       [MOV (a, Var v); SUB (a, Imm i)]
   | C.(Prim (Subtract (Int i, Var (v, _)), _)) ->
@@ -1295,6 +1310,8 @@ and allocate_registers_instr colors stack_locs vector_locs instr =
   let color = color_arg colors stack_locs vector_locs in
   match instr with
   | ADD (a1, a2) -> ADD (color a1, color a2)
+  | INC a -> INC (color a)
+  | DEC a -> DEC (color a)
   | SUB (a1, a2) -> SUB (color a1, color a2)
   | IMUL (a1, a2) -> IMUL (color a1, color a2)
   | IMULi (a1, a2, a3) -> IMULi (color a1, color a2, a3)
