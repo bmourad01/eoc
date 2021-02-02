@@ -948,6 +948,8 @@ and patch_instructions_def type_map = function
             let instrs =
               List.map instrs ~f:patch_instructions_instr |> List.concat
             in
+            (* simplify some known code patterns generated
+             * by the select_instructions pass *)
             let instrs, _ =
               List.fold instrs ~init:([], None)
                 ~f:(fun (instrs, r11) instr ->
@@ -956,6 +958,7 @@ and patch_instructions_def type_map = function
                     match r11 with
                     | Some a' when Arg.equal a a' -> (instrs, r11)
                     | _ -> (instr :: instrs, Some a) )
+                  | MOV (a, Reg R11) -> (instr :: instrs, Some a)
                   | _ -> (
                     match r11 with
                     | None -> (instr :: instrs, r11)
