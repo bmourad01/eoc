@@ -950,7 +950,7 @@ and patch_instructions_def type_map = function
             in
             (* simplify some known code patterns generated
              * by the select_instructions pass *)
-            let instrs, _ =
+            let instrs =
               List.fold instrs ~init:([], None)
                 ~f:(fun (instrs, r11) instr ->
                   match instr with
@@ -966,8 +966,8 @@ and patch_instructions_def type_map = function
                         let w = write_set instr in
                         if Set.mem w a then (instr :: instrs, None)
                         else (instr :: instrs, r11) ))
+              |> fst |> List.rev
             in
-            let instrs = List.rev instrs in
             (label, Block (label, info, instrs)))
       in
       (* 'w' is a set which exploits the ordering
