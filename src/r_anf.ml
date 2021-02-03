@@ -513,7 +513,7 @@ and fresh_var n =
 
 and unfold nv e =
   List.fold_right nv ~init:e ~f:(fun (v, e) acc ->
-      Let (v, e, acc, typeof acc))
+      Let (v, e, acc, typeof_exp acc))
 
 and typeof' = function
   | R_alloc.Int _ -> Type.Integer
@@ -532,7 +532,7 @@ and typeof' = function
   | R_alloc.Allocate (_, t) -> t
   | R_alloc.Globalvalue (_, t) -> t
 
-and typeof = function
+and typeof_exp = function
   | Atom (Int _) -> Type.Integer
   | Atom (Bool _) -> Type.Boolean
   | Atom (Var (_, t)) -> t

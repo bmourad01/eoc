@@ -11,7 +11,7 @@ type var = R.var
 type info = {main: Label.t}
 
 module Cmp : sig
-  type t = Eq | Lt | Le | Gt | Ge
+  type t = Eq | Neq | Lt | Le | Gt | Ge
 
   val to_string : t -> string
 end
@@ -42,6 +42,7 @@ and stmt =
   | Vectorsetstmt of atom * int * atom
   | Readstmt
   | Printstmt of atom
+  | Assignwhen of cmp * var * atom
 
 and exp =
   | Atom of atom
@@ -67,6 +68,7 @@ and prim =
   | Lxor of atom * atom
   | Lnot of atom
   | Eq of atom * atom
+  | Neq of atom * atom
   | Lt of atom * atom
   | Le of atom * atom
   | Gt of atom * atom

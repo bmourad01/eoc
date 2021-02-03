@@ -17,6 +17,7 @@ module Cc = struct
 
   let of_c_cmp = function
     | C.Cmp.Eq -> E
+    | C.Cmp.Neq -> NE
     | C.Cmp.Lt -> L
     | C.Cmp.Le -> LE
     | C.Cmp.Gt -> G
@@ -24,6 +25,7 @@ module Cc = struct
 
   let of_c_cmp_swap = function
     | C.Cmp.Eq -> E
+    | C.Cmp.Neq -> NE
     | C.Cmp.Lt -> G
     | C.Cmp.Le -> GE
     | C.Cmp.Gt -> L
@@ -244,6 +246,11 @@ let read_set instr =
      |OR (a1, a2)
      |CMP (a1, a2)
      |TEST (a1, a2) -> Args.of_list [a1; a2]
+    (* this is a hack; a1 is not really being read
+     * from but since this is conditional, a1 may not
+     * be written to, but future instructions may
+     * depend on a1, so we make an overapproximation. *)
+    | CMOV (_, a1, a2) -> Args.of_list [a1; a2]
     | IDIV a -> Args.of_list [a; Reg RAX; Reg RDX]
     | MOV (Deref (r, _), a) -> Args.of_list [Reg r; a]
     | NEG a
@@ -253,7 +260,6 @@ let read_set instr =
      |NOT a
      |MOVZX (_, a)
      |INC a
-     |CMOV (_, _, a)
      |DEC a -> Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
@@ -494,6 +500,7 @@ and select_instructions_tail type_map tails t =
   | C.If ((cmp, Int i1, Int i2), lt, lf) -> (
     match cmp with
     | Eq -> if Int64.(i1 = i2) then [JMP lt] else [JMP lf]
+    | Neq -> if Int64.(i1 <> i2) then [JMP lt] else [JMP lf]
     | Lt -> if Int64.(i1 < i2) then [JMP lt] else [JMP lf]
     | Le -> if Int64.(i1 <= i2) then [JMP lt] else [JMP lf]
     | Gt -> if Int64.(i1 > i2) then [JMP lt] else [JMP lf]
@@ -611,6 +618,35 @@ and select_instructions_stmt type_map s =
       [ LEA (Reg RDI, Var l)
       ; XOR (Reg RSI, Reg RSI)
       ; CALL (Extern.print_value, 2) ]
+  (* assignwhen *)
+  | C.(Assignwhen ((cmp, al, ar), x, Var (v, _))) -> (
+      let a = Var x in
+      match (cmp, al, ar) with
+      | Eq, Int i1, Int i2 ->
+          if Int64.(i1 = i2) then [MOV (a, Var v)] else []
+      | Eq, Bool b1, Bool b2 ->
+          if Bool.equal b1 b2 then [MOV (a, Var v)] else []
+      | Eq, Void, Void -> [MOV (a, Var v)]
+      | Eq, Var (v1', _), Var (v2', _) when String.equal v1' v2' ->
+          [MOV (a, Var v)]
+      | Neq, Int i1, Int i2 ->
+          if Int64.(i1 = i2) then [] else [MOV (a, Var v)]
+      | Neq, Bool b1, Bool b2 ->
+          if Bool.equal b1 b2 then [] else [MOV (a, Var v)]
+      | Neq, Void, Void -> []
+      | Neq, Var (v1', _), Var (v2', _) when String.equal v1' v2' -> []
+      | Lt, Int i1, Int i2 ->
+          if Int64.(i1 < i2) then [MOV (a, Var v)] else []
+      | Le, Int i1, Int i2 ->
+          if Int64.(i1 <= i2) then [MOV (a, Var v)] else []
+      | Gt, Int i1, Int i2 ->
+          if Int64.(i1 > i2) then [MOV (a, Var v)] else []
+      | Ge, Int i1, Int i2 ->
+          if Int64.(i1 >= i2) then [MOV (a, Var v)] else []
+      | _ ->
+          let cmp_inst, cc = make_cmp cmp al ar in
+          [cmp_inst; CMOV (cc, a, Var v)] )
+  | C.Assignwhen _ -> assert false
 
 and select_instructions_exp type_map a p =
   let open Arg in
@@ -757,6 +793,7 @@ and select_instructions_exp type_map a p =
       if Int64.(i1 = i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Eq (Bool b1, Bool b2), _)) ->
       if Bool.equal b1 b2 then [MOV (a, Imm 1L)] else [XOR (a, a)]
+  | C.(Prim (Eq (Void, Void), _)) -> [MOV (a, Imm 1L)]
   | C.(Prim (Eq (Var (v, _), Int i), _))
    |C.(Prim (Eq (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.E, Bytereg AL); MOVZX (a, Bytereg AL)]
@@ -771,6 +808,26 @@ and select_instructions_exp type_map a p =
         ; SETCC (Cc.E, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Eq _, _)) -> assert false
+  (* neq *)
+  | C.(Prim (Neq (Int i1, Int i2), _)) ->
+      if Int64.(i1 <> i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
+  | C.(Prim (Neq (Bool b1, Bool b2), _)) ->
+      if Bool.equal b1 b2 |> not then [MOV (a, Imm 1L)] else [XOR (a, a)]
+  | C.(Prim (Neq (Void, Void), _)) -> [XOR (a, a)]
+  | C.(Prim (Neq (Var (v, _), Int i), _))
+   |C.(Prim (Neq (Int i, Var (v, _)), _)) ->
+      [CMP (Var v, Imm i); SETCC (Cc.NE, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Neq (Var (v, _), Bool b), _))
+   |C.(Prim (Neq (Bool b, Var (v, _)), _)) ->
+      let cc = if not b then Cc.NE else Cc.E in
+      [TEST (Var v, Var v); SETCC (cc, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Neq (Var (v1, _), Var (v2, _)), _)) ->
+      if String.equal v1 v2 then [XOR (a, a)]
+      else
+        [ CMP (Var v1, Var v2)
+        ; SETCC (Cc.NE, Bytereg AL)
+        ; MOVZX (a, Bytereg AL) ]
+  | C.(Prim (Neq _, _)) -> assert false
   (* lt *)
   | C.(Prim (Lt (Int i1, Int i2), _)) ->
       if Int64.(i1 < i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
@@ -882,6 +939,12 @@ and select_instructions_exp type_map a p =
     | Eq, Void, Void -> [MOV (a, Var v1)]
     | Eq, Var (v1', _), Var (v2', _) when String.equal v1' v2' ->
         [MOV (a, Var v1)]
+    | Neq, Int i1, Int i2 ->
+        if Int64.(i1 = i2) then [MOV (a, Var v2)] else [MOV (a, Var v1)]
+    | Neq, Bool b1, Bool b2 ->
+        if Bool.equal b1 b2 then [MOV (a, Var v2)] else [MOV (a, Var v1)]
+    | Neq, Void, Void -> []
+    | Neq, Var (v1', _), Var (v2', _) when String.equal v1' v2' -> []
     | Lt, Int i1, Int i2 ->
         if Int64.(i1 < i2) then [MOV (a, Var v1)] else [MOV (a, Var v2)]
     | Le, Int i1, Int i2 ->
@@ -891,35 +954,45 @@ and select_instructions_exp type_map a p =
     | Ge, Int i1, Int i2 ->
         if Int64.(i1 >= i2) then [MOV (a, Var v1)] else [MOV (a, Var v2)]
     | _ ->
-        let cmp_inst, cc =
-          match (cmp, al, ar) with
-          | Eq, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.E)
-          | Eq, Int i, Var (v, _) | Eq, Var (v, _), Int i ->
-              (CMP (Var v, Imm i), Cc.E)
-          | Eq, Bool true, Var (v, _) | Eq, Var (v, _), Bool true ->
-              (TEST (Var v, Var v), Cc.NE)
-          | Eq, Bool false, Var (v, _) | Eq, Var (v, _), Bool false ->
-              (TEST (Var v, Var v), Cc.E)
-          | Eq, _, _ -> assert false
-          | Lt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.L)
-          | Lt, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.L)
-          | Lt, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.G)
-          | Lt, _, _ -> assert false
-          | Le, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.LE)
-          | Le, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.LE)
-          | Le, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.GE)
-          | Le, _, _ -> assert false
-          | Gt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.G)
-          | Gt, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.G)
-          | Gt, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.L)
-          | Gt, _, _ -> assert false
-          | Ge, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.GE)
-          | Ge, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.GE)
-          | Ge, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.LE)
-          | Ge, _, _ -> assert false
-        in
+        let cmp_inst, cc = make_cmp cmp al ar in
         [MOV (a, Var v2); cmp_inst; CMOV (cc, a, Var v1)] )
   | C.Select _ -> assert false
+
+and make_cmp cmp al ar =
+  let open C.Cmp in
+  match (cmp, al, ar) with
+  | Eq, C.Var (v1, _), C.Var (v2, _) -> (CMP (Var v1, Var v2), Cc.E)
+  | Eq, Int i, Var (v, _) | Eq, Var (v, _), Int i ->
+      (CMP (Var v, Imm i), Cc.E)
+  | Eq, Bool true, Var (v, _) | Eq, Var (v, _), Bool true ->
+      (TEST (Var v, Var v), Cc.NE)
+  | Eq, Bool false, Var (v, _) | Eq, Var (v, _), Bool false ->
+      (TEST (Var v, Var v), Cc.E)
+  | Eq, _, _ -> assert false
+  | Neq, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.NE)
+  | Neq, Int i, Var (v, _) | Neq, Var (v, _), Int i ->
+      (CMP (Var v, Imm i), Cc.NE)
+  | Neq, Bool true, Var (v, _) | Neq, Var (v, _), Bool true ->
+      (TEST (Var v, Var v), Cc.E)
+  | Neq, Bool false, Var (v, _) | Neq, Var (v, _), Bool false ->
+      (TEST (Var v, Var v), Cc.NE)
+  | Neq, _, _ -> assert false
+  | Lt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.L)
+  | Lt, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.L)
+  | Lt, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.G)
+  | Lt, _, _ -> assert false
+  | Le, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.LE)
+  | Le, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.LE)
+  | Le, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.GE)
+  | Le, _, _ -> assert false
+  | Gt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.G)
+  | Gt, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.G)
+  | Gt, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.L)
+  | Gt, _, _ -> assert false
+  | Ge, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.GE)
+  | Ge, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.GE)
+  | Ge, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.LE)
+  | Ge, _, _ -> assert false
 
 let function_prologue is_main rootstack_spills stack_space w =
   let setup_frame =
@@ -1182,7 +1255,7 @@ and build_interference_block locals_types g = function
                    | _ -> default ()
                  in
                  match instr with
-                 | MOV (d, s) | MOVZX (d, s) | CMOV (_, d, s) ->
+                 | MOV (d, s) | MOVZX (d, s) ->
                      if Arg.(equal v d || equal v s) then g
                      else Interference_graph.add_edge g v d
                  | XOR (d, s) when Arg.(equal d s) ->
@@ -1321,8 +1394,7 @@ and allocate_registers_def = function
         List.fold blocks ~init ~f:(fun init (_, Block (_, _, instrs)) ->
             List.fold instrs ~init ~f:(fun bias instr ->
                 match instr with
-                | MOV (d, s) | CMOV (_, d, s) ->
-                    Interference_graph.add_edge bias d s
+                | MOV (d, s) -> Interference_graph.add_edge bias d s
                 | _ -> bias))
       in
       let colors = color_graph info.conflicts ~bias in

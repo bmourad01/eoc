@@ -61,6 +61,8 @@ and prim =
   | Vectorref of atom * int
   | Vectorset of atom * int * atom
 
+val typeof_exp : exp -> Type.t
+
 val to_string : t -> string
 
 val string_of_exp : exp -> string
