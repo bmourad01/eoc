@@ -509,7 +509,7 @@ and explicate_tail fn tails nv n = function
   | R_anf.(Prim (p, t)) -> Return (Prim (translate_prim p, t))
   (* match the pattern for a conditional move *)
   | R_anf.(Let (v, If (econd, (Atom _ as e1), (Atom _ as e2), t), ebody, _))
-    -> (
+    ->
       let cont = explicate_tail fn tails nv n ebody in
       let sel cmp =
         let x1 = fresh_var nv in
@@ -520,30 +520,37 @@ and explicate_tail fn tails nv n = function
         let cont = explicate_assign fn tails nv n e2 x2 cont in
         explicate_assign fn tails nv n e1 x1 cont
       in
-      match econd with
-      | R_anf.(Atom (Bool true)) -> explicate_assign fn tails nv n e1 v cont
-      | R_anf.(Atom (Bool false)) -> explicate_assign fn tails nv n e2 v cont
-      | R_anf.(Atom (Var (x, t'))) -> sel (Cmp.Eq, Var (x, t'), Bool true)
-      | R_anf.(Prim (Not a, _)) -> sel (Cmp.Eq, translate_atom a, Bool false)
-      | R_anf.(Prim (Eq (a1, a2), _)) ->
-          sel (Cmp.Eq, translate_atom a1, translate_atom a2)
-      | R_anf.(Prim (Lt (a1, a2), _)) ->
-          sel (Cmp.Lt, translate_atom a1, translate_atom a2)
-      | R_anf.(Prim (Le (a1, a2), _)) ->
-          sel (Cmp.Le, translate_atom a1, translate_atom a2)
-      | R_anf.(Prim (Gt (a1, a2), _)) ->
-          sel (Cmp.Gt, translate_atom a1, translate_atom a2)
-      | R_anf.(Prim (Ge (a1, a2), _)) ->
-          sel (Cmp.Ge, translate_atom a1, translate_atom a2)
-      | R_anf.(Prim (Vectorref _, t))
-       |R_anf.(Let (_, _, _, t))
-       |R_anf.(If (_, _, _, t))
-       |R_anf.(Apply (_, _, t))
-       |R_anf.(Begin (_, _, t)) ->
-          let x = fresh_var nv in
-          let cont = sel (Cmp.Eq, Var (x, t), Bool true) in
-          explicate_assign fn tails nv n econd x cont
-      | _ -> assert false )
+      let rec do_select econd cont =
+        match econd with
+        | R_anf.(Atom (Bool true)) ->
+            explicate_assign fn tails nv n e1 v cont
+        | R_anf.(Atom (Bool false)) ->
+            explicate_assign fn tails nv n e2 v cont
+        | R_anf.(Atom (Var (x, t'))) -> sel (Cmp.Eq, Var (x, t'), Bool true)
+        | R_anf.(Prim (Not a, _)) ->
+            sel (Cmp.Eq, translate_atom a, Bool false)
+        | R_anf.(Prim (Eq (a1, a2), _)) ->
+            sel (Cmp.Eq, translate_atom a1, translate_atom a2)
+        | R_anf.(Prim (Lt (a1, a2), _)) ->
+            sel (Cmp.Lt, translate_atom a1, translate_atom a2)
+        | R_anf.(Prim (Le (a1, a2), _)) ->
+            sel (Cmp.Le, translate_atom a1, translate_atom a2)
+        | R_anf.(Prim (Gt (a1, a2), _)) ->
+            sel (Cmp.Gt, translate_atom a1, translate_atom a2)
+        | R_anf.(Prim (Ge (a1, a2), _)) ->
+            sel (Cmp.Ge, translate_atom a1, translate_atom a2)
+        | R_anf.(Let (x, e', e'', t)) ->
+            do_select e'' cont |> explicate_assign fn tails nv n e' x
+        | R_anf.(Prim (Vectorref _, t))
+         |R_anf.(If (_, _, _, t))
+         |R_anf.(Apply (_, _, t))
+         |R_anf.(Begin (_, _, t)) ->
+            let x = fresh_var nv in
+            let cont = sel (Cmp.Eq, Var (x, t), Bool true) in
+            explicate_assign fn tails nv n econd x cont
+        | _ -> assert false
+      in
+      do_select econd cont
   | R_anf.(Let (v, e1, e2, _)) ->
       let cont = explicate_tail fn tails nv n e2 in
       explicate_assign fn tails nv n e1 v cont
