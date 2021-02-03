@@ -51,6 +51,7 @@ and exp =
   | Call of atom * atom list * Type.t
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
+  | Select of cmp * atom * atom * Type.t
 
 and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
 
@@ -87,6 +88,7 @@ let typeof_exp = function
   | Call (_, _, t) -> t
   | Allocate (_, t) -> t
   | Globalvalue (_, t) -> t
+  | Select (_, _, _, t) -> t
 
 let rec to_string = function
   | Program (_, defs) ->
@@ -145,6 +147,9 @@ and string_of_exp = function
         (List.map as' ~f:string_of_atom |> String.concat ~sep:" ")
   | Allocate (n, t) -> Printf.sprintf "(allocate %d %s)" n (Type.to_string t)
   | Globalvalue (v, _) -> Printf.sprintf "(global-value '%s)" v
+  | Select (cmp, a1, a2, _) ->
+      Printf.sprintf "(select %s %s %s)" (string_of_cmp cmp)
+        (string_of_atom a1) (string_of_atom a2)
 
 and string_of_atom = function
   | Int i -> Int64.to_string i
@@ -305,6 +310,11 @@ and interp_exp ?(read = None) env defs = function
     | _ -> assert false )
   | Allocate (n, _) -> `Vector (Array.init n ~f:(fun _ -> `Void))
   | Globalvalue _ -> `Int 0L
+  | Select (cmp, a1, a2, _) -> (
+    match interp_cmp env defs cmp ~read with
+    | `Bool true -> interp_atom env defs a1 ~read
+    | `Bool false -> interp_atom env defs a2 ~read
+    | _ -> assert false )
 
 and interp_atom ?(read = None) env defs = function
   | Int i -> `Int i
@@ -497,6 +507,44 @@ and explicate_tail fn tails nv n = function
         ( Vectorsetstmt (translate_atom a1, i, translate_atom a2)
         , Return (Atom Void) )
   | R_anf.(Prim (p, t)) -> Return (Prim (translate_prim p, t))
+  (* match the pattern for a conditional move *)
+  | R_anf.(Let (v, If (econd, (Atom _ as e1), (Atom _ as e2), t), ebody, _))
+    -> (
+      let cont = explicate_tail fn tails nv n ebody in
+      let sel cmp =
+        let x1 = fresh_var nv in
+        let x2 = fresh_var nv in
+        let cont =
+          Seq (Assign (v, Select (cmp, Var (x1, t), Var (x2, t), t)), cont)
+        in
+        let cont = explicate_assign fn tails nv n e2 x2 cont in
+        explicate_assign fn tails nv n e1 x1 cont
+      in
+      Printf.eprintf "%s\n" (R_anf.string_of_exp econd);
+      match econd with
+      | R_anf.(Atom (Bool true)) -> explicate_assign fn tails nv n e1 v cont
+      | R_anf.(Atom (Bool false)) -> explicate_assign fn tails nv n e2 v cont
+      | R_anf.(Atom (Var (x, t'))) -> sel (Cmp.Eq, Var (x, t'), Bool true)
+      | R_anf.(Prim (Not a, _)) -> sel (Cmp.Eq, translate_atom a, Bool false)
+      | R_anf.(Prim (Eq (a1, a2), _)) ->
+          sel (Cmp.Eq, translate_atom a1, translate_atom a2)
+      | R_anf.(Prim (Lt (a1, a2), _)) ->
+          sel (Cmp.Lt, translate_atom a1, translate_atom a2)
+      | R_anf.(Prim (Le (a1, a2), _)) ->
+          sel (Cmp.Le, translate_atom a1, translate_atom a2)
+      | R_anf.(Prim (Gt (a1, a2), _)) ->
+          sel (Cmp.Gt, translate_atom a1, translate_atom a2)
+      | R_anf.(Prim (Ge (a1, a2), _)) ->
+          sel (Cmp.Ge, translate_atom a1, translate_atom a2)
+      | R_anf.(Prim (Vectorref _, t))
+       |R_anf.(Let (_, _, _, t))
+       |R_anf.(If (_, _, _, t))
+       |R_anf.(Apply (_, _, t))
+       |R_anf.(Begin (_, _, t)) ->
+          let x = fresh_var nv in
+          let cont = sel (Cmp.Eq, Var (x, t), Bool true) in
+          explicate_assign fn tails nv n econd x cont
+      | _ -> assert false )
   | R_anf.(Let (v, e1, e2, _)) ->
       let cont = explicate_tail fn tails nv n e2 in
       explicate_assign fn tails nv n e1 v cont

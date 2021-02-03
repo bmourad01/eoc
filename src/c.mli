@@ -50,6 +50,7 @@ and exp =
   | Call of atom * atom list * Type.t
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
+  | Select of cmp * atom * atom * Type.t
 
 and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
 

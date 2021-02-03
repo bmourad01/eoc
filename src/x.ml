@@ -171,6 +171,7 @@ and instr =
   | CMP of arg * arg
   | TEST of arg * arg
   | SETCC of Cc.t * arg
+  | CMOV of Cc.t * arg * arg
   | MOVZX of arg * arg
   | JCC of Cc.t * Label.t
 
@@ -213,6 +214,7 @@ let write_set instr =
      |AND (a, _)
      |OR (a, _)
      |SETCC (_, a)
+     |CMOV (_, a, _)
      |MOVZX (a, _) -> Args.singleton a
     | IDIV _ -> Args.of_list [Reg RAX; Reg RDX]
     | CALL _ | CALLi _ -> Set.add caller_save_set (Reg RSP)
@@ -251,6 +253,7 @@ let read_set instr =
      |NOT a
      |MOVZX (_, a)
      |INC a
+     |CMOV (_, _, a)
      |DEC a -> Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
@@ -416,6 +419,9 @@ and string_of_instr = function
       Printf.sprintf "test %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | SETCC (cc, a) ->
       Printf.sprintf "set%s %s" (Cc.to_string cc) (Arg.to_string a)
+  | CMOV (cc, a1, a2) ->
+      Printf.sprintf "cmov%s %s, %s" (Cc.to_string cc) (Arg.to_string a1)
+        (Arg.to_string a2)
   | MOVZX (a1, a2) ->
       Printf.sprintf "movzx %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | JCC (cc, l) -> Printf.sprintf "j%s %s" (Cc.to_string cc) l
@@ -866,6 +872,54 @@ and select_instructions_exp type_map a p =
   | C.(Allocate _) -> assert false
   (* global-value *)
   | C.Globalvalue (v, _) -> [MOV (a, Var v)]
+  (* select *)
+  | C.(Select ((cmp, al, ar), Var (v1, _), Var (v2, _), _)) -> (
+    match (cmp, al, ar) with
+    | Eq, Int i1, Int i2 ->
+        if Int64.(i1 = i2) then [MOV (a, Var v1)] else [MOV (a, Var v2)]
+    | Eq, Bool b1, Bool b2 ->
+        if Bool.equal b1 b2 then [MOV (a, Var v1)] else [MOV (a, Var v2)]
+    | Eq, Void, Void -> [MOV (a, Var v1)]
+    | Eq, Var (v1, _), Var (v2, _) when String.equal v1 v2 ->
+        [MOV (a, Var v1)]
+    | Lt, Int i1, Int i2 ->
+        if Int64.(i1 < i2) then [MOV (a, Var v1)] else [MOV (a, Var v2)]
+    | Le, Int i1, Int i2 ->
+        if Int64.(i1 <= i2) then [MOV (a, Var v1)] else [MOV (a, Var v2)]
+    | Gt, Int i1, Int i2 ->
+        if Int64.(i1 > i2) then [MOV (a, Var v1)] else [MOV (a, Var v2)]
+    | Ge, Int i1, Int i2 ->
+        if Int64.(i1 >= i2) then [MOV (a, Var v1)] else [MOV (a, Var v2)]
+    | _ ->
+        let cmp_inst, cc =
+          match (cmp, al, ar) with
+          | Eq, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.E)
+          | Eq, Int i, Var (v, _) | Eq, Var (v, _), Int i ->
+              (CMP (Var v, Imm i), Cc.E)
+          | Eq, Bool true, Var (v, _) | Eq, Var (v, _), Bool true ->
+              (TEST (Var v, Var v), Cc.NE)
+          | Eq, Bool false, Var (v, _) | Eq, Var (v, _), Bool false ->
+              (TEST (Var v, Var v), Cc.E)
+          | Eq, _, _ -> assert false
+          | Lt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.L)
+          | Lt, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.L)
+          | Lt, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.G)
+          | Lt, _, _ -> assert false
+          | Le, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.LE)
+          | Le, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.LE)
+          | Le, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.GE)
+          | Le, _, _ -> assert false
+          | Gt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.G)
+          | Gt, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.G)
+          | Gt, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.L)
+          | Gt, _, _ -> assert false
+          | Ge, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.GE)
+          | Ge, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.GE)
+          | Ge, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.LE)
+          | Ge, _, _ -> assert false
+        in
+        [MOV (a, Var v2); cmp_inst; CMOV (cc, a, Var v1)] )
+  | C.Select _ -> assert false
 
 let function_prologue is_main rootstack_spills stack_space w =
   let setup_frame =
@@ -1027,6 +1081,8 @@ and patch_instructions_instr = function
       [MOV (Reg RAX, d); IMUL (Reg RAX, a); MOV (d, Reg RAX)]
   | IMULi ((Deref _ as d), a, i) ->
       [MOV (Reg RAX, d); IMULi (Reg RAX, a, i); MOV (d, Reg RAX)]
+  | CMOV (cc, (Deref _ as d), a) ->
+      [MOV (Reg RAX, d); CMOV (cc, Reg RAX, a); MOV (d, Reg RAX)]
   | MOV (a, Imm 0L) -> [XOR (a, a)]
   | MOV (a1, a2) when Arg.equal a1 a2 -> []
   | MOV ((Deref _ as d1), (Deref _ as d2)) ->
@@ -1125,7 +1181,7 @@ and build_interference_block locals_types g = function
                    | _ -> default ()
                  in
                  match instr with
-                 | MOV (d, s) | MOVZX (d, s) ->
+                 | MOV (d, s) | MOVZX (d, s) | CMOV (_, d, s) ->
                      if Arg.(equal v d || equal v s) then g
                      else Interference_graph.add_edge g v d
                  | XOR (d, s) when Arg.(equal d s) ->
@@ -1264,7 +1320,8 @@ and allocate_registers_def = function
         List.fold blocks ~init ~f:(fun init (_, Block (_, _, instrs)) ->
             List.fold instrs ~init ~f:(fun bias instr ->
                 match instr with
-                | MOV (d, s) -> Interference_graph.add_edge bias d s
+                | MOV (d, s) | CMOV (_, d, s) ->
+                    Interference_graph.add_edge bias d s
                 | _ -> bias))
       in
       let colors = color_graph info.conflicts ~bias in
@@ -1358,6 +1415,7 @@ and allocate_registers_instr colors stack_locs vector_locs instr =
   | CMP (a1, a2) -> CMP (color a1, color a2)
   | TEST (a1, a2) -> TEST (color a1, color a2)
   | SETCC _ as s -> s
+  | CMOV (cc, a1, a2) -> CMOV (cc, color a1, color a2)
   | MOVZX (a1, a2) -> MOVZX (color a1, a2)
   | JCC _ as j -> j
 

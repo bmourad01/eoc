@@ -109,6 +109,7 @@ and instr =
   | CMP of arg * arg
   | TEST of arg * arg
   | SETCC of Cc.t * arg
+  | CMOV of Cc.t * arg * arg
   | MOVZX of arg * arg
   | JCC of Cc.t * Label.t
 
