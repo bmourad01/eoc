@@ -520,8 +520,7 @@ and explicate_tail fn tails nv n = function
         let cont = explicate_assign fn tails nv n e2 x2 cont in
         explicate_assign fn tails nv n e1 x1 cont
       in
-      let rec do_select econd cont =
-        match econd with
+      let rec do_select = function
         | R_anf.(Atom (Bool true)) ->
             explicate_assign fn tails nv n e1 v cont
         | R_anf.(Atom (Bool false)) ->
@@ -539,8 +538,8 @@ and explicate_tail fn tails nv n = function
             sel (Cmp.Gt, translate_atom a1, translate_atom a2)
         | R_anf.(Prim (Ge (a1, a2), _)) ->
             sel (Cmp.Ge, translate_atom a1, translate_atom a2)
-        | R_anf.(Let (x, e', e'', t)) ->
-            do_select e'' cont |> explicate_assign fn tails nv n e' x
+        | R_anf.(Let (x, e', e'', _)) ->
+            do_select e'' |> explicate_assign fn tails nv n e' x
         | R_anf.(Prim (Vectorref _, t))
          |R_anf.(If (_, _, _, t))
          |R_anf.(Apply (_, _, t))
@@ -550,7 +549,7 @@ and explicate_tail fn tails nv n = function
             explicate_assign fn tails nv n econd x cont
         | _ -> assert false
       in
-      do_select econd cont
+      do_select econd
   | R_anf.(Let (v, e1, e2, _)) ->
       let cont = explicate_tail fn tails nv n e2 in
       explicate_assign fn tails nv n e1 v cont
