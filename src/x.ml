@@ -509,6 +509,10 @@ and select_instructions_tail type_map tails t =
         let lt, lf = if not b then (lt, lf) else (lf, lt) in
         [TEST (Var v, Var v); JCC (Cc.E, lt); JMP lf]
     | _ -> assert false )
+  | C.If ((cmp, Void, _), lt, lf) | C.If ((cmp, _, Void), lt, lf) -> (
+    match cmp with
+    | Eq -> [JMP lt]
+    | _ -> assert false )
   | C.If ((cmp, Var (v1, _), Var (v2, _)), lt, lf) when String.equal v1 v2
     -> (
     match cmp with
@@ -1023,6 +1027,7 @@ and patch_instructions_instr = function
       [MOV (Reg RAX, d); IMUL (Reg RAX, a); MOV (d, Reg RAX)]
   | IMULi ((Deref _ as d), a, i) ->
       [MOV (Reg RAX, d); IMULi (Reg RAX, a, i); MOV (d, Reg RAX)]
+  | MOV (a, Imm 0L) -> [XOR (a, a)]
   | MOV (a1, a2) when Arg.equal a1 a2 -> []
   | MOV ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
