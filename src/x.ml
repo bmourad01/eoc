@@ -880,7 +880,7 @@ and select_instructions_exp type_map a p =
     | Eq, Bool b1, Bool b2 ->
         if Bool.equal b1 b2 then [MOV (a, Var v1)] else [MOV (a, Var v2)]
     | Eq, Void, Void -> [MOV (a, Var v1)]
-    | Eq, Var (v1, _), Var (v2, _) when String.equal v1 v2 ->
+    | Eq, Var (v1', _), Var (v2', _) when String.equal v1' v2' ->
         [MOV (a, Var v1)]
     | Lt, Int i1, Int i2 ->
         if Int64.(i1 < i2) then [MOV (a, Var v1)] else [MOV (a, Var v2)]

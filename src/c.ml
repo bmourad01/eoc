@@ -520,7 +520,6 @@ and explicate_tail fn tails nv n = function
         let cont = explicate_assign fn tails nv n e2 x2 cont in
         explicate_assign fn tails nv n e1 x1 cont
       in
-      Printf.eprintf "%s\n" (R_anf.string_of_exp econd);
       match econd with
       | R_anf.(Atom (Bool true)) -> explicate_assign fn tails nv n e1 v cont
       | R_anf.(Atom (Bool false)) -> explicate_assign fn tails nv n e2 v cont
