@@ -758,9 +758,10 @@ and explicate_pred fn tails nv n cnd thn els =
         explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
       in
       explicate_assign fn tails nv n a x t
-  | R_anf.Begin (es, e, t) ->
-      let t = explicate_pred fn tails nv n e thn els in
-      List.fold_right es ~init:t ~f:(explicate_effect fn tails nv n)
+  | R_anf.Begin (es, e, _) ->
+      List.fold_right es
+        ~init:(explicate_pred fn tails nv n e thn els)
+        ~f:(explicate_effect fn tails nv n)
   | _ -> assert false
 
 and do_assign fn tails nv n t x cont =
