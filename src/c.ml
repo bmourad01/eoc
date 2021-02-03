@@ -512,13 +512,23 @@ and explicate_tail fn tails nv n = function
     ->
       let cont = explicate_tail fn tails nv n ebody in
       let sel cmp =
-        let x1 = fresh_var nv in
-        let x2 = fresh_var nv in
+        let e1_var, x1 =
+          match e1 with
+          | Atom (Var (x, _)) -> (true, x)
+          | _ -> (false, fresh_var nv)
+        in
+        let e2_var, x2 =
+          match e2 with
+          | Atom (Var (x, _)) -> (true, x)
+          | _ -> (false, fresh_var nv)
+        in
         let cont =
           Seq (Assign (v, Select (cmp, Var (x1, t), Var (x2, t), t)), cont)
         in
-        let cont = explicate_assign fn tails nv n e2 x2 cont in
-        explicate_assign fn tails nv n e1 x1 cont
+        let cont =
+          if e1_var then cont else explicate_assign fn tails nv n e2 x2 cont
+        in
+        if e2_var then cont else explicate_assign fn tails nv n e1 x1 cont
       in
       let rec do_select = function
         | R_anf.(Atom (Bool true)) ->
@@ -540,10 +550,12 @@ and explicate_tail fn tails nv n = function
             sel (Cmp.Ge, translate_atom a1, translate_atom a2)
         | R_anf.(Let (x, e', e'', _)) ->
             do_select e'' |> explicate_assign fn tails nv n e' x
+        | R_anf.(Begin (es, e, _)) ->
+            List.fold_right es ~init:(do_select e) ~f:(fun e cont ->
+                explicate_effect fn tails nv n e cont)
         | R_anf.(Prim (Vectorref _, t))
          |R_anf.(If (_, _, _, t))
-         |R_anf.(Apply (_, _, t))
-         |R_anf.(Begin (_, _, t)) ->
+         |R_anf.(Apply (_, _, t)) ->
             let x = fresh_var nv in
             let cont = sel (Cmp.Eq, Var (x, t), Bool true) in
             explicate_assign fn tails nv n econd x cont
