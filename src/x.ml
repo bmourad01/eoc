@@ -1097,7 +1097,8 @@ and patch_instructions_instr = function
   | CMP ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); CMP (d1, Reg RAX)]
   | TEST ((Deref _ as d1), (Deref _ as d2)) ->
-      [MOV (Reg RAX, d2); TEST (d1, Reg RAX)]
+      if Arg.equal d1 d2 then [MOV (Reg RAX, d1); TEST (Reg RAX, Reg RAX)]
+      else [MOV (Reg RAX, d2); TEST (d1, Reg RAX)]
   | MOVZX ((Deref _ as d), a) -> [MOVZX (Reg RAX, a); MOV (d, Reg RAX)]
   | instr -> [instr]
 
