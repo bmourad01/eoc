@@ -551,8 +551,8 @@ and explicate_tail fn tails nv n = function
         | R_anf.(Let (x, e', e'', _)) ->
             do_select e'' |> explicate_assign fn tails nv n e' x
         | R_anf.(Begin (es, e, _)) ->
-            List.fold_right es ~init:(do_select e) ~f:(fun e cont ->
-                explicate_effect fn tails nv n e cont)
+            List.fold_right es ~init:(do_select e)
+              ~f:(explicate_effect fn tails nv n)
         | R_anf.(Prim (Vectorref _, t))
          |R_anf.(If (_, _, _, t))
          |R_anf.(Apply (_, _, t)) ->
@@ -580,9 +580,9 @@ and explicate_tail fn tails nv n = function
   | R_anf.Setbang (v, e) ->
       explicate_assign fn tails nv n e v (Return (Atom Void))
   | R_anf.Begin (es, e, _) ->
-      let e' = explicate_tail fn tails nv n e in
-      List.fold_right es ~init:e' ~f:(fun e cont ->
-          explicate_effect fn tails nv n e cont)
+      List.fold_right es
+        ~init:(explicate_tail fn tails nv n e)
+        ~f:(explicate_effect fn tails nv n)
   | R_anf.While (e1, e2) ->
       let loop = fresh_label fn n in
       let tt = explicate_effect fn tails nv n e2 (Goto loop) in
@@ -614,9 +614,9 @@ and explicate_effect fn tails nv n e cont =
   | R_anf.Funref _ -> cont
   | R_anf.Setbang (v, e) -> explicate_assign fn tails nv n e v cont
   | R_anf.Begin (es, e, _) ->
-      let e' = explicate_effect fn tails nv n e cont in
-      List.fold_right es ~init:e' ~f:(fun e cont ->
-          explicate_effect fn tails nv n e cont)
+      List.fold_right es
+        ~init:(explicate_effect fn tails nv n e cont)
+        ~f:(explicate_effect fn tails nv n)
   | R_anf.While (e1, e2) ->
       let l = fresh_label fn n in
       let loop = fresh_label fn n in
@@ -673,9 +673,9 @@ and explicate_assign fn tails nv n e x cont =
       let tf = explicate_assign fn tails nv n e3 x (Goto l) in
       explicate_pred fn tails nv n e1 tt tf
   | R_anf.(Begin (es, e, _)) ->
-      let e' = explicate_assign fn tails nv n e x cont in
-      List.fold_right es ~init:e' ~f:(fun e cont ->
-          explicate_effect fn tails nv n e cont)
+      List.fold_right es
+        ~init:(explicate_assign fn tails nv n e x cont)
+        ~f:(explicate_effect fn tails nv n)
   | R_anf.(While (e1, e2)) ->
       let l = fresh_label fn n in
       let loop = fresh_label fn n in
