@@ -695,7 +695,7 @@ and explicate_assignwhen ?(neg = false) fn tails nv n econd x e cont =
         if not neg then cont
         else Seq (Assign (x, Atom (translate_atom a)), cont)
     | _ -> assert false )
-  | R_anf.(Atom (Var (x, t'))) -> awhen (Cmp.Eq, Var (x, t'), Bool neg)
+  | R_anf.(Atom (Var (x, t'))) -> awhen (Cmp.Eq, Var (x, t'), Bool (not neg))
   | R_anf.(Prim (Not a, _)) -> awhen (Cmp.Eq, translate_atom a, Bool neg)
   | R_anf.(Prim (Eq (a1, a2), _)) ->
       if not neg then awhen (Cmp.Eq, translate_atom a1, translate_atom a2)
@@ -723,7 +723,7 @@ and explicate_assignwhen ?(neg = false) fn tails nv n econd x e cont =
    |R_anf.(If (_, _, _, t))
    |R_anf.(Apply (_, _, t)) ->
       let x = fresh_var nv in
-      awhen (Cmp.Eq, Var (x, t), Bool neg)
+      awhen (Cmp.Eq, Var (x, t), Bool (not neg))
       |> explicate_assign fn tails nv n econd x
   | _ -> assert false
 
