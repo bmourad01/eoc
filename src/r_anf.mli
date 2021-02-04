@@ -52,6 +52,7 @@ and prim =
   | Lxor of atom * atom
   | Lnot of atom
   | Eq of atom * atom
+  | Neq of atom * atom
   | Lt of atom * atom
   | Le of atom * atom
   | Gt of atom * atom

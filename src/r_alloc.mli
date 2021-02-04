@@ -56,6 +56,7 @@ and prim =
   | Lxor of exp * exp
   | Lnot of exp
   | Eq of exp * exp
+  | Neq of exp * exp
   | Lt of exp * exp
   | Le of exp * exp
   | Gt of exp * exp

@@ -390,12 +390,18 @@ and interp_prim ?(read = None) env defs = function
     | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
     | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
     | `Void, `Void -> `Bool true
+    | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2)
+    | `Function _, `Function _ -> `Bool (phys_equal a1 a2)
+    | `Def v1, `Def v2 -> `Bool (String.equal v1 v2)
     | _ -> assert false )
   | Neq (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Bool Int64.(i1 <> i2)
     | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2 |> not)
     | `Void, `Void -> `Bool false
+    | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2 |> not)
+    | `Function _, `Function _ -> `Bool (phys_equal a1 a2 |> not)
+    | `Def v1, `Def v2 -> `Bool (String.equal v1 v2 |> not)
     | _ -> assert false )
   | Lt (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
@@ -601,6 +607,8 @@ and explicate_select fn tails nv n econd e1 e2 t =
   | R_anf.(Prim (Not a, _)) -> sel (Cmp.Eq, translate_atom a, Bool false)
   | R_anf.(Prim (Eq (a1, a2), _)) ->
       sel (Cmp.Eq, translate_atom a1, translate_atom a2)
+  | R_anf.(Prim (Neq (a1, a2), _)) ->
+      sel (Cmp.Neq, translate_atom a1, translate_atom a2)
   | R_anf.(Prim (Lt (a1, a2), _)) ->
       sel (Cmp.Lt, translate_atom a1, translate_atom a2)
   | R_anf.(Prim (Le (a1, a2), _)) ->
@@ -700,6 +708,9 @@ and explicate_assignwhen ?(neg = false) fn tails nv n econd x e cont =
   | R_anf.(Prim (Eq (a1, a2), _)) ->
       if not neg then awhen (Cmp.Eq, translate_atom a1, translate_atom a2)
       else awhen (Cmp.Neq, translate_atom a1, translate_atom a2)
+  | R_anf.(Prim (Neq (a1, a2), _)) ->
+      if not neg then awhen (Cmp.Neq, translate_atom a1, translate_atom a2)
+      else awhen (Cmp.Eq, translate_atom a1, translate_atom a2)
   | R_anf.(Prim (Lt (a1, a2), _)) ->
       if not neg then awhen (Cmp.Lt, translate_atom a1, translate_atom a2)
       else awhen (Cmp.Ge, translate_atom a1, translate_atom a2)
@@ -749,6 +760,7 @@ and translate_prim p =
   | R_anf.Lxor (a1, a2) -> Lxor (tr a1, tr a2)
   | R_anf.Lnot a -> Lnot (tr a)
   | R_anf.Eq (a1, a2) -> Eq (tr a1, tr a2)
+  | R_anf.Neq (a1, a2) -> Eq (tr a1, tr a2)
   | R_anf.Lt (a1, a2) -> Lt (tr a1, tr a2)
   | R_anf.Le (a1, a2) -> Le (tr a1, tr a2)
   | R_anf.Gt (a1, a2) -> Gt (tr a1, tr a2)
@@ -809,6 +821,12 @@ and explicate_pred fn tails nv n cnd thn els =
       add_tail tails lt thn;
       add_tail tails lf els;
       If ((Cmp.Eq, tr a1, tr a2), lt, lf)
+  | R_anf.(Prim (Neq (a1, a2), _)) ->
+      let lt = fresh_label fn n in
+      let lf = fresh_label fn n in
+      add_tail tails lt thn;
+      add_tail tails lf els;
+      If ((Cmp.Neq, tr a1, tr a2), lt, lf)
   | R_anf.(Prim (Lt (a1, a2), _)) ->
       let lt = fresh_label fn n in
       let lf = fresh_label fn n in

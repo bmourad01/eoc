@@ -52,6 +52,7 @@ and prim =
   | Lxor of exp * exp
   | Lnot of exp
   | Eq of exp * exp
+  | Neq of exp * exp
   | Lt of exp * exp
   | Le of exp * exp
   | Gt of exp * exp
@@ -133,6 +134,8 @@ and string_of_prim = function
   | Lnot e -> Printf.sprintf "(lnot %s)" (string_of_exp e)
   | Eq (e1, e2) ->
       Printf.sprintf "(eq? %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Neq (e1, e2) ->
+      Printf.sprintf "(neq? %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Lt (e1, e2) ->
       Printf.sprintf "(< %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Le (e1, e2) ->
@@ -266,6 +269,8 @@ and expose_allocation_prim n = function
   | R_typed.Lnot e -> Lnot (expose_allocation_exp n e)
   | R_typed.Eq (e1, e2) ->
       Eq (expose_allocation_exp n e1, expose_allocation_exp n e2)
+  | R_typed.Neq (e1, e2) ->
+      Neq (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Lt (e1, e2) ->
       Lt (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Le (e1, e2) ->

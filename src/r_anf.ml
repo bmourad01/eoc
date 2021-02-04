@@ -43,6 +43,7 @@ and prim =
   | Lxor of atom * atom
   | Lnot of atom
   | Eq of atom * atom
+  | Neq of atom * atom
   | Lt of atom * atom
   | Le of atom * atom
   | Gt of atom * atom
@@ -125,6 +126,8 @@ and string_of_prim = function
   | Lnot a -> Printf.sprintf "(lnot %s)" (string_of_atom a)
   | Eq (a1, a2) ->
       Printf.sprintf "(eq? %s %s)" (string_of_atom a1) (string_of_atom a2)
+  | Neq (a1, a2) ->
+      Printf.sprintf "(neq? %s %s)" (string_of_atom a1) (string_of_atom a2)
   | Lt (a1, a2) ->
       Printf.sprintf "(< %s %s)" (string_of_atom a1) (string_of_atom a2)
   | Le (a1, a2) ->
@@ -245,6 +248,11 @@ and resolve_complex_atom m n = function
       let nv2, a2 = resolve_complex_atom m n e2 in
       let x = fresh_var n in
       (nv1 @ nv2 @ [(x, Prim (Eq (a1, a2), t))], Var (x, t))
+  | R_alloc.(Prim (Neq (e1, e2), t)) ->
+      let nv1, a1 = resolve_complex_atom m n e1 in
+      let nv2, a2 = resolve_complex_atom m n e2 in
+      let x = fresh_var n in
+      (nv1 @ nv2 @ [(x, Prim (Neq (a1, a2), t))], Var (x, t))
   | R_alloc.(Prim (Lt (e1, e2), t)) ->
       let nv1, a1 = resolve_complex_atom m n e1 in
       let nv2, a2 = resolve_complex_atom m n e2 in
@@ -420,6 +428,10 @@ and resolve_complex_exp m n = function
       let nv1, a1 = resolve_complex_atom m n e1 in
       let nv2, a2 = resolve_complex_atom m n e2 in
       unfold (nv1 @ nv2) (Prim (Eq (a1, a2), t))
+  | R_alloc.Prim (Neq (e1, e2), t) ->
+      let nv1, a1 = resolve_complex_atom m n e1 in
+      let nv2, a2 = resolve_complex_atom m n e2 in
+      unfold (nv1 @ nv2) (Prim (Neq (a1, a2), t))
   | R_alloc.Prim (Lt (e1, e2), t) ->
       let nv1, a1 = resolve_complex_atom m n e1 in
       let nv2, a2 = resolve_complex_atom m n e2 in

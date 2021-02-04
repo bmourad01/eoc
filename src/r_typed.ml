@@ -50,6 +50,7 @@ and prim =
   | Lxor of exp * exp
   | Lnot of exp
   | Eq of exp * exp
+  | Neq of exp * exp
   | Lt of exp * exp
   | Le of exp * exp
   | Gt of exp * exp
@@ -137,6 +138,7 @@ and free_vars_of_prim ?(bnd = String.Set.empty) = function
    |Lor (e1, e2)
    |Lxor (e1, e2)
    |Eq (e1, e2)
+   |Neq (e1, e2)
    |Lt (e1, e2)
    |Le (e1, e2)
    |Gt (e1, e2)
@@ -233,6 +235,8 @@ and string_of_prim = function
   | Lnot e -> Printf.sprintf "(lnot %s)" (string_of_exp e)
   | Eq (e1, e2) ->
       Printf.sprintf "(eq? %s %s)" (string_of_exp e1) (string_of_exp e2)
+  | Neq (e1, e2) ->
+      Printf.sprintf "(neq? %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Lt (e1, e2) ->
       Printf.sprintf "(< %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Le (e1, e2) ->
@@ -304,79 +308,31 @@ and assigned_and_free_prim p =
   let default () = (String.Set.empty, String.Set.empty) in
   match p with
   | Read -> default ()
-  | Print e -> assigned_and_free_exp e
-  | Minus e -> assigned_and_free_exp e
-  | Plus (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Subtract (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Mult (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Div (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Rem (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Land (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Lor (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Lxor (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Lnot e -> assigned_and_free_exp e
-  | Eq (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Lt (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Le (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Gt (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Ge (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Not e -> assigned_and_free_exp e
-  | And (e1, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
-  | Or (e1, e2) ->
+  | Print e | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
+      assigned_and_free_exp e
+  | Plus (e1, e2)
+   |Subtract (e1, e2)
+   |Mult (e1, e2)
+   |Div (e1, e2)
+   |Rem (e1, e2)
+   |Land (e1, e2)
+   |Lor (e1, e2)
+   |Lxor (e1, e2)
+   |Eq (e1, e2)
+   |Neq (e1, e2)
+   |Lt (e1, e2)
+   |Le (e1, e2)
+   |Gt (e1, e2)
+   |Ge (e1, e2)
+   |And (e1, e2)
+   |Or (e1, e2)
+   |Vectorset (e1, _, e2) ->
       let a1, f1 = assigned_and_free_exp e1 in
       let a2, f2 = assigned_and_free_exp e2 in
       (Set.union a1 a2, Set.union f1 f2)
   | Vector es ->
       let as', fs = List.map es ~f:assigned_and_free_exp |> List.unzip in
       (String.Set.union_list as', String.Set.union_list fs)
-  | Vectorlength e -> assigned_and_free_exp e
-  | Vectorref (e, _) -> assigned_and_free_exp e
-  | Vectorset (e1, _, e2) ->
-      let a1, f1 = assigned_and_free_exp e1 in
-      let a2, f2 = assigned_and_free_exp e2 in
-      (Set.union a1 a2, Set.union f1 f2)
 
 let rec opt = function
   | Program (info, defs) -> Program (info, List.map defs ~f:opt_def)
@@ -464,6 +420,12 @@ and opt_exp a env = function
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2)
     | Void, Void -> Bool true
     | e1, e2 -> Prim (Eq (e1, e2), t) )
+  | Prim (Neq (e1, e2), t) -> (
+    match (opt_exp a env e1, opt_exp a env e2) with
+    | Int i1, Int i2 -> Bool Int64.(i1 <> i2)
+    | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2 |> not)
+    | Void, Void -> Bool false
+    | e1, e2 -> Prim (Neq (e1, e2), t) )
   | Prim (Lt (e1, e2), t) -> (
     match (opt_exp a env e1, opt_exp a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 < i2)
@@ -1073,7 +1035,17 @@ and type_check_prim n env denv = function
           ^ " but expressions of type Integer were expected" ) )
   | R.Not e -> (
     match type_check_exp n env denv e with
-    | Type.Boolean, e' -> (Type.Boolean, Not e')
+    | Type.Boolean, e' ->
+        let p =
+          match e' with
+          | Prim (Eq (e1', e2'), _) -> Neq (e1', e2')
+          | Prim (Lt (e1', e2'), _) -> Ge (e1', e2')
+          | Prim (Le (e1', e2'), _) -> Gt (e1', e2')
+          | Prim (Gt (e1', e2'), _) -> Le (e1', e2')
+          | Prim (Ge (e1', e2'), _) -> Lt (e1', e2')
+          | e' -> Not e'
+        in
+        (Type.Boolean, p)
     | t, _ ->
         typeerr
           ( "R_typed.type_check_prim: minus exp " ^ R.string_of_exp e
@@ -1332,6 +1304,21 @@ and interp_prim ?(read = None) menv env defs = function
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
       | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
+      | `Void, `Void -> `Bool true
+      | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2)
+      | `Function _, `Function _ -> `Bool (phys_equal a1 a2)
+      | `Def v1, `Def v2 -> `Bool (String.equal v1 v2)
+      | _ -> assert false )
+  | Neq (e1, e2) -> (
+      let a1 = interp_exp menv env defs e1 ~read in
+      let a2 = interp_exp menv env defs e2 ~read in
+      match (a1, a2) with
+      | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
+      | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
+      | `Void, `Void -> `Bool false
+      | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2 |> not)
+      | `Function _, `Function _ -> `Bool (phys_equal a1 a2 |> not)
+      | `Def v1, `Def v2 -> `Bool (String.equal v1 v2 |> not)
       | _ -> assert false )
   | Lt (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
@@ -1451,6 +1438,7 @@ and uniquify_prim m n = function
   | Lxor (e1, e2) -> Lxor (uniquify_exp m n e1, uniquify_exp m n e2)
   | Lnot e -> Lnot (uniquify_exp m n e)
   | Eq (e1, e2) -> Eq (uniquify_exp m n e1, uniquify_exp m n e2)
+  | Neq (e1, e2) -> Neq (uniquify_exp m n e1, uniquify_exp m n e2)
   | Lt (e1, e2) -> Lt (uniquify_exp m n e1, uniquify_exp m n e2)
   | Le (e1, e2) -> Le (uniquify_exp m n e1, uniquify_exp m n e2)
   | Gt (e1, e2) -> Gt (uniquify_exp m n e1, uniquify_exp m n e2)
@@ -1507,6 +1495,7 @@ and escaped_defs_prim = function
   | Lxor (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
   | Lnot e -> escaped_defs_exp e
   | Eq (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
+  | Neq (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
   | Lt (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
   | Le (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
   | Gt (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
@@ -1623,6 +1612,9 @@ and recompute_types_prim defs env = function
   | Lnot e -> (Lnot (recompute_types_exp defs env e), Type.Integer)
   | Eq (e1, e2) ->
       ( Eq (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
+      , Type.Boolean )
+  | Neq (e1, e2) ->
+      ( Neq (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Boolean )
   | Lt (e1, e2) ->
       ( Lt (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
@@ -1775,6 +1767,8 @@ and convert_assignments_prim a f = function
   | Lnot e -> Lnot (convert_assignments_exp a f e)
   | Eq (e1, e2) ->
       Eq (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
+  | Neq (e1, e2) ->
+      Neq (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
   | Lt (e1, e2) ->
       Lt (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
   | Le (e1, e2) ->
@@ -1837,6 +1831,7 @@ and needs_closures_prim = function
   | Lxor (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
   | Lnot e -> needs_closures_exp e
   | Eq (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
+  | Neq (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
   | Lt (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
   | Le (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
   | Gt (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
@@ -2039,6 +2034,10 @@ and convert_to_closures_prim escaped env n = function
       let e1, new_defs1 = convert_to_closures_exp escaped env n e1 in
       let e2, new_defs2 = convert_to_closures_exp escaped env n e2 in
       (Eq (e1, e2), new_defs1 @ new_defs2)
+  | Neq (e1, e2) ->
+      let e1, new_defs1 = convert_to_closures_exp escaped env n e1 in
+      let e2, new_defs2 = convert_to_closures_exp escaped env n e2 in
+      (Neq (e1, e2), new_defs1 @ new_defs2)
   | Lt (e1, e2) ->
       let e1, new_defs1 = convert_to_closures_exp escaped env n e1 in
       let e2, new_defs2 = convert_to_closures_exp escaped env n e2 in
@@ -2217,6 +2216,8 @@ and limit_functions_prim defs = function
   | Lnot e -> Lnot (limit_functions_exp defs e)
   | Eq (e1, e2) ->
       Eq (limit_functions_exp defs e1, limit_functions_exp defs e2)
+  | Neq (e1, e2) ->
+      Neq (limit_functions_exp defs e1, limit_functions_exp defs e2)
   | Lt (e1, e2) ->
       Lt (limit_functions_exp defs e1, limit_functions_exp defs e2)
   | Le (e1, e2) ->
