@@ -568,7 +568,9 @@ and is_pure_prim a = function
    |Ge (e1, e2)
    |And (e1, e2)
    |Or (e1, e2) -> is_pure_exp a e1 && is_pure_exp a e2
-  | Vector es -> List.for_all es ~f:(is_pure_exp a)
+  (* we would lose physical equality if we
+   * propagated vectors that were "pure" *)
+  | Vector _ -> false
   | Vectorset _ -> false
 
 and fresh_var n =
