@@ -542,7 +542,7 @@ and is_pure_exp a = function
    * especially when recursion is involved, so just
    * conservatively say no for now. *)
   | Funref _ -> false
-  | Lambda (_, _, e) -> is_pure_exp a e
+  | Lambda _ -> false
   | Setbang _ -> false
   | Begin _ -> false
   | While _ -> false
