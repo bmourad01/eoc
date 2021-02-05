@@ -356,56 +356,77 @@ and opt_exp n a env = function
   | Prim (Plus (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 + i2)
+    (* identity *)
+    | e, Int 0L | Int 0L, e -> e
+    (* (+ i1 (- i2)) = (- i1 i2) *)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 - i2)
-    | (Int _ as i), Prim (Minus e, _) -> Prim (Subtract (i, e), t)
+    (* (+ e1 (- e2)) = (- e1 e2) *)
+    | e1, Prim (Minus e2, _) -> Prim (Subtract (e1, e2), t)
+    (* (+ i1 (+ i2 e2)) = (+ (+ i1 i2) e2)
+     * (+ i1 (+ e2 i2)) = (+ (+ i1 i2) e2)
+     * (+ (+ e2 i1) i2) = (+ (+ i1 i2) e2)
+     * (+ (+ i1 e2) i2) = (+ (+ i1 i2) e2) *)
     | Int i1, Prim (Plus (Int i2, e2), _)
-     |Prim (Plus (Int i1, e2), _), Int i2 ->
+     |Int i1, Prim (Plus (e2, Int i2), _)
+     |Prim (Plus (Int i1, e2), _), Int i2
+     |Prim (Plus (e2, Int i1), _), Int i2 ->
         opt_exp n a env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 + i2)
     | e1, e2 -> Prim (Plus (e1, e2), t) )
   | Prim (Subtract (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 - i2)
+    (* identity *)
+    | e, Int 0L -> e
+    (* negate *)
+    | Int 0L, e -> Prim (Minus e, t)
+    (* (- i1 (- i2)) = (+ i1 i2) *)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 + i2)
-    | (Int _ as i), Prim (Minus e, _) -> Prim (Plus (i, e), t)
+    (* (- e1 (- e2)) = (+ e1 e2) *)
+    | e1, Prim (Minus e2, _) -> Prim (Plus (e1, e2), t)
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 - i2)
     | e1, e2 -> Prim (Subtract (e1, e2), t) )
   | Prim (Mult (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
-    | Int 0L, _ -> Int 0L
-    | _, Int 0L -> Int 0L
-    | Int 1L, e -> e
-    | e, Int 1L -> e
+    (* multiply by 0 *)
+    | (Int 0L as i), _ | _, (Int 0L as i) -> i
+    (* multiply by 1 (identity) *)
+    | Int 1L, e | e, Int 1L -> e
     | Int i1, Int i2 -> Int Int64.(i1 * i2)
     | e1, e2 -> Prim (Mult (e1, e2), t) )
   | Prim (Div (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
-    | Int 0L, _ -> Int 0L
+    (* dividend is 0 *)
+    | (Int 0L as i), _ -> i
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
+    (* divisor is 1 *)
     | e, Int 1L -> e
     | Int i1, Int i2 -> Int Int64.(i1 / i2)
     | e1, e2 -> Prim (Div (e1, e2), t) )
   | Prim (Rem (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
+    (* dividend is 0 *)
     | (Int 0L as i), _ -> i
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
+    (* divisor is 1 *)
     | _, Int 1L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(rem i1 i2)
     | e1, e2 -> Prim (Rem (e1, e2), t) )
   | Prim (Land (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
-    | Int 0L, _ -> Int 0L
-    | _, Int 0L -> Int 0L
-    | Int 0xFFFF_FFFF_FFFF_FFFFL, e -> e
-    | e, Int 0xFFFF_FFFF_FFFF_FFFFL -> e
+    (* all bits are cleared *)
+    | (Int 0L as i), _ | _, (Int 0L as i) -> i
+    (* identity *)
+    | Int 0xFFFF_FFFF_FFFF_FFFFL, e | e, Int 0xFFFF_FFFF_FFFF_FFFFL -> e
     | Int i1, Int i2 -> Int Int64.(i1 land i2)
     | e1, e2 -> Prim (Land (e1, e2), t) )
   | Prim (Lor (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
-    | Int 0L, e -> e
-    | e, Int 0L -> e
-    | (Int 0xFFFF_FFFF_FFFF_FFFFL as i), e -> i
-    | e, (Int 0xFFFF_FFFF_FFFF_FFFFL as i) -> i
+    (* identity *)
+    | Int 0L, e | e, Int 0L -> e
+    (* all bits are set *)
+    | (Int 0xFFFF_FFFF_FFFF_FFFFL as i), e
+     |e, (Int 0xFFFF_FFFF_FFFF_FFFFL as i) -> i
     | Int i1, Int i2 -> Int Int64.(i1 lor i2)
     | e1, e2 -> Prim (Lor (e1, e2), t) )
   | Prim (Lxor (e1, e2), t) -> (
@@ -421,12 +442,18 @@ and opt_exp n a env = function
     | Int i1, Int i2 -> Bool Int64.(i1 = i2)
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2)
     | Void, Void -> Bool true
+    (* these vars are in the same scope so they must be equal *)
+    | Var (v1, _), Var (v2, _) when equal_var v1 v2 -> Bool true
+    | Funref (v1, _), Funref (v2, _) when equal_var v1 v2 -> Bool true
     | e1, e2 -> Prim (Eq (e1, e2), t) )
   | Prim (Neq (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 <> i2)
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2 |> not)
     | Void, Void -> Bool false
+    (* these vars are in the same scope so they must be equal *)
+    | Var (v1, _), Var (v2, _) when equal_var v1 v2 |> not -> Bool true
+    | Funref (v1, _), Funref (v2, _) when equal_var v1 v2 |> not -> Bool true
     | e1, e2 -> Prim (Neq (e1, e2), t) )
   | Prim (Lt (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
@@ -470,7 +497,7 @@ and opt_exp n a env = function
     | e -> Prim (Vectorlength e, t) )
   | Prim (Vectorref (e, i), t) -> (
     match opt_exp n a env e with
-    | Prim (Vector es, _) -> opt_exp n a env (List.nth_exn es i)
+    | Prim (Vector es, _) -> List.nth_exn es i
     | e -> Prim (Vectorref (e, i), t) )
   | Prim (Vectorset (e1, i, e2), t) ->
       Prim (Vectorset (opt_exp n a env e1, i, opt_exp n a env e2), t)
@@ -486,7 +513,8 @@ and opt_exp n a env = function
     | Some e -> e )
   | Let (v, e1, e2, t) ->
       let e1 = opt_exp n a env e1 in
-      if is_pure_exp a e1 then opt_exp n a (Map.set env v e1) e2
+      if (not (Set.mem a v)) && is_pure_exp a e1 then
+        opt_exp n a (Map.set env v e1) e2
       else Let (v, e1, opt_exp n a (Map.remove env v) e2, t)
   | If (e1, e2, e3, t) -> (
     match opt_exp n a env e1 with
@@ -526,10 +554,8 @@ and opt_exp n a env = function
   | Lambda (args, t, e) -> Lambda (args, t, opt_exp n a env e)
   | Setbang (v, e) -> Setbang (v, opt_exp n a env e)
   | Begin (es, e, t) ->
-      let es = List.map es ~f:(opt_exp n a env) in
-      let e = opt_exp n a env e in
-      Begin (es, e, t)
-  | While _ as w -> w
+      Begin (List.map es ~f:(opt_exp n a env), opt_exp n a env e, t)
+  | While (e1, e2) -> While (opt_exp n a env e1, opt_exp n a env e2)
 
 and is_pure_exp a = function
   | Int _ | Bool _ | Void -> true
@@ -1340,7 +1366,7 @@ and interp_prim ?(read = None) menv env defs = function
       | `Void, `Void -> `Bool true
       | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2)
       | `Function _, `Function _ -> `Bool (phys_equal a1 a2)
-      | `Def v1, `Def v2 -> `Bool (String.equal v1 v2)
+      | `Def v1, `Def v2 -> `Bool (equal_var v1 v2)
       | _ -> assert false )
   | Neq (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
@@ -1351,7 +1377,7 @@ and interp_prim ?(read = None) menv env defs = function
       | `Void, `Void -> `Bool false
       | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2 |> not)
       | `Function _, `Function _ -> `Bool (phys_equal a1 a2 |> not)
-      | `Def v1, `Def v2 -> `Bool (String.equal v1 v2 |> not)
+      | `Def v1, `Def v2 -> `Bool (equal_var v1 v2 |> not)
       | _ -> assert false )
   | Lt (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
@@ -1588,8 +1614,7 @@ and recompute_types_exp defs env = function
       (* now that the top-level function has the correct type,
        * we need to update the type in the reference to it. *)
       let (Def (_, args, t, _)) =
-        List.find_exn defs ~f:(function Def (v', _, _, _) ->
-            String.equal v v')
+        List.find_exn defs ~f:(function Def (v', _, _, _) -> equal_var v v')
       in
       let t = Type.Arrow (List.map args ~f:snd, t) in
       Funref (v, t)
