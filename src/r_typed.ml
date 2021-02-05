@@ -395,16 +395,16 @@ and opt_exp n a env = function
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
-    | Int 0xFFFFFFFFFFFFFFFFL, e -> e
-    | e, Int 0xFFFFFFFFFFFFFFFFL -> e
+    | Int 0xFFFF_FFFF_FFFF_FFFFL, e -> e
+    | e, Int 0xFFFF_FFFF_FFFF_FFFFL -> e
     | Int i1, Int i2 -> Int Int64.(i1 land i2)
     | e1, e2 -> Prim (Land (e1, e2), t) )
   | Prim (Lor (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int 0L, e -> e
     | e, Int 0L -> e
-    | (Int 0xFFFFFFFFFFFFFFFFL as i), e -> i
-    | e, (Int 0xFFFFFFFFFFFFFFFFL as i) -> i
+    | (Int 0xFFFF_FFFF_FFFF_FFFFL as i), e -> i
+    | e, (Int 0xFFFF_FFFF_FFFF_FFFFL as i) -> i
     | Int i1, Int i2 -> Int Int64.(i1 lor i2)
     | e1, e2 -> Prim (Lor (e1, e2), t) )
   | Prim (Lxor (e1, e2), t) -> (
