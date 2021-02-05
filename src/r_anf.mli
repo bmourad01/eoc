@@ -1,6 +1,6 @@
 open Core_kernel
 
-type var = R_alloc.var
+type var = R.var
 
 module Type : module type of R_alloc.Type
 

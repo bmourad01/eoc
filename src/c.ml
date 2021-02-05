@@ -4,7 +4,7 @@ module Type_map = R_anf.Type_map
 
 type type_env = R_anf.type_env
 
-type var = R.var
+type var = R.var [@@deriving equal, compare, sexp]
 
 type info = {main: Label.t}
 
@@ -384,7 +384,7 @@ and interp_prim ?(read = None) env defs = function
     | `Void, `Void -> `Bool true
     | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2)
     | `Function _, `Function _ -> `Bool (phys_equal a1 a2)
-    | `Def v1, `Def v2 -> `Bool (String.equal v1 v2)
+    | `Def v1, `Def v2 -> `Bool (equal_var v1 v2)
     | _ -> assert false )
   | Neq (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
@@ -393,7 +393,7 @@ and interp_prim ?(read = None) env defs = function
     | `Void, `Void -> `Bool false
     | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2 |> not)
     | `Function _, `Function _ -> `Bool (phys_equal a1 a2 |> not)
-    | `Def v1, `Def v2 -> `Bool (String.equal v1 v2 |> not)
+    | `Def v1, `Def v2 -> `Bool (equal_var v1 v2 |> not)
     | _ -> assert false )
   | Lt (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with

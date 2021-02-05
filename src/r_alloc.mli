@@ -1,6 +1,6 @@
 open Core_kernel
 
-type var = R_typed.var
+type var = R.var
 
 module Type : module type of R_typed.Type
 

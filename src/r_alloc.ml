@@ -1,6 +1,6 @@
 open Core_kernel
 
-type var = R_typed.var
+type var = R.var
 
 module Type = R_typed.Type
 module Type_map = R_typed.Type_map
