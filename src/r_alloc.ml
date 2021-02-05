@@ -203,17 +203,14 @@ and expose_allocation_exp n = function
       While (expose_allocation_exp n e1, expose_allocation_exp n e2)
 
 and expand_alloc n t ts es =
-  let v = newvar n in
+  let v_vec = newvar n in
   let len = List.length es in
   let vs = nvars n len in
   let es = List.map es ~f:(expose_allocation_exp n) in
-  let expand base t =
-    List.fold_right ~init:base ~f:(fun (v, e) acc -> Let (v, e, acc, t))
-  in
   let alloc =
     (* generate the sequence that initializes the contents of the vector *)
-    let base =
-      let vec = Var (v, t) in
+    let initialize =
+      let vec = Var (v_vec, t) in
       let sets =
         List.zip_exn vs ts
         |> List.foldi ~init:[] ~f:(fun i acc (v, t) ->
@@ -240,11 +237,12 @@ and expand_alloc n t ts es =
             , Void
             , Collect bytes
             , Type.Void ) ]
-      , Let (v, Allocate (len, t), base, t)
+      , Let (v_vec, Allocate (len, t), initialize, t)
       , t )
   in
   (* evaluate the arguments before allocating *)
-  List.zip_exn vs es |> expand alloc t
+  List.zip_exn vs es
+  |> List.fold_right ~init:alloc ~f:(fun (v, e) acc -> Let (v, e, acc, t))
 
 and expose_allocation_prim n = function
   | R_typed.Read -> Read
