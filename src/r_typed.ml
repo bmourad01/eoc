@@ -340,36 +340,37 @@ let rec opt = function
 and opt_def = function
   | Def (v, args, t, e) ->
       let a, _ = assigned_and_free_exp e in
-      Def (v, args, t, opt_exp a empty_var_env e)
+      Def (v, args, t, opt_exp (ref 0) a empty_var_env e)
 
-and opt_exp a env = function
+and opt_exp n a env = function
   | Int _ as i -> i
   | Bool _ as b -> b
   | Void -> Void
   | Prim (Read, _) as r -> r
-  | Prim (Print e, t) -> Prim (Print (opt_exp a env e), t)
+  | Prim (Print e, t) -> Prim (Print (opt_exp n a env e), t)
   | Prim (Minus e, t) -> (
-    match opt_exp a env e with
+    match opt_exp n a env e with
     | Int i -> Int Int64.(-i)
     | Prim (Minus e, _) -> e
     | e -> Prim (Minus e, t) )
   | Prim (Plus (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 + i2)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 - i2)
     | Int i1, Prim (Plus (Int i2, e2), _)
      |Prim (Plus (Int i1, e2), _), Int i2 ->
-        opt_exp a env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
+        opt_exp n a env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 + i2)
     | e1, e2 -> Prim (Plus (e1, e2), t) )
   | Prim (Subtract (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 - i2)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 + i2)
+    | (Int _ as i), Prim (Minus e, _) -> Prim (Subtract (i, e), t)
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 - i2)
     | e1, e2 -> Prim (Subtract (e1, e2), t) )
   | Prim (Mult (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
     | Int 1L, e -> e
@@ -377,21 +378,21 @@ and opt_exp a env = function
     | Int i1, Int i2 -> Int Int64.(i1 * i2)
     | e1, e2 -> Prim (Mult (e1, e2), t) )
   | Prim (Div (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
     | e, Int 1L -> e
     | Int i1, Int i2 -> Int Int64.(i1 / i2)
     | e1, e2 -> Prim (Div (e1, e2), t) )
   | Prim (Rem (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | (Int 0L as i), _ -> i
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
     | _, Int 1L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(rem i1 i2)
     | e1, e2 -> Prim (Rem (e1, e2), t) )
   | Prim (Land (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int 0L, _ -> Int 0L
     | _, Int 0L -> Int 0L
     | Int 0xFFFFFFFFFFFFFFFFL, e -> e
@@ -399,7 +400,7 @@ and opt_exp a env = function
     | Int i1, Int i2 -> Int Int64.(i1 land i2)
     | e1, e2 -> Prim (Land (e1, e2), t) )
   | Prim (Lor (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int 0L, e -> e
     | e, Int 0L -> e
     | (Int 0xFFFFFFFFFFFFFFFFL as i), e -> i
@@ -407,66 +408,71 @@ and opt_exp a env = function
     | Int i1, Int i2 -> Int Int64.(i1 lor i2)
     | e1, e2 -> Prim (Lor (e1, e2), t) )
   | Prim (Lxor (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 lxor i2)
     | e1, e2 -> Prim (Lxor (e1, e2), t) )
   | Prim (Lnot e, t) -> (
-    match opt_exp a env e with
+    match opt_exp n a env e with
     | Int i -> Int Int64.(lnot i)
     | e -> Prim (Lnot e, t) )
   | Prim (Eq (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 = i2)
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2)
     | Void, Void -> Bool true
     | e1, e2 -> Prim (Eq (e1, e2), t) )
   | Prim (Neq (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 <> i2)
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2 |> not)
     | Void, Void -> Bool false
     | e1, e2 -> Prim (Neq (e1, e2), t) )
   | Prim (Lt (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 < i2)
     | e1, e2 -> Prim (Lt (e1, e2), t) )
   | Prim (Le (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 <= i2)
     | e1, e2 -> Prim (Le (e1, e2), t) )
   | Prim (Gt (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 > i2)
     | e1, e2 -> Prim (Gt (e1, e2), t) )
   | Prim (Ge (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 >= i2)
     | e1, e2 -> Prim (Ge (e1, e2), t) )
   | Prim (Not e, t) -> (
-    match opt_exp a env e with
+    match opt_exp n a env e with
+    | Prim (Eq (e1', e2'), _) -> Prim (Neq (e1', e2'), t)
+    | Prim (Lt (e1', e2'), _) -> Prim (Ge (e1', e2'), t)
+    | Prim (Le (e1', e2'), _) -> Prim (Gt (e1', e2'), t)
+    | Prim (Gt (e1', e2'), _) -> Prim (Le (e1', e2'), t)
+    | Prim (Ge (e1', e2'), _) -> Prim (Lt (e1', e2'), t)
     | Bool b -> Bool (not b)
     | e -> Prim (Not e, t) )
   | Prim (And (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
+    match (opt_exp n a env e1, opt_exp n a env e2) with
     | Bool false, _ -> Bool false
-    | Bool true, e -> opt_exp a env e
+    | Bool true, e -> opt_exp n a env e
     | e1, e2 -> Prim (And (e1, e2), t) )
   | Prim (Or (e1, e2), t) -> (
-    match (opt_exp a env e1, opt_exp a env e2) with
-    | Bool false, e -> opt_exp a env e
+    match (opt_exp n a env e1, opt_exp n a env e2) with
+    | Bool false, e -> opt_exp n a env e
     | Bool true, _ -> Bool true
     | e1, e2 -> Prim (Or (e1, e2), t) )
-  | Prim (Vector es, t) -> Prim (Vector (List.map es ~f:(opt_exp a env)), t)
+  | Prim (Vector es, t) -> Prim (Vector (List.map es ~f:(opt_exp n a env)), t)
   | Prim (Vectorlength e, t) -> (
-    match opt_exp a env e with
+    match opt_exp n a env e with
     | Prim (Vector es, _) -> Int Int64.(List.length es |> of_int)
     | e -> Prim (Vectorlength e, t) )
   | Prim (Vectorref (e, i), t) -> (
-    match opt_exp a env e with
-    | Prim (Vector es, _) -> opt_exp a env (List.nth_exn es i)
+    match opt_exp n a env e with
+    | Prim (Vector es, _) -> opt_exp n a env (List.nth_exn es i)
     | e -> Prim (Vectorref (e, i), t) )
   | Prim (Vectorset (e1, i, e2), t) ->
-      Prim (Vectorset (opt_exp a env e1, i, opt_exp a env e2), t)
+      Prim (Vectorset (opt_exp n a env e1, i, opt_exp n a env e2), t)
   (* this var is mutated, so don't try to do any optimization *)
   | Var (v, _) as var when Set.mem a v -> var
   | Var (v, _) as var -> (
@@ -478,30 +484,96 @@ and opt_exp a env = function
     | None -> var
     | Some e -> e )
   | Let (v, e1, e2, t) ->
-      let e1 = opt_exp a env e1 in
-      (* only try to propagate constant values *)
-      let env =
-        match e1 with
-        | Int _ | Bool _ | Void -> Map.set env v e1
-        | _ -> env
-      in
-      let e2 = opt_exp a env e2 in
-      Let (v, e1, e2, t)
+      let e1 = opt_exp n a env e1 in
+      if is_pure_exp a e1 then opt_exp n a (Map.set env v e1) e2
+      else Let (v, e1, opt_exp n a (Map.remove env v) e2, t)
   | If (e1, e2, e3, t) -> (
-    match opt_exp a env e1 with
-    | Bool true -> opt_exp a env e2
-    | Bool false -> opt_exp a env e3
-    | e1 -> If (e1, e2, e3, t) )
-  | Apply (e, es, t) ->
-      Apply (opt_exp a env e, List.map es ~f:(opt_exp a env), t)
+    match opt_exp n a env e1 with
+    | Bool true -> opt_exp n a env e2
+    | Bool false -> opt_exp n a env e3
+    | e1 -> If (e1, opt_exp n a env e2, opt_exp n a env e3, t) )
+  | Apply (e, es, t) -> (
+      let es' = List.map es ~f:(opt_exp n a env) in
+      match opt_exp n a env e with
+      (* inline lambdas that are called directly *)
+      | Lambda (args, tret, body) ->
+          let ts = List.map es' ~f:typeof_exp in
+          let xs = List.map args ~f:fst in
+          (* we need to bind the arguments to temporaries
+           * in the case that they mention vars which appear
+           * in the arguments of the lambda.
+           *
+           * we could actually check if such name conflicts exist,
+           * but for now we're lazy and assume it's happening. *)
+          let vs', vars =
+            List.map ts ~f:(fun t ->
+                let v = fresh_var n in
+                (Var (v, t), v))
+            |> List.unzip
+          in
+          let exp =
+            List.zip_exn xs vs'
+            |> List.fold_right ~init:body ~f:(fun (x, e) acc ->
+                   Let (x, e, acc, tret))
+          in
+          List.zip_exn vars es'
+          |> List.fold_right ~init:exp ~f:(fun (x, e) acc ->
+                 Let (x, e, acc, tret))
+          |> opt_exp n a env
+      | e' -> Apply (e', es', t) )
   | Funref _ as f -> f
-  | Lambda (args, t, e) -> Lambda (args, t, opt_exp a env e)
-  | Setbang (v, e) -> Setbang (v, opt_exp a env e)
+  | Lambda (args, t, e) -> Lambda (args, t, opt_exp n a env e)
+  | Setbang (v, e) -> Setbang (v, opt_exp n a env e)
   | Begin (es, e, t) ->
-      let es = List.map es ~f:(opt_exp a env) in
-      let e = opt_exp a env e in
+      let es = List.map es ~f:(opt_exp n a env) in
+      let e = opt_exp n a env e in
       Begin (es, e, t)
   | While _ as w -> w
+
+and is_pure_exp a = function
+  | Int _ | Bool _ | Void -> true
+  | Prim (p, _) -> is_pure_prim a p
+  | Var (v, _) -> Set.mem a v |> not
+  | Let (_, e1, e2, _) -> is_pure_exp a e1 && is_pure_exp a e2
+  | If (e1, e2, e3, _) ->
+      is_pure_exp a e1 && is_pure_exp a e2 && is_pure_exp a e3
+  | Apply (e, es, _) -> is_pure_exp a e && List.for_all es ~f:(is_pure_exp a)
+  (* it can be tricky to know if a function is pure,
+   * especially when recursion is involved, so just
+   * conservatively say no for now. *)
+  | Funref _ -> false
+  | Lambda (_, _, e) -> is_pure_exp a e
+  | Setbang _ -> false
+  | Begin _ -> false
+  | While _ -> false
+
+and is_pure_prim a = function
+  | Read -> false
+  | Print _ -> false
+  | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
+      is_pure_exp a e
+  | Plus (e1, e2)
+   |Subtract (e1, e2)
+   |Mult (e1, e2)
+   |Div (e1, e2)
+   |Rem (e1, e2)
+   |Land (e1, e2)
+   |Lor (e1, e2)
+   |Lxor (e1, e2)
+   |Eq (e1, e2)
+   |Neq (e1, e2)
+   |Lt (e1, e2)
+   |Le (e1, e2)
+   |Gt (e1, e2)
+   |Ge (e1, e2)
+   |And (e1, e2)
+   |Or (e1, e2) -> is_pure_exp a e1 && is_pure_exp a e2
+  | Vector es -> List.for_all es ~f:(is_pure_exp a)
+  | Vectorset _ -> false
+
+and fresh_var n =
+  let v = Printf.sprintf "_t%d" !n in
+  incr n; v
 
 exception Type_error of string
 
@@ -522,7 +594,7 @@ let fix_def_name ?(d = true) =
 let fix_def_name' denv name =
   let name' = fix_def_name name ~d:false in
   let rec loop i name =
-    let name' = name ^ Int.to_string i in
+    let name' = name ^ "_" ^ Int.to_string i in
     if Map.mem denv name' then loop (i + 1) name else fix_def_name name'
   in
   def_prefix ^ loop 0 name'
@@ -539,16 +611,14 @@ let rec type_check = function
         |> String.Map.of_alist_exn
       in
       let defs = List.map defs ~f:(type_check_def denv) in
-      let n = ref 0 in
-      let typ, exp = type_check_exp n empty_var_env denv exp in
+      let typ, exp = type_check_exp empty_var_env denv exp in
       let main_def = Def (main, [], typ, exp) in
       Program ((), defs @ [main_def])
 
 and type_check_def denv = function
   | R.Def (v, args, t, e) -> (
-      let n = ref 0 in
       let env = String.Map.of_alist_exn args in
-      match type_check_exp n env denv e with
+      match type_check_exp env denv e with
       | t', e' when Type.equal t t' -> Def (fix_def_name' denv v, args, t, e')
       | t', _ ->
           typeerr
@@ -556,12 +626,12 @@ and type_check_def denv = function
             ^ R.string_of_exp e ^ " has type " ^ Type.to_string t'
             ^ " was declared to have type " ^ Type.to_string t ) )
 
-and type_check_exp n env denv = function
+and type_check_exp env denv = function
   | R.Int i -> (Type.Integer, Int i)
   | R.Bool b -> (Type.Boolean, Bool b)
   | R.Void -> (Type.Void, Void)
   | R.(Prim (Procedurearity e)) -> (
-    match type_check_exp n env denv e with
+    match type_check_exp env denv e with
     | Type.Arrow (args, _), _ ->
         (Type.Integer, Int (List.length args |> Int64.of_int))
     | t, _ ->
@@ -569,7 +639,7 @@ and type_check_exp n env denv = function
           ( "R_typed.type_check_exp: procedure-arity of " ^ R.string_of_exp e
           ^ " has type " ^ Type.to_string t ^ "; it is not a function" ) )
   | R.Prim p ->
-      let t, p = type_check_prim n env denv p in
+      let t, p = type_check_prim env denv p in
       (t, Prim (p, t))
   | R.Var v -> (
     match Map.find env v with
@@ -580,14 +650,14 @@ and type_check_exp n env denv = function
       | None -> typeerr ("R_typed.type_check_exp: var " ^ v ^ " is not bound")
       ) )
   | R.Let (v, e1, e2) ->
-      let t1, e1 = type_check_exp n env denv e1 in
-      let t2, e2 = type_check_exp n (Map.set env v t1) denv e2 in
+      let t1, e1 = type_check_exp env denv e1 in
+      let t2, e2 = type_check_exp (Map.set env v t1) denv e2 in
       (t2, Let (v, e1, e2, t2))
   | R.If (e1, e2, e3) -> (
-    match type_check_exp n env denv e1 with
+    match type_check_exp env denv e1 with
     | Type.Boolean, e1' ->
-        let t1, e2' = type_check_exp n env denv e2 in
-        let t2, e3' = type_check_exp n env denv e3 in
+        let t1, e2' = type_check_exp env denv e2 in
+        let t2, e3' = type_check_exp env denv e3 in
         if Type.equal t1 t2 then (t1, If (e1', e2', e3', t1))
         else
           typeerr
@@ -600,10 +670,8 @@ and type_check_exp n env denv = function
           ^ " is of type " ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
   | R.Apply (e, es) -> (
-      let t, e' = type_check_exp n env denv e in
-      let ts, es' =
-        List.map es ~f:(type_check_exp n env denv) |> List.unzip
-      in
+      let t, e' = type_check_exp env denv e in
+      let ts, es' = List.map es ~f:(type_check_exp env denv) |> List.unzip in
       match t with
       | Type.Arrow (targs, tret) -> (
         match List.zip ts targs with
@@ -622,32 +690,7 @@ and type_check_exp n env denv = function
                     ^ " has type " ^ Type.to_string t2
                     ^ " but an expression of type " ^ Type.to_string t1
                     ^ " was expected" ));
-            let exp =
-              (* we can avoid creating a closure when we
-               * encounter a lambda that is applied directly *)
-              match e' with
-              | Lambda (args, tret, body) ->
-                  let xs = List.map args ~f:fst in
-                  (* we need to bind the arguments to temporaries
-                   * in the case that they mention vars which appear
-                   * in the arguments of the lambda. *)
-                  let vs', vars =
-                    List.map ts ~f:(fun t ->
-                        let v = fresh_var n in
-                        (Var (v, t), v))
-                    |> List.unzip
-                  in
-                  let m = List.zip_exn xs vs' in
-                  let exp =
-                    List.fold_right m ~init:body ~f:(fun (x, e) acc ->
-                        Let (x, e, acc, tret))
-                  in
-                  let m = List.zip_exn vars es' in
-                  List.fold_right m ~init:exp ~f:(fun (x, e) acc ->
-                      Let (x, e, acc, tret))
-              | _ -> Apply (e', es', tret)
-            in
-            (tret, exp) )
+            (tret, Apply (e', es', tret)) )
       | _ ->
           typeerr
             ( "R_typed.type_check_exp: apply of " ^ R.string_of_exp e
@@ -657,7 +700,7 @@ and type_check_exp n env denv = function
       let env =
         List.fold args ~init:env ~f:(fun env (x, t) -> Map.set env x t)
       in
-      match type_check_exp n env denv e with
+      match type_check_exp env denv e with
       | t', e' when Type.equal t t' ->
           (Type.Arrow (List.map args ~f:snd, t), Lambda (args, t, e'))
       | t', _ ->
@@ -670,7 +713,7 @@ and type_check_exp n env denv = function
     | None ->
         typeerr ("R_typed.type_check_exp: set! var " ^ v ^ " is not bound")
     | Some t -> (
-      match type_check_exp n env denv e with
+      match type_check_exp env denv e with
       | t', e' when Type.equal t t' -> (Type.Void, Setbang (v, e'))
       | t', _ ->
           typeerr
@@ -680,7 +723,7 @@ and type_check_exp n env denv = function
             ^ " was expected" ) ) )
   | R.Begin (es, e) ->
       let ts', es' =
-        List.map es ~f:(type_check_exp n env denv) |> List.unzip
+        List.map es ~f:(type_check_exp env denv) |> List.unzip
       in
       List.(
         iter (zip_exn ts' es) ~f:(fun (t, e) ->
@@ -691,13 +734,13 @@ and type_check_exp n env denv = function
                   ( "R_typed.type_check_exp: begin expression "
                   ^ R.string_of_exp e ^ " has type " ^ Type.to_string t
                   ^ " but an expression of type Void was expected" )));
-      let t', e' = type_check_exp n env denv e in
+      let t', e' = type_check_exp env denv e in
       (t', Begin (es', e', t'))
   | R.When (e, es) -> (
-    match type_check_exp n env denv e with
+    match type_check_exp env denv e with
     | Type.Boolean, e' ->
         let ts', es' =
-          List.map es ~f:(type_check_exp n env denv) |> List.unzip
+          List.map es ~f:(type_check_exp env denv) |> List.unzip
         in
         List.(
           iter (zip_exn ts' es) ~f:(fun (t, e) ->
@@ -721,10 +764,10 @@ and type_check_exp n env denv = function
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
   | R.Unless (e, es) -> (
-    match type_check_exp n env denv e with
+    match type_check_exp env denv e with
     | Type.Boolean, e' ->
         let ts', es' =
-          List.map es ~f:(type_check_exp n env denv) |> List.unzip
+          List.map es ~f:(type_check_exp env denv) |> List.unzip
         in
         List.(
           iter (zip_exn ts' es) ~f:(fun (t, e) ->
@@ -748,9 +791,9 @@ and type_check_exp n env denv = function
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
   | R.While (e1, e2) -> (
-    match type_check_exp n env denv e1 with
+    match type_check_exp env denv e1 with
     | Type.Boolean, e1' -> (
-      match type_check_exp n env denv e2 with
+      match type_check_exp env denv e2 with
       | Type.Void, e2' -> (Type.Void, While (e1', e2'))
       | t, _ ->
           typeerr
@@ -763,13 +806,13 @@ and type_check_exp n env denv = function
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
 
-and type_check_prim n env denv = function
+and type_check_prim env denv = function
   | R.Read -> (Type.Integer, Read)
   | R.Print e ->
-      let _, e' = type_check_exp n env denv e in
+      let _, e' = type_check_exp env denv e in
       (Type.Void, Print e')
   | R.Minus e -> (
-    match type_check_exp n env denv e with
+    match type_check_exp env denv e with
     | Type.Integer, e' -> (Type.Integer, Minus e')
     | t, _ ->
         typeerr
@@ -777,7 +820,7 @@ and type_check_prim n env denv = function
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" ) )
   | R.Plus (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Plus (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -797,7 +840,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Subtract (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Subtract (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -817,7 +860,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Mult (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Mult (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -837,7 +880,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Div (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Div (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -857,7 +900,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Rem (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Rem (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -877,7 +920,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Land (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Land (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -897,7 +940,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Lor (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Lor (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -917,7 +960,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Lxor (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Lxor (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -937,7 +980,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Lnot e -> (
-    match type_check_exp n env denv e with
+    match type_check_exp env denv e with
     | Type.Integer, e' -> (Type.Integer, Lnot e')
     | t, _ ->
         typeerr
@@ -945,8 +988,8 @@ and type_check_prim n env denv = function
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" ) )
   | R.Eq (e1, e2) ->
-      let t1, e1' = type_check_exp n env denv e1 in
-      let t2, e2' = type_check_exp n env denv e2 in
+      let t1, e1' = type_check_exp env denv e1 in
+      let t2, e2' = type_check_exp env denv e2 in
       if Type.equal t1 t2 then (Type.Boolean, Eq (e1', e2'))
       else
         typeerr
@@ -954,7 +997,7 @@ and type_check_prim n env denv = function
           ^ Type.to_string t1 ^ ") and " ^ R.string_of_exp e2 ^ " ("
           ^ Type.to_string t2 ^ ") are not the same type" )
   | R.Lt (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Boolean, Lt (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -974,7 +1017,7 @@ and type_check_prim n env denv = function
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Le (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Boolean, Le (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -994,7 +1037,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Gt (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Boolean, Gt (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -1014,7 +1057,7 @@ and type_check_prim n env denv = function
           ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Ge (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Boolean, Ge (e1', e2'))
     | (t, _), (Type.Integer, _) ->
@@ -1034,25 +1077,15 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Integer were expected" ) )
   | R.Not e -> (
-    match type_check_exp n env denv e with
-    | Type.Boolean, e' ->
-        let p =
-          match e' with
-          | Prim (Eq (e1', e2'), _) -> Neq (e1', e2')
-          | Prim (Lt (e1', e2'), _) -> Ge (e1', e2')
-          | Prim (Le (e1', e2'), _) -> Gt (e1', e2')
-          | Prim (Gt (e1', e2'), _) -> Le (e1', e2')
-          | Prim (Ge (e1', e2'), _) -> Lt (e1', e2')
-          | e' -> Not e'
-        in
-        (Type.Boolean, p)
+    match type_check_exp env denv e with
+    | Type.Boolean, e' -> (Type.Boolean, Not e')
     | t, _ ->
         typeerr
           ( "R_typed.type_check_prim: minus exp " ^ R.string_of_exp e
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Boolean was expected" ) )
   | R.And (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Boolean, e1'), (Type.Boolean, e2') ->
         (Type.Boolean, And (e1', e2'))
     | (t, _), (Type.Boolean, _) ->
@@ -1072,7 +1105,7 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Boolean were expected" ) )
   | R.Or (e1, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Boolean, e1'), (Type.Boolean, e2') ->
         (Type.Boolean, Or (e1', e2'))
     | (t, _), (Type.Boolean, _) ->
@@ -1092,12 +1125,10 @@ and type_check_prim n env denv = function
           ^ " and " ^ Type.to_string t2
           ^ " but expressions of type Boolean were expected" ) )
   | R.Vector es ->
-      let ts, es' =
-        List.map es ~f:(type_check_exp n env denv) |> List.unzip
-      in
+      let ts, es' = List.map es ~f:(type_check_exp env denv) |> List.unzip in
       (Type.Vector ts, Vector es')
   | R.Vectorlength e -> (
-    match type_check_exp n env denv e with
+    match type_check_exp env denv e with
     | Type.Vector _, e' -> (Type.Integer, Vectorlength e')
     | t, _ ->
         typeerr
@@ -1105,7 +1136,7 @@ and type_check_prim n env denv = function
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Vector was expected" ) )
   | R.Vectorref (e, i) -> (
-    match type_check_exp n env denv e with
+    match type_check_exp env denv e with
     | Type.Vector ts, e' -> (
       match List.nth ts i with
       | Some t -> (t, Vectorref (e', i))
@@ -1119,7 +1150,7 @@ and type_check_prim n env denv = function
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Vector was expected" ) )
   | R.Vectorset (e1, i, e2) -> (
-    match (type_check_exp n env denv e1, type_check_exp n env denv e2) with
+    match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Vector ts, e1'), (t2, e2') -> (
       match List.nth ts i with
       | None ->
@@ -1142,10 +1173,6 @@ and type_check_prim n env denv = function
           ^ " but an expression of type Vector was expected" ) )
   (* this is handled above since it returns an expression *)
   | R.Procedurearity _ -> assert false
-
-and fresh_var n =
-  let v = Printf.sprintf "_t%d" !n in
-  incr n; v
 
 let read_int () =
   Out_channel.(flush stdout);
