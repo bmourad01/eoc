@@ -569,7 +569,10 @@ and is_pure_prim a = function
    |And (e1, e2)
    |Or (e1, e2) -> is_pure_exp a e1 && is_pure_exp a e2
   (* we would lose physical equality if we
-   * propagated vectors that were "pure" *)
+   * propagated vectors that were "pure",
+   * since now we would be duplicating them
+   * on the heap instead of maintaining
+   * aliases (as the programmer may have intended) *)
   | Vector _ -> false
   | Vectorset _ -> false
 
