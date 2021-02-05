@@ -214,10 +214,11 @@ let string_of_answer = R_typed.string_of_answer
 
 let rec interp ?(read = None) = function
   | Program (info, defs) -> (
-      let (Def (_, _, _, info', tails)) =
-        List.find_exn defs ~f:(function Def (v, _, _, _, _) ->
-            Label.equal v info.main)
+      let defs =
+        List.map defs ~f:(fun (Def (v, _, _, _, _) as d) -> (v, d))
+        |> Hashtbl.of_alist_exn (module String)
       in
+      let (Def (_, _, _, info', tails)) = Hashtbl.find_exn defs info.main in
       let tails = Label.Map.of_alist_exn tails in
       match Map.find tails info'.main with
       | None -> failwith "C.interp: no main label defined"
@@ -242,10 +243,7 @@ and interp_tail ?(read = None) env defs tails = function
   | Tailcall (a, as', _) -> (
     match interp_atom env defs a ~read with
     | `Def v -> (
-        let (Def (_, args, _, info', tails)) =
-          List.find_exn defs ~f:(function Def (v', _, _, _, _) ->
-              Label.equal v v')
-        in
+        let (Def (_, args, _, info', tails)) = Hashtbl.find_exn defs v in
         let as' = List.map as' ~f:(interp_atom env defs ~read) in
         let env =
           List.zip_exn (List.map args ~f:fst) as'
@@ -267,10 +265,7 @@ and interp_stmt ?(read = None) env defs = function
   | Callstmt (a, as') -> (
     match interp_atom env defs a ~read with
     | `Def v ->
-        let (Def (_, args, _, info', tails)) =
-          List.find_exn defs ~f:(function Def (v', _, _, _, _) ->
-              Label.equal v v')
-        in
+        let (Def (_, args, _, info', tails)) = Hashtbl.find_exn defs v in
         let as' = List.map as' ~f:(interp_atom env defs ~read) in
         let env =
           List.zip_exn (List.map args ~f:fst) as'
@@ -308,10 +303,7 @@ and interp_exp ?(read = None) env defs = function
   | Call (a, as', _) -> (
     match interp_atom env defs a ~read with
     | `Def v -> (
-        let (Def (_, args, _, info', tails)) =
-          List.find_exn defs ~f:(function Def (v', _, _, _, _) ->
-              Label.equal v v')
-        in
+        let (Def (_, args, _, info', tails)) = Hashtbl.find_exn defs v in
         let as' = List.map as' ~f:(interp_atom env defs ~read) in
         let env =
           List.zip_exn (List.map args ~f:fst) as'

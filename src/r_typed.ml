@@ -156,10 +156,6 @@ and free_vars_of_prim ?(bnd = String.Set.empty) = function
         fold (tl_exn ms) ~init:(hd_exn ms) ~f:(fun acc m ->
             Map.merge_skewed acc m ~combine:(fun ~key v _ -> v)))
 
-let main_def = function
-  | Program (_, defs) ->
-      List.find_exn defs ~f:(function Def (v, _, _, _) -> Label.equal v main)
-
 let rec to_string = function
   | Program (_, defs) ->
       List.map defs ~f:string_of_def |> String.concat ~sep:"\n\n"
@@ -1235,9 +1231,13 @@ let rec string_of_answer ?(nested = false) = function
   | `Function _ -> "#<function>"
 
 let rec interp ?(read = None) = function
-  | Program (_, defs) as p ->
-      let (Def (_, _, _, e)) = main_def p in
+  | Program (_, defs) ->
+      let defs =
+        List.map defs ~f:(fun (Def (v, _, _, _) as d) -> (v, d))
+        |> Hashtbl.of_alist_exn (module String)
+      in
       let menv = Hashtbl.create (module String) in
+      let (Def (_, _, _, e)) = Hashtbl.find_exn defs main in
       interp_exp menv empty_var_env defs e ~read
 
 and interp_exp ?(read = None) menv env defs = function
@@ -1263,10 +1263,7 @@ and interp_exp ?(read = None) menv env defs = function
   | Apply (e, es, _) -> (
     match interp_exp menv env defs e ~read with
     | `Def v ->
-        let (Def (_, args, _, e')) =
-          List.find_exn defs ~f:(function Def (v', _, _, _) ->
-              Label.equal v v')
-        in
+        let (Def (_, args, _, e')) = Hashtbl.find_exn defs v in
         let args = List.map args ~f:fst in
         let es = List.map es ~f:(interp_exp menv env defs ~read) in
         let env = List.zip_exn args es |> String.Map.of_alist_exn in
@@ -1575,6 +1572,10 @@ and escaped_defs_prim = function
  * for tracking heap-allocated objects. *)
 let rec recompute_types_def defs = function
   | Def (v, args, t, e) ->
+      let defs =
+        List.map defs ~f:(fun (Def (v, _, _, e) as d) -> (v, d))
+        |> Hashtbl.of_alist_exn (module String)
+      in
       let e = recompute_types_exp defs (String.Map.of_alist_exn args) e in
       Def (v, args, typeof_exp e, e)
 
@@ -1614,9 +1615,7 @@ and recompute_types_exp defs env = function
   | Funref (v, t) ->
       (* now that the top-level function has the correct type,
        * we need to update the type in the reference to it. *)
-      let (Def (_, args, t, _)) =
-        List.find_exn defs ~f:(function Def (v', _, _, _) -> equal_var v v')
-      in
+      let (Def (_, args, t, _)) = Hashtbl.find_exn defs v in
       let t = Type.Arrow (List.map args ~f:snd, t) in
       Funref (v, t)
   | Lambda (args, _, e) ->
@@ -2147,7 +2146,11 @@ and newclo n =
 let rec limit_functions = function
   | Program (info, defs) ->
       let defs = List.map defs ~f:limit_functions_def in
-      let defs = List.map defs ~f:(limit_functions_def_exp defs) in
+      let defs' =
+        List.map defs ~f:(fun (Def (v, _, _, _) as d) -> (v, d))
+        |> Hashtbl.of_alist_exn (module String)
+      in
+      let defs = List.map defs ~f:(limit_functions_def_exp defs') in
       Program (info, defs)
 
 and limit_functions_def = function
@@ -2236,10 +2239,7 @@ and limit_functions_exp defs = function
         in
         Apply (e, args1 @ [Prim (Vector args2, final_arg_t)], t)
   | Funref (v, t) ->
-      let (Def (_, args, t', _)) =
-        List.find_exn defs ~f:(function Def (v', _, _, _) ->
-            Label.equal v v')
-      in
+      let (Def (_, args, t', _)) = Hashtbl.find_exn defs v in
       Funref (v, Type.Arrow (List.map args ~f:snd, t'))
   (* convert_to_closures should have erased all lambdas *)
   | Lambda _ -> assert false
