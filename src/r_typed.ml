@@ -599,7 +599,8 @@ and is_pure_prim a = function
    * propagated vectors that were "pure",
    * since now we would be duplicating them
    * on the heap instead of maintaining
-   * aliases (as the programmer may have intended) *)
+   * aliases (as the programmer may have intended)
+   * also, vectors are mutable, so this is a non-starter. *)
   | Vector _ -> false
   | Vectorset _ -> false
 
