@@ -357,6 +357,7 @@ and opt_exp n a env = function
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 + i2)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 - i2)
+    | (Int _ as i), Prim (Minus e, _) -> Prim (Subtract (i, e), t)
     | Int i1, Prim (Plus (Int i2, e2), _)
      |Prim (Plus (Int i1, e2), _), Int i2 ->
         opt_exp n a env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
@@ -366,7 +367,7 @@ and opt_exp n a env = function
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 - i2)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 + i2)
-    | (Int _ as i), Prim (Minus e, _) -> Prim (Subtract (i, e), t)
+    | (Int _ as i), Prim (Minus e, _) -> Prim (Plus (i, e), t)
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 - i2)
     | e1, e2 -> Prim (Subtract (e1, e2), t) )
   | Prim (Mult (e1, e2), t) -> (
