@@ -509,7 +509,15 @@ and opt_exp n a env = function
     | Some e -> e )
   | Let (v, e1, e2, t) ->
       let e1 = opt_exp n a env e1 in
-      if (not (Set.mem a v)) && is_pure_exp a e1 then
+      (* while it may be tempting to just propagate all
+       * pure expressions, it will probably lead to
+       * code where common subexpressions need to
+       * be eliminated to gain a performance advantage
+       * (in other words, we just duplicated a bunch of code),
+       * which would just negate the propagation in
+       * the first place. so we should only propagate
+       * constants and aliases of pure variables. *)
+      if (not (Set.mem a v)) && is_simple_exp a e1 then
         opt_exp n a (Map.set env v e1) e2
       else Let (v, e1, opt_exp n a (Map.remove env v) e2, t)
   | If (e1, e2, e3, t) -> (
@@ -553,6 +561,12 @@ and opt_exp n a env = function
       Begin (List.map es ~f:(opt_exp n a env), opt_exp n a env e, t)
   | While (e1, e2) -> While (opt_exp n a env e1, opt_exp n a env e2)
 
+and is_simple_exp a = function
+  | Int _ | Bool _ | Void -> true
+  | Var (v, _) -> Set.mem a v |> not
+  | _ -> false
+
+(* this is unused right now, but may be useful in the future *)
 and is_pure_exp a = function
   | Int _ | Bool _ | Void -> true
   | Prim (p, _) -> is_pure_prim a p
