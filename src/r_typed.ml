@@ -84,17 +84,17 @@ let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
   | Void -> empty_var_env
   | Prim (p, _) -> free_vars_of_prim p ~bnd
   | Var (v, t) ->
-      if Set.mem bnd v then empty_var_env else String.Map.singleton v t
+      if Set.mem bnd v then empty_var_env else String.Map.singleton v (t, 1)
   | Let (x, e1, e2, _) ->
       let m1 = free_vars_of_exp e1 ~bnd in
       let m2 = free_vars_of_exp e2 ~bnd:(Set.add bnd x) in
-      Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
+      Map.merge_skewed m1 m2 ~combine
   | If (e1, e2, e3, _) ->
       let m1 = free_vars_of_exp e1 ~bnd in
       let m2 = free_vars_of_exp e2 ~bnd in
       let m3 = free_vars_of_exp e3 ~bnd in
       List.fold [m2; m3] ~init:m1 ~f:(fun acc m ->
-          Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
+          Map.merge_skewed acc m ~combine)
   | Apply (e, es, _) ->
       let m = free_vars_of_exp e ~bnd in
       let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
@@ -109,20 +109,20 @@ let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
   | Setbang (v, e) ->
       let m1 =
         if Set.mem bnd v then empty_var_env
-        else String.Map.singleton v (typeof_exp e)
+        else String.Map.singleton v (typeof_exp e, 1)
       in
       let m2 = free_vars_of_exp e ~bnd in
-      Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
+      Map.merge_skewed m1 m2 ~combine
   | Begin ([], e, _) -> free_vars_of_exp e ~bnd
   | Begin (es, e, _) ->
       let m = free_vars_of_exp e ~bnd in
       let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
       List.fold (m :: List.tl_exn ms) ~init:(List.hd_exn ms) ~f:(fun acc m ->
-          Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
+          Map.merge_skewed acc m ~combine)
   | While (e1, e2) ->
       let m1 = free_vars_of_exp e1 ~bnd in
       let m2 = free_vars_of_exp e2 ~bnd in
-      Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
+      Map.merge_skewed m1 m2 ~combine
 
 and free_vars_of_prim ?(bnd = String.Set.empty) = function
   | Read -> empty_var_env
@@ -148,13 +148,15 @@ and free_vars_of_prim ?(bnd = String.Set.empty) = function
    |Vectorset (e1, _, e2) ->
       let m1 = free_vars_of_exp e1 ~bnd in
       let m2 = free_vars_of_exp e2 ~bnd in
-      Map.merge_skewed m1 m2 ~combine:(fun ~key v _ -> v)
+      Map.merge_skewed m1 m2 ~combine
   | Vector [] -> empty_var_env
   | Vector es ->
       let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
       List.(
         fold (tl_exn ms) ~init:(hd_exn ms) ~f:(fun acc m ->
-            Map.merge_skewed acc m ~combine:(fun ~key v _ -> v)))
+            Map.merge_skewed acc m ~combine))
+
+and combine ~key:_ (t, n1) (_, n2) = (t, n1 + n2)
 
 let rec to_string = function
   | Program (_, defs) ->
@@ -509,17 +511,25 @@ and opt_exp n a env = function
     | Some e -> e )
   | Let (v, e1, e2, t) ->
       let e1 = opt_exp n a env e1 in
-      (* while it may be tempting to just propagate all
-       * pure expressions, it will probably lead to
-       * code where common subexpressions need to
-       * be eliminated to gain a performance advantage
-       * (in other words, we just duplicated a bunch of code),
-       * which would just negate the propagation in
-       * the first place. so we should only propagate
-       * constants and aliases of pure variables. *)
-      if (not (Set.mem a v)) && is_simple_exp a e1 then
-        opt_exp n a (Map.set env v e1) e2
-      else Let (v, e1, opt_exp n a (Map.remove env v) e2, t)
+      let default () = Let (v, e1, opt_exp n a (Map.remove env v) e2, t) in
+      let prop () = opt_exp n a (Map.set env v e1) e2 in
+      if not (Set.mem a v) then
+        let fvs = free_vars_of_exp e2 in
+        let is_pure = is_pure_exp a e1 in
+        if (not (Map.mem fvs v)) && is_pure then
+          (* if e1 is pure and v is not in the free
+           * variables of e2, then just discard it *)
+          opt_exp n a (Map.remove env v) e2
+        else if is_simple_exp a e1 then
+          (* simple constants or aliases can be propagated *)
+          prop ()
+        else if is_pure then
+          (* more complex expressions can be propagated if
+           * they only appear once in the free variables of e2 *)
+          let _, n = Map.find_exn fvs v in
+          if n > 1 then default () else prop ()
+        else default ()
+      else default ()
   | If (e1, e2, e3, t) -> (
     match opt_exp n a env e1 with
     | Bool true -> opt_exp n a env e2
@@ -2020,7 +2030,7 @@ and convert_to_closures_exp escaped env n = function
         free_vars_of_exp e ~bnd |> Map.to_alist
       in
       let d = newclo n in
-      let ct = Type.Vector (List.map free_vars ~f:snd) in
+      let ct = Type.Vector (List.map free_vars ~f:(fun (_, (t, _)) -> t)) in
       let clo_arg = ("_c", ct) in
       let e, new_defs =
         let env =
@@ -2032,7 +2042,7 @@ and convert_to_closures_exp escaped env n = function
       let new_body, _ =
         List.fold_right free_vars
           ~init:(e, List.length free_vars - 1)
-          ~f:(fun (x, t) (e, i) ->
+          ~f:(fun (x, (t, _)) (e, i) ->
             (Let (x, Prim (Vectorref (Var ("_c", ct), i), t), e, et), i - 1))
       in
       let ft = Type.Arrow (List.map args ~f:snd, t) in
@@ -2041,7 +2051,8 @@ and convert_to_closures_exp escaped env n = function
           ( Vector
               [ Funref (d, ft)
               ; Prim
-                  ( Vector (List.map free_vars ~f:(fun (x, t) -> Var (x, t)))
+                  ( Vector
+                      (List.map free_vars ~f:(fun (x, (t, _)) -> Var (x, t)))
                   , ct ) ]
           , Type.Vector [ft; ct] )
       , new_defs )
