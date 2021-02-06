@@ -450,8 +450,8 @@ and opt_exp n a env = function
     | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2 |> not)
     | Void, Void -> Bool false
     (* these vars are in the same scope so they must be equal *)
-    | Var (v1, _), Var (v2, _) when equal_var v1 v2 |> not -> Bool true
-    | Funref (v1, _), Funref (v2, _) when equal_var v1 v2 |> not -> Bool true
+    | Var (v1, _), Var (v2, _) when equal_var v1 v2 -> Bool false
+    | Funref (v1, _), Funref (v2, _) when equal_var v1 v2 -> Bool false
     | e1, e2 -> Prim (Neq (e1, e2), t) )
   | Prim (Lt (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
