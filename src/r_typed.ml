@@ -584,8 +584,10 @@ and is_pure_exp a = function
   | If (e1, e2, e3, _) ->
       is_pure_exp a e1 && is_pure_exp a e2 && is_pure_exp a e3
   | Apply (e, es, _) -> is_pure_exp a e && List.for_all es ~f:(is_pure_exp a)
-  | Funref _ -> false
-  | Lambda _ -> false
+  | Funref _ ->
+      (* TODO *)
+      false
+  | Lambda (_, _, e) -> is_pure_exp a e
   | Setbang _ -> false
   | Begin _ -> false
   | While _ -> false
@@ -611,7 +613,7 @@ and is_pure_prim a = function
    |Ge (e1, e2)
    |And (e1, e2)
    |Or (e1, e2) -> is_pure_exp a e1 && is_pure_exp a e2
-  | Vector _ -> false
+  | Vector es -> List.for_all es ~f:(is_pure_exp a)
   | Vectorset _ -> false
 
 and fresh_var n =
