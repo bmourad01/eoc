@@ -471,11 +471,11 @@ and opt_exp n a env = function
     | e1, e2 -> Prim (Ge (e1, e2), t) )
   | Prim (Not e, t) -> (
     match opt_exp n a env e with
-    | Prim (Eq (e1', e2'), _) -> Prim (Neq (e1', e2'), t)
-    | Prim (Lt (e1', e2'), _) -> Prim (Ge (e1', e2'), t)
-    | Prim (Le (e1', e2'), _) -> Prim (Gt (e1', e2'), t)
-    | Prim (Gt (e1', e2'), _) -> Prim (Le (e1', e2'), t)
-    | Prim (Ge (e1', e2'), _) -> Prim (Lt (e1', e2'), t)
+    | Prim (Eq (e1, e2), _) -> Prim (Neq (e1, e2), t)
+    | Prim (Lt (e1, e2), _) -> Prim (Ge (e1, e2), t)
+    | Prim (Le (e1, e2), _) -> Prim (Gt (e1, e2), t)
+    | Prim (Gt (e1, e2), _) -> Prim (Le (e1, e2), t)
+    | Prim (Ge (e1, e2), _) -> Prim (Lt (e1, e2), t)
     | Bool b -> Bool (not b)
     | e -> Prim (Not e, t) )
   | Prim (And (e1, e2), t) -> (
