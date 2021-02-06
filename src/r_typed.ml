@@ -696,6 +696,29 @@ and type_check_exp env denv = function
       let t1, e1 = type_check_exp env denv e1 in
       let t2, e2 = type_check_exp (Map.set env v t1) denv e2 in
       (t2, Let (v, e1, e2, t2))
+  | R.Letm (bnd, e) ->
+      let ts, es =
+        List.map bnd ~f:snd
+        |> List.map ~f:(type_check_exp env denv)
+        |> List.unzip
+      in
+      let xs = List.map bnd ~f:fst in
+      let env =
+        List.(
+          zip_exn xs ts
+          |> fold ~init:env ~f:(fun env (x, t) ->
+                 match Map.add env x t with
+                 | `Ok env -> env
+                 | `Duplicate ->
+                     typeerr
+                       ( "R_typed.type_check_exp: let variable " ^ x
+                       ^ " shadows an existing binding" )))
+      in
+      let t, e = type_check_exp env denv e in
+      ( t
+      , List.(
+          fold_right (zip_exn xs es) ~init:e ~f:(fun (x, e) acc ->
+              Let (x, e, acc, t))) )
   | R.If (e1, e2, e3) -> (
     match type_check_exp env denv e1 with
     | Type.Boolean, e1' ->

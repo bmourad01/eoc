@@ -101,6 +101,8 @@ atom_exp:
 let_exp:
   | LPAREN LET LPAREN let_arg RPAREN body = exp RPAREN
     { Let (fst $4, snd $4, body) }
+  | LPAREN LET LPAREN let_arg nonempty_list(let_arg) RPAREN body = exp RPAREN
+    { Letm ($4 :: $5, body) }
   | LPAREN LET STAR LPAREN args = nonempty_list(let_arg) RPAREN body = exp RPAREN
     {
       let open Core_kernel in

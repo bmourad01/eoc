@@ -32,6 +32,7 @@ and exp =
   | Prim of prim
   | Var of var
   | Let of var * exp * exp
+  | Letm of (var * exp) list * exp
   | If of exp * exp * exp
   | Apply of exp * exp list
   | Lambda of (var * Type.t) list * Type.t * exp

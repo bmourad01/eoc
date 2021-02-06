@@ -46,6 +46,7 @@ and exp =
   | Prim of prim
   | Var of var
   | Let of var * exp * exp
+  | Letm of (var * exp) list * exp
   | If of exp * exp * exp
   | Apply of exp * exp list
   | Lambda of (var * Type.t) list * Type.t * exp
@@ -111,6 +112,12 @@ and string_of_exp = function
   | Let (v, e1, e2) ->
       Printf.sprintf "(let ([%s %s]) %s)" v (string_of_exp e1)
         (string_of_exp e2)
+  | Letm (bnd, e) ->
+      Printf.sprintf "(let (%s) %s)"
+        ( List.map bnd ~f:(fun (x, e) ->
+              Printf.sprintf "[%s %s]" x (string_of_exp e))
+        |> String.concat ~sep:" " )
+        (string_of_exp e)
   | If (e1, e2, e3) ->
       Printf.sprintf "(if %s %s %s)" (string_of_exp e1) (string_of_exp e2)
         (string_of_exp e3)
