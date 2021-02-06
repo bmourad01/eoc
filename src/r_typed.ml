@@ -524,8 +524,8 @@ and opt_exp n a env = function
           (* simple constants or aliases can be propagated *)
           prop ()
         else if is_pure then
-          (* more complex expressions can be propagated if
-           * they only appear once in the free variables of e2 *)
+          (* more complex expressions can be propagated if v
+           * only appears once in the free variables of e2 *)
           let _, n = Map.find_exn fvs v in
           if n > 1 then default () else prop ()
         else default ()
