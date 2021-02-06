@@ -99,16 +99,8 @@ atom_exp:
     { Var $1 }
 
 let_exp:
-  | LPAREN LET LPAREN args = nonempty_list(let_arg) RPAREN body = exp RPAREN
-    {
-      let open Core_kernel in
-      let s = Hash_set.create (module String) in
-      List.iter args ~f:(fun (v, e) ->
-          match Hash_set.strict_add s v with
-          | Error _ -> invalid_arg ("let: var " ^ v ^ " cannot be shadowed")
-          | Ok () -> ());
-      List.fold_right args ~init:body ~f:(fun (v, e) acc -> Let (v, e, acc))
-    }
+  | LPAREN LET LPAREN let_arg RPAREN body = exp RPAREN
+    { Let (fst $4, snd $4, body) }
   | LPAREN LET STAR LPAREN args = nonempty_list(let_arg) RPAREN body = exp RPAREN
     {
       let open Core_kernel in

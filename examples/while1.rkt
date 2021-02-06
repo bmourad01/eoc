@@ -1,4 +1,4 @@
-(let ([sum 0] [i 5])
+(let* ([sum 0] [i 5])
   (begin
     (while (> i 0)
       (begin

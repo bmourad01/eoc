@@ -1,4 +1,4 @@
-(let ([x 0] [y 0])
+(let* ([x 0] [y 0])
   (begin
     (while (< x 666)
       (let ([v (vector (void) (vector (void) (vector x)))])

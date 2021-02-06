@@ -1,4 +1,4 @@
-(let ([x 0] [y 0] [r (read)])
+(let* ([x 0] [y 0] [r (read)])
   (begin
     (when (> r 0)
       (set! x r))
