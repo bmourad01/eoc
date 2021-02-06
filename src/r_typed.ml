@@ -576,7 +576,6 @@ and is_simple_exp a = function
   | Var (v, _) -> Set.mem a v |> not
   | _ -> false
 
-(* this is unused right now, but may be useful in the future *)
 and is_pure_exp a = function
   | Int _ | Bool _ | Void -> true
   | Prim (p, _) -> is_pure_prim a p
@@ -585,9 +584,6 @@ and is_pure_exp a = function
   | If (e1, e2, e3, _) ->
       is_pure_exp a e1 && is_pure_exp a e2 && is_pure_exp a e3
   | Apply (e, es, _) -> is_pure_exp a e && List.for_all es ~f:(is_pure_exp a)
-  (* it can be tricky to know if a function is pure,
-   * especially when recursion is involved, so just
-   * conservatively say no for now. *)
   | Funref _ -> false
   | Lambda _ -> false
   | Setbang _ -> false
@@ -615,12 +611,6 @@ and is_pure_prim a = function
    |Ge (e1, e2)
    |And (e1, e2)
    |Or (e1, e2) -> is_pure_exp a e1 && is_pure_exp a e2
-  (* we would lose physical equality if we
-   * propagated vectors that were "pure",
-   * since now we would be duplicating them
-   * on the heap instead of maintaining
-   * aliases (as the programmer may have intended)
-   * also, vectors are mutable, so this is a non-starter. *)
   | Vector _ -> false
   | Vectorset _ -> false
 
