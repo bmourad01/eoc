@@ -1,4 +1,4 @@
-(define (fun1 [f : (Integer -> Boolean)]
+(define (fun1 [f : (-> Integer Boolean)]
               [n : Integer]) : Integer
   (if (f n) 42 37))
 

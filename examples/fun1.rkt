@@ -1,4 +1,4 @@
-(define (map-vec [f : (Integer -> Integer)]
+(define (map-vec [f : (-> Integer Integer)]
                  [v : (Vector Integer Integer)]) : (Vector Integer Integer)
   (vector (f (vector-ref v 0)) (f (vector-ref v 1))))
 

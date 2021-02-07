@@ -21,9 +21,11 @@ module Type = struct
           let s = List.map ts ~f:to_string in
           if List.is_empty s then "(Vector)"
           else Printf.sprintf "(Vector %s)" (String.concat s ~sep:" ")
+      | Arrow ([], t) -> Printf.sprintf "(-> %s)" (to_string t)
       | Arrow (ts, t) ->
-          let s = List.map ts ~f:to_string |> String.concat ~sep:" -> " in
-          Printf.sprintf "(%s -> %s)" s (to_string t)
+          Printf.sprintf "(-> %s %s)"
+            (List.map ts ~f:to_string |> String.concat ~sep:" ")
+            (to_string t)
       | Trustme -> "_"
   end
 

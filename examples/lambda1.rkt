@@ -1,4 +1,4 @@
-(define (f [x : Integer]) : (Integer -> Integer)
+(define (f [x : Integer]) : (-> Integer Integer)
   (let ([y 4])
     (lambda: ([z : Integer]) : Integer
              (+ x (+ y z)))))

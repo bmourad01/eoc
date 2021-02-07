@@ -59,13 +59,10 @@ typ:
     { Type.Void }
   | LPAREN TVECTOR list(typ) RPAREN
     { Type.Vector $3 }
-  | LPAREN ARROW typ RPAREN
-    { Type.Arrow ([], $3) }
-  | LPAREN typ ARROW separated_nonempty_list(ARROW, typ) RPAREN
+  | LPAREN ARROW nonempty_list(typ) RPAREN
     {
       let open Core_kernel in
-      let ts = List.drop_last_exn $4 in
-      Type.Arrow ($2 :: ts, List.last_exn $4)
+      Type.Arrow (List.drop_last_exn $3, List.last_exn $3)
     }
 
 def_arg:
