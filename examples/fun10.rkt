@@ -6,8 +6,8 @@
             (begin
               (while (and b (<= (* i i) n))
                 (begin
-                  (set! b (or (eq? (rem n i) 0)
-                              (eq? (rem n (+ i 2)) 0)))
+                  (set! b (not (or (eq? (rem n i) 0)
+                                   (eq? (rem n (+ i 2)) 0))))
                   (set! i (+ i 6))))
               b)))))
                         
