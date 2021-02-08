@@ -221,7 +221,7 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
     for (needed_size2 = needed_size << 1; _heap_size < needed_size2;
          _heap_size <<= 1)
       ;
-    DBGPRINT("GC: resized the heap to %ld bytes\n", _heap_size);
+    DBGPRINT("GC: resizing the heap to %ld bytes\n", _heap_size);
     // allocate a new heap and copy over the current fromspace
     tmp = (int64_t *)malloc(_heap_size);
     assert(tmp);
