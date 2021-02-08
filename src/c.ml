@@ -914,6 +914,14 @@ and optimize_jumps_aux cfg tails =
         | _ -> None)
     |> Hashtbl.of_alist_exn (module Label)
   in
+  let rec find_single l =
+    match Hashtbl.find singles l with
+    | None -> None
+    | Some l' -> (
+      match find_single l' with
+      | None -> Some l'
+      | Some l'' -> Some l'' )
+  in
   let cfg, tails, changed =
     List.fold tails ~init:(cfg, [], false)
       ~f:(fun (cfg, tails, changed) (label, tail) ->
@@ -927,7 +935,7 @@ and optimize_jumps_aux cfg tails =
             | Goto label' as g -> (
                 if Label.equal label label' then g
                 else
-                  match Hashtbl.find singles label' with
+                  match find_single label' with
                   | Some label'' when not (Label.equal label' label'') ->
                       cfg := Cfg.remove_vertex !cfg label';
                       cfg := Cfg.add_edge !cfg label label'';
@@ -938,12 +946,12 @@ and optimize_jumps_aux cfg tails =
                 if Label.(equal label lt || equal label lf) then i
                 else
                   let lt' =
-                    match Hashtbl.find singles lt with
+                    match find_single lt with
                     | None -> lt
                     | Some lt' -> lt'
                   in
                   let lf' =
-                    match Hashtbl.find singles lf with
+                    match find_single lf with
                     | None -> lf
                     | Some lf' -> lf'
                   in

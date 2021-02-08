@@ -1531,8 +1531,8 @@ and remove_jumps_aux cfg blocks =
     List.filter_map blocks ~f:(fun ((label, Block (_, info, instrs)) as b) ->
         if Hashtbl.mem merged label then None
         else
-          match List.last_exn instrs with
-          | JMP label' when not (Label.equal label label') -> (
+          match List.last instrs with
+          | Some (JMP label') when not (Label.equal label label') -> (
               if
                 (* if the in-degree is 1 then we can safely merge the blocks.
                  * NOTE: we could actually have more than one jump from this
@@ -1564,7 +1564,8 @@ and remove_jumps_aux cfg blocks =
                       in
                       Some (label, Block (label, info, instrs)) )
                 | _ -> Some b )
-          | _ -> Some b)
+          | Some _ -> Some b
+          | None -> None)
   in
   let cfg =
     Hashtbl.fold merged ~init:cfg ~f:(fun ~key:l ~data:l' cfg ->
