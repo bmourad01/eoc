@@ -225,7 +225,6 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
     // allocate a new heap and copy over the current fromspace
     tmp = (int64_t *)malloc(_heap_size);
     assert(tmp);
-    size = (uint64_t)_fromspace_end - (uint64_t)_fromspace_begin;
     memcpy(tmp, _fromspace_begin, size);
     // update the new pointers
     _fromspace_begin = tmp;
