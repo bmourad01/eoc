@@ -583,9 +583,12 @@ and is_pure_exp a = function
   | Let (_, e1, e2, _) -> is_pure_exp a e1 && is_pure_exp a e2
   | If (e1, e2, e3, _) ->
       is_pure_exp a e1 && is_pure_exp a e2 && is_pure_exp a e3
-  | Apply (e, es, _) -> is_pure_exp a e && List.for_all es ~f:(is_pure_exp a)
+  | Apply _ ->
+      (* XXX: how do we know if we're calling an
+       * impure function in the presence of aliasing? *)
+      false
   | Funref _ ->
-      (* TODO *)
+      (* XXX: how do we know if a top-level function is impure? *)
       false
   | Lambda (_, _, e) -> is_pure_exp a e
   | Setbang _ -> false
