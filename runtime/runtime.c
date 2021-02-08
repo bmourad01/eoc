@@ -135,6 +135,13 @@ void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _rootstack_end = (int64_t **)((uint64_t)_rootstack_begin + rootstack_size);
 }
 
+void _finalize() {
+  assert(_heap_base);
+  assert(_rootstack_begin);
+  free(_heap_base);
+  free(_rootstack_begin);
+}
+
 static int64_t *collect_copy(int64_t *obj) {
   uint64_t fwd, size;
   int64_t *new_obj;

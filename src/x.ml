@@ -284,9 +284,11 @@ module Extern = struct
 
   let initialize = "_initialize"
 
+  let finalize = "_finalize"
+
   let collect = "_collect"
 
-  let extern_fns = [read_int; print_value; initialize; collect]
+  let extern_fns = [read_int; print_value; initialize; finalize; collect]
 
   let is_extern_fn = List.mem extern_fns ~equal:String.equal
 
@@ -1034,7 +1036,7 @@ let function_epilogue is_main type_map rootstack_spills typ label stack_space
     Set.fold w ~init:[] ~f:(fun acc a -> POP a :: acc)
   in
   let adj_rootstk =
-    if rootstack_spills > 0 then
+    if (not is_main) && rootstack_spills > 0 then
       [SUB (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
     else []
   in
@@ -1060,6 +1062,7 @@ let function_epilogue is_main type_map rootstack_spills typ label stack_space
             [ LEA (Reg RDI, Var (Map.find_exn type_map typ))
             ; MOV (Reg RSI, Reg RAX)
             ; CALL (Extern.print_value, 2)
+            ; CALL (Extern.finalize, 0)
             ; XOR (Reg RAX, Reg RAX) ]
           else []
         in
