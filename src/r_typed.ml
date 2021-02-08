@@ -572,7 +572,7 @@ and opt_exp n a env = function
   | While (e1, e2) -> While (opt_exp n a env e1, opt_exp n a env e2)
 
 and is_simple_exp a = function
-  | Int _ | Bool _ | Void -> true
+  | Int _ | Bool _ | Void | Funref _ -> true
   | Var (v, _) -> Set.mem a v |> not
   | _ -> false
 
