@@ -161,7 +161,7 @@ static int64_t *collect_copy(int64_t *obj) {
 }
 
 static void cheney(int64_t **rootstack_ptr) {
-  int64_t *p, **r, *tmp, *scan_ptr, *ty;
+  int64_t *p, np, **r, *tmp, *scan_ptr, *ty;
   uint64_t i, length;
 
   assert(rootstack_ptr >= _rootstack_begin && rootstack_ptr < _rootstack_end);
@@ -181,6 +181,8 @@ static void cheney(int64_t **rootstack_ptr) {
   for (r = _rootstack_begin; r < rootstack_ptr; ++r) {
     if ((p = *r)) {
       *r = collect_copy(p);
+      DBGPRINT("GC: copied root 0x%016lX to 0x%016lX\n", (uint64_t)p,
+               (uint64_t)*r);
     }
   }
 
@@ -192,7 +194,11 @@ static void cheney(int64_t **rootstack_ptr) {
     length = (uint64_t)ty[1];
     for (i = 0; i < length; ++i) {
       if (is_pointer_type(ty[i + 2], true)) {
-        scan_ptr[i + 1] = (int64_t)collect_copy((int64_t *)scan_ptr[i + 1]);
+        p = (int64_t *)scan_ptr[i + 1];
+        np = (int64_t)collect_copy(p);
+        DBGPRINT("GC: copied reachable object 0x%016lX to 0x%016lX\n",
+                 (uint64_t)p, np);
+        scan_ptr[i + 1] = np;
       }
     }
     scan_ptr = (int64_t *)((uint64_t)scan_ptr + (((length + 1) << 3)));
@@ -201,23 +207,21 @@ static void cheney(int64_t **rootstack_ptr) {
 
 void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   int64_t *tmp;
-  uint64_t size;
+  uint64_t size, needed_size, needed_size2;
 
+  // run the algorithm to free up space
   cheney(rootstack_ptr);
 
-  DBGPRINT("GC: checking for sufficient space\n");
-
   // check if we need to resize the heap
-  // NOTE:
-  //  we don't actually need to wrap this in a while loop.
-  //  we could just round up the new size of the heap to the
-  //  next power of 2 which will fit the requested amount of
-  //  data. this is purely just to stress-test the GC.
-  while (((uint64_t)_free_ptr + bytes) >= (uint64_t)_fromspace_end) {
-    DBGPRINT("GC: resizing the heap from %ld to %ld bytes\n", _heap_size,
-             _heap_size << 1);
-    // double the current size
-    _heap_size <<= 1;
+  size = (uint64_t)_fromspace_end - (uint64_t)_fromspace_begin;
+  needed_size = bytes + ((uint64_t)_free_ptr - (uint64_t)_fromspace_begin);
+  if (needed_size >= size) {
+    DBGPRINT("GC: insufficient space (size=%ld, needed=%ld)\n", size,
+             needed_size);
+    for (needed_size2 = needed_size << 1; _heap_size < needed_size2;
+         _heap_size <<= 1)
+      ;
+    DBGPRINT("GC: resized the heap to %ld bytes\n", _heap_size);
     // allocate a new heap and copy over the current fromspace
     tmp = (int64_t *)malloc(_heap_size);
     assert(tmp);
