@@ -463,7 +463,7 @@ let massage_cfg cfg tails v =
         if Set.mem visited v then acc else Cfg.remove_vertex acc v)
       cfg cfg
   in
-  (cfg, tails, visited)
+  (cfg, tails)
 
 let rec explicate_control = function
   | R_anf.Program (info, defs) ->
@@ -492,7 +492,7 @@ and explicate_control_def nvars = function
             in
             aux tail)
       in
-      let cfg, tails, visited = massage_cfg cfg tails v in
+      let cfg, tails = massage_cfg cfg tails v in
       (* map local variables to their types *)
       let locals_types =
         List.fold args ~init:String.Map.empty ~f:(fun locals_types (x, t) ->
@@ -909,7 +909,7 @@ and optimize_jumps_def = function
   | Def (v, args, t, info, tails) ->
       let cfg, tails = optimize_jumps_aux info.cfg tails in
       let tails = Hashtbl.of_alist_exn (module Label) tails in
-      let cfg, tails, _ = massage_cfg cfg tails v in
+      let cfg, tails = massage_cfg cfg tails v in
       Def (v, args, t, {info with cfg}, tails)
 
 and optimize_jumps_aux cfg tails =
