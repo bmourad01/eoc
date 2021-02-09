@@ -148,6 +148,9 @@ static int64_t *collect_copy(int64_t *obj) {
   uint64_t fwd, size;
   int64_t *new_obj;
 
+  assert((uint64_t)obj >= (uint64_t)_heap_base &&
+         (uint64_t)obj < ((uint64_t)_heap_base + _heap_size));
+
   // has the object been copied yet?
   fwd = (uint64_t)*obj;
   if (fwd < (uint64_t)_fromspace_begin || fwd >= (uint64_t)_fromspace_end) {
