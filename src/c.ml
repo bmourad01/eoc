@@ -493,13 +493,6 @@ and explicate_control_def nvars = function
             aux tail)
       in
       let cfg, tails, visited = massage_cfg cfg tails v in
-      (* purge unreachable nodes from the CFG *)
-      let cfg =
-        Cfg.fold_vertex
-          (fun v acc ->
-            if Set.mem visited v then acc else Cfg.remove_vertex acc v)
-          cfg cfg
-      in
       (* map local variables to their types *)
       let locals_types =
         List.fold args ~init:String.Map.empty ~f:(fun locals_types (x, t) ->
