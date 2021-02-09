@@ -219,7 +219,10 @@ static void cheney(int64_t **rootstack_ptr) {
 }
 
 static uint64_t next_power_of_two(uint64_t n) {
-  return 1ULL << ((sizeof(uint64_t) << 3) - __builtin_clzll(n));
+  assert(n);
+  return !(n & (n - 1))
+             ? n
+             : 1ULL << ((sizeof(uint64_t) << 3) - __builtin_clzll(n));
 }
 
 void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
