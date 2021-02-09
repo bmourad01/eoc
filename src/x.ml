@@ -338,8 +338,11 @@ let rec to_string = function
         |> String.concat ~sep:"\n"
       in
       (* the type information shouldn't be in read-only
-       * data because it may contain relocations;
-       * in such a case, the linker will complain. *)
+       * data because it may contain relocations
+       * (we are generating position-independent code).
+       * in such a case, the linker will emit a warning.
+       * e.g. warning: relocation in read-only section `.rodata'
+       *      /usr/bin/ld: warning: creating DT_TEXTREL in a PIE *)
       Printf.sprintf
         "DEFAULT REL\n\n\
          TYPE_INTEGER equ %d\n\
