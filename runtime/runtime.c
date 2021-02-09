@@ -151,7 +151,7 @@ static int64_t *collect_copy(int64_t *obj) {
   // has the object been copied yet?
   fwd = (uint64_t)*obj;
   if (fwd < (uint64_t)_fromspace_begin || fwd >= (uint64_t)_fromspace_end) {
-    size = (((int64_t *)*obj)[1] + 1) << 3;
+    size = (((int64_t *)*obj)[1] + 1) * sizeof(int64_t);
     // copy the object
     new_obj = _free_ptr;
     memcpy(new_obj, obj, size);
@@ -210,12 +210,12 @@ static void cheney(int64_t **rootstack_ptr) {
         scan_ptr[i + 1] = np;
       }
     }
-    scan_ptr = (int64_t *)((uint64_t)scan_ptr + (((length + 1) << 3)));
+    scan_ptr =
+        (int64_t *)((uint64_t)scan_ptr + (((length + 1) * sizeof(int64_t))));
   }
 }
 
-__attribute__ ((const))
-static inline uint64_t next_power_of_two(uint64_t n) {
+static uint64_t next_power_of_two(uint64_t n) {
   return 1ULL << ((sizeof(uint64_t) << 3) - __builtin_clzll(n));
 }
 
