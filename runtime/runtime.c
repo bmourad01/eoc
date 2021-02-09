@@ -120,6 +120,8 @@ int64_t **_rootstack_begin;
 static int64_t **_rootstack_end;
 
 void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
+  assert(rootstack_size);
+  assert(heap_size);
   _heap_size = heap_size;
   _heap_base = malloc(heap_size);
   assert(_heap_base);
