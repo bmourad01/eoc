@@ -515,7 +515,7 @@ and opt_exp n a env = function
       let prop () = opt_exp n a (Map.set env v e1) e2 in
       if not (Set.mem a v) then
         let fvs = free_vars_of_exp e2 in
-        let is_pure = is_pure_exp a e1 in
+        let is_pure = is_pure_exp e1 in
         if (not (Map.mem fvs v)) && is_pure then
           (* if e1 is pure and v is not in the free
            * variables of e2, then just discard it *)
@@ -576,13 +576,11 @@ and is_simple_exp a = function
   | Var (v, _) -> Set.mem a v |> not
   | _ -> false
 
-and is_pure_exp a = function
-  | Int _ | Bool _ | Void -> true
-  | Prim (p, _) -> is_pure_prim a p
-  | Var (v, _) -> Set.mem a v |> not
-  | Let (_, e1, e2, _) -> is_pure_exp a e1 && is_pure_exp a e2
-  | If (e1, e2, e3, _) ->
-      is_pure_exp a e1 && is_pure_exp a e2 && is_pure_exp a e3
+and is_pure_exp = function
+  | Int _ | Bool _ | Void | Var _ -> true
+  | Prim (p, _) -> is_pure_prim p
+  | Let (_, e1, e2, _) -> is_pure_exp e1 && is_pure_exp e2
+  | If (e1, e2, e3, _) -> is_pure_exp e1 && is_pure_exp e2 && is_pure_exp e3
   | Apply _ ->
       (* XXX: how do we know if we're calling an
        * impure function in the presence of aliasing? *)
@@ -590,16 +588,16 @@ and is_pure_exp a = function
   | Funref _ ->
       (* XXX: how do we know if a top-level function is impure? *)
       false
-  | Lambda (_, _, e) -> is_pure_exp a e
+  | Lambda (_, _, e) -> is_pure_exp e
   | Setbang _ -> false
   | Begin _ -> false
   | While _ -> false
 
-and is_pure_prim a = function
+and is_pure_prim = function
   | Read -> false
   | Print _ -> false
   | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
-      is_pure_exp a e
+      is_pure_exp e
   | Plus (e1, e2)
    |Subtract (e1, e2)
    |Mult (e1, e2)
@@ -615,8 +613,8 @@ and is_pure_prim a = function
    |Gt (e1, e2)
    |Ge (e1, e2)
    |And (e1, e2)
-   |Or (e1, e2) -> is_pure_exp a e1 && is_pure_exp a e2
-  | Vector es -> List.for_all es ~f:(is_pure_exp a)
+   |Or (e1, e2) -> is_pure_exp e1 && is_pure_exp e2
+  | Vector es -> List.for_all es ~f:is_pure_exp
   | Vectorset _ -> false
 
 and fresh_var n =
