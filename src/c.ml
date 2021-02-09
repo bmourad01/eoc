@@ -436,6 +436,35 @@ and interp_cmp ?(read = None) env defs (cmp, a1, a2) =
   in
   interp_exp env defs e ~read
 
+let massage_cfg cfg tails v =
+  (* reorder the tails according to a reverse post-order
+   * DFS traversal, starting from the entry node. this will
+   * give a structure to the program that is amenable to
+   * optimizing jumps later when we compile to X. *)
+  let rec traverse_dfs_post v s res =
+    let s, res =
+      Cfg.fold_succ
+        (fun v (s, res) ->
+          if Set.mem s v then (s, res)
+          else traverse_dfs_post v Set.(add s v) res)
+        cfg v (s, res)
+    in
+    (s, v :: res)
+  in
+  let visited, labels = traverse_dfs_post v Label.Set.(singleton v) [] in
+  let tails =
+    List.fold_right labels ~init:[] ~f:(fun l acc ->
+        (l, Hashtbl.find_exn tails l) :: acc)
+  in
+  (* purge unreachable nodes from the CFG *)
+  let cfg =
+    Cfg.fold_vertex
+      (fun v acc ->
+        if Set.mem visited v then acc else Cfg.remove_vertex acc v)
+      cfg cfg
+  in
+  (cfg, tails, visited)
+
 let rec explicate_control = function
   | R_anf.Program (info, defs) ->
       Program
@@ -463,25 +492,7 @@ and explicate_control_def nvars = function
             in
             aux tail)
       in
-      (* reorder the tails according to a reverse post-order
-       * DFS traversal, starting from the entry node. this will
-       * give a structure to the program that is amenable to
-       * optimizing jumps later when we compile to X. *)
-      let rec traverse_dfs_post v s res =
-        let s, res =
-          Cfg.fold_succ
-            (fun v (s, res) ->
-              if Set.mem s v then (s, res)
-              else traverse_dfs_post v Set.(add s v) res)
-            cfg v (s, res)
-        in
-        (s, v :: res)
-      in
-      let visited, labels = traverse_dfs_post v Label.Set.(singleton v) [] in
-      let tails =
-        List.fold_right labels ~init:[] ~f:(fun l acc ->
-            (l, Hashtbl.find_exn tails l) :: acc)
-      in
+      let cfg, tails, visited = massage_cfg cfg tails v in
       (* purge unreachable nodes from the CFG *)
       let cfg =
         Cfg.fold_vertex
@@ -904,6 +915,8 @@ let rec optimize_jumps = function
 and optimize_jumps_def = function
   | Def (v, args, t, info, tails) ->
       let cfg, tails = optimize_jumps_aux info.cfg tails in
+      let tails = Hashtbl.of_alist_exn (module Label) tails in
+      let cfg, tails, _ = massage_cfg cfg tails v in
       Def (v, args, t, {info with cfg}, tails)
 
 and optimize_jumps_aux cfg tails =
