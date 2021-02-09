@@ -25,14 +25,8 @@ module Make (Vertex : S) = struct
         Hashtbl.set mapping v bottom;
         Queue.enqueue worklist v)
       cfg;
-    let trans_cfg =
-      let trans_cfg =
-        fold_vertex (fun v acc -> add_vertex acc v) cfg empty
-      in
-      fold_edges (fun u v acc -> add_edge acc v u) cfg trans_cfg
-    in
     let f_fold, f_iter =
-      if rev then (fold_pred, iter_pred) else (fold_succ, iter_succ)
+      if rev then (fold_succ, iter_pred) else (fold_pred, iter_succ)
     in
     let rec loop () =
       match Queue.dequeue worklist with
@@ -41,7 +35,7 @@ module Make (Vertex : S) = struct
           let input =
             f_fold
               (fun pred state -> join state (Hashtbl.find_exn mapping pred))
-              trans_cfg node bottom
+              cfg node bottom
           in
           let output = transfer node input in
           if not (equal output (Hashtbl.find_exn mapping node)) then (
