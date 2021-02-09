@@ -914,13 +914,16 @@ and optimize_jumps_aux cfg tails =
         | _ -> None)
     |> Hashtbl.of_alist_exn (module Label)
   in
-  let rec find_single l =
-    match Hashtbl.find singles l with
-    | None -> None
-    | Some l' -> (
-      match find_single l' with
-      | None -> Some l'
-      | Some l'' -> Some l'' )
+  let rec find_single ?(visited = Label.Set.empty) l =
+    if Set.mem visited l then None
+    else
+      let visited = Set.add visited l in
+      match Hashtbl.find singles l with
+      | None -> None
+      | Some l' -> (
+        match find_single l' ~visited with
+        | None -> Some l'
+        | Some l'' -> Some l'' )
   in
   let cfg, tails, changed =
     List.fold tails ~init:(cfg, [], false)
