@@ -212,9 +212,14 @@ static void cheney(int64_t **rootstack_ptr) {
   }
 }
 
+__attribute__ ((const))
+static inline uint64_t next_power_of_two(uint64_t n) {
+  return 1ULL << ((sizeof(uint64_t) << 3) - __builtin_clzll(n));
+}
+
 void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   int64_t *tmp;
-  uint64_t size, needed_size, needed_size2;
+  uint64_t size, needed_size;
 
   // run the algorithm to free up space
   cheney(rootstack_ptr);
@@ -225,9 +230,7 @@ void _collect(int64_t **rootstack_ptr, uint64_t bytes) {
   if (needed_size >= size) {
     DBGPRINT("GC: insufficient space (size=%ld, needed=%ld)\n", size,
              needed_size);
-    for (needed_size2 = needed_size << 1; _heap_size < needed_size2;
-         _heap_size <<= 1)
-      ;
+    _heap_size = next_power_of_two(needed_size << 1);
     DBGPRINT("GC: resizing the heap to %ld bytes\n", _heap_size);
     // allocate a new heap and copy over the current fromspace
     tmp = (int64_t *)malloc(_heap_size);
