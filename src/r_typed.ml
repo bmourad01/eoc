@@ -478,6 +478,7 @@ and opt_exp n a env = function
     | Prim (Le (e1, e2), _) -> Prim (Gt (e1, e2), t)
     | Prim (Gt (e1, e2), _) -> Prim (Le (e1, e2), t)
     | Prim (Ge (e1, e2), _) -> Prim (Lt (e1, e2), t)
+    | Prim (Not e, _) -> e
     (* De Morgan's Laws *)
     | Prim (And (e1, e2), _) ->
         let e1' = opt_exp n a env (Prim (Not e1, t)) in
