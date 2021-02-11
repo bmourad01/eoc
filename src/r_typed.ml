@@ -471,12 +471,21 @@ and opt_exp n a env = function
     | e1, e2 -> Prim (Ge (e1, e2), t) )
   | Prim (Not e, t) -> (
     match opt_exp n a env e with
+    | Bool b -> Bool (not b)
     | Prim (Eq (e1, e2), _) -> Prim (Neq (e1, e2), t)
     | Prim (Lt (e1, e2), _) -> Prim (Ge (e1, e2), t)
     | Prim (Le (e1, e2), _) -> Prim (Gt (e1, e2), t)
     | Prim (Gt (e1, e2), _) -> Prim (Le (e1, e2), t)
     | Prim (Ge (e1, e2), _) -> Prim (Lt (e1, e2), t)
-    | Bool b -> Bool (not b)
+    (* De Morgan's Laws *)
+    | Prim (And (e1, e2), _) ->
+        let e1' = opt_exp n a env (Prim (Not e1, t)) in
+        let e2' = opt_exp n a env (Prim (Not e2, t)) in
+        Prim (Or (e1', e2'), t)
+    | Prim (Or (e1, e2), _) ->
+        let e1' = opt_exp n a env (Prim (Not e1, t)) in
+        let e2' = opt_exp n a env (Prim (Not e2, t)) in
+        Prim (And (e1', e2'), t)
     | e -> Prim (Not e, t) )
   | Prim (And (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
@@ -1410,8 +1419,8 @@ and interp_prim ?(read = None) menv env defs = function
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
-      | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
-      | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
+      | `Int i1, `Int i2 -> `Bool Int64.(i1 <> i2)
+      | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2 |> not)
       | `Void, `Void -> `Bool false
       | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2 |> not)
       | `Function _, `Function _ -> `Bool (phys_equal a1 a2 |> not)
