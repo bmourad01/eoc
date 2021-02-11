@@ -788,8 +788,8 @@ and explicate_assign fn tails nv n e x cont =
       add_tail tails l cont;
       let tt = explicate_effect fn tails nv n e2 (Goto loop) in
       let tf = Seq (Assign (x, Atom Void), Goto l) in
-      let top = explicate_pred fn tails nv n e1 tt tf in
-      add_tail tails loop top; Goto loop
+      explicate_pred fn tails nv n e1 tt tf |> add_tail tails loop;
+      Goto loop
   | _ ->
       let t = explicate_tail fn tails nv n e in
       do_assign fn tails nv n t x cont
