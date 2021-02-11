@@ -473,6 +473,7 @@ and opt_exp n a env = function
     match opt_exp n a env e with
     | Bool b -> Bool (not b)
     | Prim (Eq (e1, e2), _) -> Prim (Neq (e1, e2), t)
+    | Prim (Neq (e1, e2), _) -> Prim (Eq (e1, e2), t)
     | Prim (Lt (e1, e2), _) -> Prim (Ge (e1, e2), t)
     | Prim (Le (e1, e2), _) -> Prim (Gt (e1, e2), t)
     | Prim (Gt (e1, e2), _) -> Prim (Le (e1, e2), t)
