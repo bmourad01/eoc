@@ -755,7 +755,7 @@ and translate_prim p =
   | R_anf.Lxor (a1, a2) -> Lxor (tr a1, tr a2)
   | R_anf.Lnot a -> Lnot (tr a)
   | R_anf.Eq (a1, a2) -> Eq (tr a1, tr a2)
-  | R_anf.Neq (a1, a2) -> Eq (tr a1, tr a2)
+  | R_anf.Neq (a1, a2) -> Neq (tr a1, tr a2)
   | R_anf.Lt (a1, a2) -> Lt (tr a1, tr a2)
   | R_anf.Le (a1, a2) -> Le (tr a1, tr a2)
   | R_anf.Gt (a1, a2) -> Gt (tr a1, tr a2)
