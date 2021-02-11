@@ -536,12 +536,10 @@ and explicate_tail fn tails nv n = function
   (* match the pattern for a conditional move *)
   | R_anf.(Let (v, If (econd, (Atom _ as e1), (Atom _ as e2), t), ebody, _))
     ->
-      let cont = explicate_tail fn tails nv n ebody in
       let t = explicate_select fn tails nv n econd e1 e2 t in
-      do_assign fn tails nv n t v cont
+      explicate_tail fn tails nv n ebody |> do_assign fn tails nv n t v
   | R_anf.(Let (v, e1, e2, _)) ->
-      let cont = explicate_tail fn tails nv n e2 in
-      explicate_assign fn tails nv n e1 v cont
+      explicate_tail fn tails nv n e2 |> explicate_assign fn tails nv n e1 v
   (* match the pattern for a conditional move *)
   | R_anf.(If (econd, (Atom _ as e1), (Atom _ as e2), t)) ->
       explicate_select fn tails nv n econd e1 e2 t
@@ -566,8 +564,9 @@ and explicate_tail fn tails nv n = function
   | R_anf.While (e1, e2) ->
       let loop = fresh_label fn n in
       let tt = explicate_effect fn tails nv n e2 (Goto loop) in
-      let top = explicate_pred fn tails nv n e1 tt (Return (Atom Void)) in
-      add_tail tails loop top; Goto loop
+      explicate_pred fn tails nv n e1 tt (Return (Atom Void))
+      |> add_tail tails loop;
+      Goto loop
   | R_anf.Collect n -> Seq (Collect n, Return (Atom Void))
   | R_anf.Allocate (n, t) -> Return (Allocate (n, t))
   | R_anf.Globalvalue (v, t) -> Return (Globalvalue (v, t))
@@ -638,12 +637,12 @@ and explicate_effect fn tails nv n e cont =
   | R_anf.Prim _ -> cont
   | R_anf.(Let (v, If (econd, (Atom _ as e1), (Atom _ as e2), t), ebody, _))
     ->
-      let cont = explicate_effect fn tails nv n ebody cont in
       let t = explicate_select fn tails nv n econd e1 e2 t in
-      do_assign fn tails nv n t v cont
+      explicate_effect fn tails nv n ebody cont
+      |> do_assign fn tails nv n t v
   | R_anf.Let (v, e1, e2, _) ->
-      let cont = explicate_effect fn tails nv n e2 cont in
-      explicate_assign fn tails nv n e1 v cont
+      explicate_effect fn tails nv n e2 cont
+      |> explicate_assign fn tails nv n e1 v
   | R_anf.(
       If (econd, Begin ([], Setbang (x, (Atom _ as e)), _), Atom Void, _))
    |R_anf.(If (econd, Setbang (x, (Atom _ as e)), Atom Void, _)) ->
@@ -671,8 +670,8 @@ and explicate_effect fn tails nv n e cont =
       let loop = fresh_label fn n in
       add_tail tails l cont;
       let tt = explicate_effect fn tails nv n e2 (Goto loop) in
-      let top = explicate_pred fn tails nv n e1 tt (Goto l) in
-      add_tail tails loop top; Goto loop
+      explicate_pred fn tails nv n e1 tt (Goto l) |> add_tail tails loop;
+      Goto loop
   | R_anf.Collect n -> Seq (Collect n, cont)
   | R_anf.Allocate _ -> cont
   | R_anf.Globalvalue _ -> cont
@@ -769,8 +768,8 @@ and translate_prim p =
 and explicate_assign fn tails nv n e x cont =
   match e with
   | R_anf.(Let (v, e1, e2, _)) ->
-      let cont = explicate_assign fn tails nv n e2 x cont in
-      explicate_assign fn tails nv n e1 v cont
+      explicate_assign fn tails nv n e2 x cont
+      |> explicate_assign fn tails nv n e1 v
   | R_anf.(If (e1, e2, e3, _)) ->
       (* avoid duplicating code; do the assignments
        * and then go to the continuation *)
@@ -847,15 +846,13 @@ and explicate_pred fn tails nv n cnd thn els =
       add_tail tails lt thn;
       add_tail tails lf els;
       If ((Cmp.Ge, tr a1, tr a2), lt, lf)
-  | R_anf.(Prim (Vectorref _, t)) as r ->
+  | (R_anf.(Prim (Vectorref _, t)) | R_anf.(Apply (_, _, t))) as e ->
       let x = fresh_var nv in
-      let t =
-        explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
-      in
-      explicate_assign fn tails nv n r x t
+      explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
+      |> explicate_assign fn tails nv n e x
   | R_anf.(Let (x, e1, e2, _)) ->
-      let t = explicate_pred fn tails nv n e2 thn els in
-      explicate_assign fn tails nv n e1 x t
+      explicate_pred fn tails nv n e2 thn els
+      |> explicate_assign fn tails nv n e1 x
   | R_anf.(If (e1, e2, e3, _)) ->
       let lt = fresh_label fn n in
       let lf = fresh_label fn n in
@@ -864,13 +861,6 @@ and explicate_pred fn tails nv n cnd thn els =
       let tt = explicate_pred fn tails nv n e2 (Goto lt) (Goto lf) in
       let tf = explicate_pred fn tails nv n e3 (Goto lt) (Goto lf) in
       explicate_pred fn tails nv n e1 tt tf
-  | R_anf.Apply (_, _, t) as a ->
-      (* this is a case where we're not in tail position for a call *)
-      let x = fresh_var nv in
-      let t =
-        explicate_pred fn tails nv n R_anf.(Atom (Var (x, t))) thn els
-      in
-      explicate_assign fn tails nv n a x t
   | R_anf.Begin (es, e, _) ->
       List.fold_right es
         ~init:(explicate_pred fn tails nv n e thn els)
