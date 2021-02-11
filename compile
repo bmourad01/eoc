@@ -9,19 +9,15 @@ PROG="$(basename ${INPROG})"
 PROGNAME="${PROG%.*}"
 ASMFILE="${DIR}${PROGNAME}.S"
 OBJFILE="${DIR}${PROGNAME}.o"
-RUNTIMEOBJ="${DIR}runtime.o"
 CC="cc"
-CFLAGS="-std=c99 -Wall -Wextra -g"
+CFLAGS="-std=c99 -Wall -Wextra -gdwarf"
 
 # setup output directory
 mkdir -p $DIR
 
 # compile and assemble the program
 dune exec bin/print_x86.exe $INPROG > $ASMFILE
-nasm -g -f elf64 -o $OBJFILE $ASMFILE
+nasm -g -F dwarf -f elf64 -o $OBJFILE $ASMFILE
 
-# compile the C runtime
-$CC $CFLAGS -c runtime/runtime.c -o $RUNTIMEOBJ
-
-# link into an executable
-$CC $CFLAGS -o "${DIR}$PROGNAME" $OBJFILE $RUNTIMEOBJ
+# link with the C runtime into an executable
+$CC $CFLAGS runtime/runtime.c $OBJFILE -o "${DIR}$PROGNAME"
