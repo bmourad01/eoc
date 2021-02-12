@@ -508,8 +508,12 @@ and opt_exp n a env = function
     match opt_exp n a env e with
     | Prim (Vector es, _) -> List.nth_exn es i
     | e -> Prim (Vectorref (e, i), t) )
-  | Prim (Vectorset (e1, i, e2), t) ->
-      Prim (Vectorset (opt_exp n a env e1, i, opt_exp n a env e2), t)
+  | Prim (Vectorset (e1, i, e2), t) -> (
+    match opt_exp n a env e1 with
+    (* if we're modifying a vector that's never
+     * used elsewhere, then just discard the result *)
+    | Prim (Vector _, _) -> Void
+    | e1 -> Prim (Vectorset (e1, i, opt_exp n a env e2), t) )
   (* this var is mutated, so don't try to do any optimization *)
   | Var (v, _) as var when Set.mem a v -> var
   | Var (v, _) as var -> (
