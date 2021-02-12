@@ -19,7 +19,7 @@ module Type_map : module type of Map.Make (Type)
 
 type info = unit
 
-(* the R language: an subset of Typed Racket *)
+(* the R language: a subset of Typed Racket *)
 
 type t = Program of info * def list * exp
 
