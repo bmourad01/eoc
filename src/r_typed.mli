@@ -16,7 +16,10 @@ type type_env = Type.t var_env
 
 type info = unit
 
-(* a type-checked R program *)
+(* a type-checked R program.
+ *
+ * we deviate from the language described in the book
+ * by embedding the types of expressions in the AST itself. *)
 
 type t = Program of info * def list
 
