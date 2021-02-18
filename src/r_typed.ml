@@ -409,6 +409,11 @@ and opt_exp n a env = function
     (* divisor is 1 *)
     | _, Int 1L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(rem i1 i2)
+    (* if `i` is a power of two, then we can turn this into a
+     * logical `and`, since computing the remainder is
+     * generally more expensive. *)
+    | e1, Int i when Int64.(i land pred i = zero) ->
+        Prim (Land (e1, Int Int64.(pred i)), t)
     | e1, e2 -> Prim (Rem (e1, e2), t) )
   | Prim (Land (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
