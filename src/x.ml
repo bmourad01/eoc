@@ -1593,6 +1593,8 @@ and patch_instructions_instr = function
   | MOVZX ((Deref _ as d), a) -> [MOVZX (Reg RAX, a); MOV (d, Reg RAX)]
   | PEXTRQ (d, (Deref _ as s), o) ->
       [MOVQ (Xmmreg XMM0, s); PEXTRQ (d, Xmmreg XMM0, o)]
+  | PINSRQ ((Deref _ as d), s, o) ->
+      [PINSRQ (Xmmreg XMM0, s, o); MOVQ (d, Xmmreg XMM0)]
   | instr -> [instr]
 
 let rec uncover_live = function
