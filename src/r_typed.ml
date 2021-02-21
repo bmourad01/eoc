@@ -451,11 +451,9 @@ and opt_exp n a env = function
     match (opt_exp n a env e1, opt_exp n a env e2) with
     (* dividend is 0 *)
     | (Int 0L as i), _ -> i
-    | (Float 0.0 as f), _ -> f
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
     (* divisor is 1 *)
     | e, Int 1L -> e
-    | e, Float 1.0 -> e
     | Int i1, Int i2 -> Int Int64.(i1 / i2)
     | Float f1, Float f2 -> Float (f1 /. f2)
     | e1, e2 -> Prim (Div (e1, e2), t) )
@@ -467,6 +465,7 @@ and opt_exp n a env = function
     (* divisor is 1 *)
     | _, Int 1L -> Int 0L
     | Int i1, Int i2 -> Int Int64.(rem i1 i2)
+    | Float f1, Float f2 -> Float Stdlib.Float.(rem f1 f2)
     (* if `i` is a power of two, then we can turn this into a
      * logical `and`, since computing the remainder is
      * generally more expensive. *)
@@ -1133,16 +1132,27 @@ and type_check_prim env denv = function
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Rem (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: rem exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Float, e1'), (Type.Float, e2') -> (Type.Float, Rem (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: rem exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: rem exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: rem exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: rem exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: rem exps " ^ R.string_of_exp e1
@@ -1597,6 +1607,7 @@ and interp_prim ?(read = None) menv env defs = function
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(rem i1 i2)
+      | `Float f1, `Float f2 -> `Float Stdlib.Float.(rem f1 f2)
       | _ -> assert false )
   | Land (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
@@ -1971,9 +1982,14 @@ and recompute_types_prim defs env = function
       | Integer, Integer -> (p, Integer)
       | Float, Float -> (p, Float)
       | _ -> assert false )
-  | Rem (e1, e2) ->
-      ( Rem (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
-      , Type.Integer )
+  | Rem (e1, e2) -> (
+      let e1 = recompute_types_exp defs env e1 in
+      let e2 = recompute_types_exp defs env e2 in
+      let p = Rem (e1, e2) in
+      match (typeof_exp e1, typeof_exp e2) with
+      | Integer, Integer -> (p, Integer)
+      | Float, Float -> (p, Float)
+      | _ -> assert false )
   | Land (e1, e2) ->
       ( Land
           (recompute_types_exp defs env e1, recompute_types_exp defs env e2)

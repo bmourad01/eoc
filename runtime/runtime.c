@@ -41,6 +41,12 @@ static bool is_pointer_type(uint64_t ty, bool rec) {
 }
 
 /*
+ * helpers
+ */
+
+double _fmod(double a, double b) { return fmod(a, b); }
+
+/*
  * input/output
  */
 

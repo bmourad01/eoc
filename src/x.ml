@@ -385,7 +385,10 @@ module Extern = struct
 
   let collect = "_collect"
 
-  let extern_fns = [read_int; print_value; initialize; finalize; collect]
+  let fmod = "_fmod"
+
+  let extern_fns =
+    [read_int; print_value; initialize; finalize; collect; fmod]
 
   let is_extern_fn = List.mem extern_fns ~equal:String.equal
 
@@ -1034,11 +1037,28 @@ and select_instructions_exp type_map float_map a p =
       ; MOV (Reg RCX, Imm i)
       ; IDIV (Reg RCX)
       ; MOV (a, Reg RDX) ]
+  | C.(Prim (Rem (Var (v, _), Float f), _)) ->
+      let l = make_float float_map f in
+      [ MOVSD (Xmmreg XMM0, Var v)
+      ; MOVSD (Xmmreg XMM1, Var l)
+      ; CALL (Extern.fmod, 2)
+      ; MOVSD (a, Xmmreg XMM0) ]
   | C.(Prim (Rem (Int i, Var (v, _)), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Imm i)
       ; IDIV (Var v)
       ; MOV (a, Reg RDX) ]
+  | C.(Prim (Rem (Float f, Var (v, _)), _)) ->
+      let l = make_float float_map f in
+      [ MOVSD (Xmmreg XMM1, Var v)
+      ; MOVSD (Xmmreg XMM0, Var l)
+      ; CALL (Extern.fmod, 2)
+      ; MOVSD (a, Xmmreg XMM0) ]
+  | C.(Prim (Rem (Var (v1, Type.Float), Var (v2, Type.Float)), _)) ->
+      [ MOVSD (Xmmreg XMM0, Var v1)
+      ; MOVSD (Xmmreg XMM1, Var v2)
+      ; CALL (Extern.fmod, 2)
+      ; MOVSD (a, Xmmreg XMM0) ]
   | C.(Prim (Rem (Var (v1, _), Var (v2, _)), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Var v1)

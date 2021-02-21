@@ -391,6 +391,7 @@ and interp_prim ?(read = None) env defs = function
   | Rem (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Int Int64.(rem i1 i2)
+    | `Float f1, `Float f2 -> `Float Stdlib.Float.(rem f1 f2)
     | _ -> assert false )
   | Land (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
