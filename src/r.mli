@@ -5,6 +5,7 @@ type var = string [@@deriving equal, compare, hash, sexp]
 module Type : sig
   type t =
     | Integer
+    | Float
     | Boolean
     | Void
     | Vector of t list
@@ -27,6 +28,7 @@ and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
+  | Float of float
   | Bool of bool
   | Void
   | Prim of prim

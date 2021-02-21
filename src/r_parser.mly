@@ -20,11 +20,12 @@
 %token DEFINE LAMBDA
 %token LPAREN RPAREN LSQUARE RSQUARE
 %token <int64> INT
+%token <float> FLOAT
 %token <string> VAR
 %token PLUS MINUS STAR FSLASH REM LAND LOR LXOR LNOT 
 %token SETBANG BEGIN WHEN UNLESS PRINT WHILE
 %token VECTOR VECTORLENGTH VECTORREF VECTORSETBANG PROCEDUREARITY VOID
-%token TINTEGER TBOOLEAN TVOID TVECTOR ARROW COLON
+%token TINTEGER TFLOAT TBOOLEAN TVOID TVECTOR ARROW COLON
 %token READ LET
 %token TRUE FALSE
 %token EQ LT LE GT GE NOT AND OR IF
@@ -53,6 +54,8 @@ let_arg:
 typ:
   | TINTEGER
     { Type.Integer }
+  | TFLOAT
+    { Type.Float }
   | TBOOLEAN
     { Type.Boolean }
   | TVOID
@@ -86,6 +89,8 @@ def:
 atom_exp:
   | INT
     { Int $1 }
+  | FLOAT
+    { Float $1 }
   | TRUE
     { Bool true }
   | FALSE

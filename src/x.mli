@@ -39,10 +39,34 @@ module Reg : sig
   val to_string : t -> string
 end
 
+module Xmmreg : sig
+  type t =
+    | XMM0
+    | XMM1
+    | XMM2
+    | XMM3
+    | XMM4
+    | XMM5
+    | XMM6
+    | XMM7
+    | XMM8
+    | XMM9
+    | XMM10
+    | XMM11
+    | XMM12
+    | XMM13
+    | XMM14
+    | XMM15
+  [@@deriving equal, compare, hash, sexp]
+
+  val to_string : t -> string
+end
+
 module Arg : sig
   type t =
     | Imm of Int64.t
     | Reg of Reg.t
+    | Xmmreg of Xmmreg.t
     | Bytereg of Bytereg.t
     | Deref of Reg.t * int
     | Var of R.var
@@ -58,7 +82,7 @@ module Arg_map : module type of Map.Make (Arg)
 module Interference_graph :
     module type of Graph.Persistent.Graph.Concrete (Arg)
 
-type info = {type_map: Label.t C.Type_map.t}
+type info = {type_map: Label.t C.Type_map.t; float_map: Label.t Float.Map.t}
 
 module Cfg : module type of C.Cfg
 
@@ -76,7 +100,8 @@ and def_info =
   ; cfg: Cfg.t
   ; typ: C.Type.t
   ; locals_types: C.type_env
-  ; rootstack_spills: int }
+  ; rootstack_spills: int
+  ; floatstack_spills: int }
 
 and blocks = (Label.t * block) list
 
@@ -86,14 +111,19 @@ and block_info = {live_after: Args.t list}
 
 and instr =
   | ADD of arg * arg
+  | ADDSD of arg * arg
   | INC of arg
   | DEC of arg
   | SUB of arg * arg
+  | SUBSD of arg * arg
   | IMUL of arg * arg
   | IMULi of arg * arg * arg
+  | MULSD of arg * arg
   | IDIV of arg
+  | DIVSD of arg * arg
   | NEG of arg
   | MOV of arg * arg
+  | MOVSD of arg * arg
   | LEA of arg * arg
   | CALL of Label.t * int
   | CALLi of arg * int
@@ -107,11 +137,15 @@ and instr =
   | AND of arg * arg
   | OR of arg * arg
   | CMP of arg * arg
+  | COMISD of arg * arg
   | TEST of arg * arg
   | SETCC of Cc.t * arg
   | CMOV of Cc.t * arg * arg
   | MOVZX of arg * arg
   | JCC of Cc.t * Label.t
+  | PEXTRQ of arg * arg * arg
+  | PINSRQ of arg * arg * arg
+  | MOVQ of arg * arg
 
 and arg = Arg.t
 
@@ -142,7 +176,10 @@ val build_interference : t -> t
 (* use the greedy saturation algorithm on the interference graph *)
 
 val color_graph :
-  ?bias:Interference_graph.t -> Interference_graph.t -> int Arg_map.t
+     ?bias:Interference_graph.t
+  -> Interference_graph.t
+  -> C.type_env
+  -> int Arg_map.t
 
 (* perform register allocation *)
 

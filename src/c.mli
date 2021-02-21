@@ -53,7 +53,12 @@ and exp =
   | Globalvalue of string * Type.t
   | Select of cmp * atom * atom * Type.t
 
-and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
+and atom =
+  | Int of Int64.t
+  | Float of float
+  | Bool of bool
+  | Var of var * Type.t
+  | Void
 
 and prim =
   | Read
@@ -78,6 +83,8 @@ and prim =
   | Vectorref of atom * int
 
 and cmp = Cmp.t * atom * atom
+
+val typeof_exp : exp -> Type.t
 
 val to_string : t -> string
 

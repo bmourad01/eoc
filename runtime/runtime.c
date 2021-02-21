@@ -19,6 +19,7 @@ enum {
   TYPE_VOID,
   TYPE_VECTOR,
   TYPE_ARROW,
+  TYPE_FLOAT,
 };
 
 static bool is_pointer_type(uint64_t ty, bool rec) {
@@ -27,6 +28,7 @@ static bool is_pointer_type(uint64_t ty, bool rec) {
   case TYPE_BOOLEAN:
   case TYPE_VOID:
   case TYPE_ARROW:
+  case TYPE_FLOAT:
     return false;
   case TYPE_VECTOR:
     return true;
@@ -88,6 +90,9 @@ static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
   case TYPE_ARROW:
     printf("#<function>");
     return;
+  case TYPE_FLOAT:
+    printf("%lf", *(double *)&val);
+    return;
   default:
     // assume again that this is a pointer
     print_value_aux((uint64_t *)tyv, val, nested);
@@ -113,8 +118,11 @@ static int64_t *_tospace_begin;
 static int64_t *_tospace_end;
 int64_t **_rootstack_begin;
 static int64_t **_rootstack_end;
+int64_t **_floatstack_begin;
+static int64_t **_floatstack_end;
 
-void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
+void _initialize(uint64_t rootstack_size, uint64_t floatstack_size,
+                 uint64_t heap_size) {
   // rootstack_size must be nonzero and aligned to an even boundary
   assert(rootstack_size && !(rootstack_size & 1ULL));
   // heap_size must be nonzero and a power of two
@@ -132,13 +140,20 @@ void _initialize(uint64_t rootstack_size, uint64_t heap_size) {
   _rootstack_begin = (int64_t **)calloc(rootstack_size, sizeof(uint8_t));
   assert(_rootstack_begin);
   _rootstack_end = (int64_t **)((uint64_t)_rootstack_begin + rootstack_size);
+  // we need an additional stack to spill floating point values to,
+  // since using the regular x86 stack causes problems for us.
+  _floatstack_begin = (int64_t **)malloc(floatstack_size);
+  assert(_floatstack_begin);
+  _floatstack_end = (int64_t **)((uint64_t)_floatstack_begin + floatstack_size);
 }
 
 void _finalize() {
   assert(_heap_base);
   assert(_rootstack_begin);
+  assert(_floatstack_begin);
   free(_heap_base);
   free(_rootstack_begin);
+  free(_floatstack_begin);
 }
 
 static int64_t *collect_copy(int64_t *obj) {

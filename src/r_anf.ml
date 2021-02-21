@@ -27,7 +27,12 @@ and exp =
   | Allocate of int * Type.t
   | Globalvalue of string * Type.t
 
-and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
+and atom =
+  | Int of Int64.t
+  | Float of float
+  | Bool of bool
+  | Var of var * Type.t
+  | Void
 
 and prim =
   | Read
@@ -99,6 +104,7 @@ and string_of_exp = function
 
 and string_of_atom = function
   | Int i -> Int64.to_string i
+  | Float f -> Printf.sprintf "%f" f
   | Bool b -> if b then "#t" else "#f"
   | Var (v, _) -> v
   | Void -> "(void)"
@@ -171,6 +177,7 @@ and resolve_complex_def nvars = function
 
 and resolve_complex_atom m n = function
   | R_alloc.Int i -> ([], Int i)
+  | R_alloc.Float f -> ([], Float f)
   | R_alloc.Bool b -> ([], Bool b)
   | R_alloc.Void -> ([], Void)
   | R_alloc.(Prim (Read, t)) ->
@@ -380,6 +387,7 @@ and resolve_complex_atom m n = function
 
 and resolve_complex_exp m n = function
   | R_alloc.Int i -> Atom (Int i)
+  | R_alloc.Float f -> Atom (Float f)
   | R_alloc.Bool b -> Atom (Bool b)
   | R_alloc.Void -> Atom Void
   | R_alloc.Prim (Read, t) -> Prim (Read, t)
@@ -529,6 +537,7 @@ and unfold nv e =
 
 and typeof' = function
   | R_alloc.Int _ -> Type.Integer
+  | R_alloc.Float _ -> Type.Float
   | R_alloc.Bool _ -> Type.Boolean
   | R_alloc.Void -> Type.Void
   | R_alloc.Prim (_, t) -> t
@@ -546,6 +555,7 @@ and typeof' = function
 
 and typeof_exp = function
   | Atom (Int _) -> Type.Integer
+  | Atom (Float _) -> Type.Float
   | Atom (Bool _) -> Type.Boolean
   | Atom (Var (_, t)) -> t
   | Atom Void -> Type.Void

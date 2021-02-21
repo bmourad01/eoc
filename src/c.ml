@@ -55,7 +55,12 @@ and exp =
   | Globalvalue of string * Type.t
   | Select of cmp * atom * atom * Type.t
 
-and atom = Int of Int64.t | Bool of bool | Var of var * Type.t | Void
+and atom =
+  | Int of Int64.t
+  | Float of float
+  | Bool of bool
+  | Var of var * Type.t
+  | Void
 
 and prim =
   | Read
@@ -83,6 +88,7 @@ and cmp = Cmp.t * atom * atom
 
 let typeof_exp = function
   | Atom (Int _) -> Type.Integer
+  | Atom (Float _) -> Type.Float
   | Atom (Bool _) -> Type.Boolean
   | Atom (Var (_, t)) -> t
   | Atom Void -> Type.Void
@@ -159,6 +165,7 @@ and string_of_exp = function
 
 and string_of_atom = function
   | Int i -> Int64.to_string i
+  | Float f -> Printf.sprintf "%f" f
   | Bool b -> if b then "#t" else "#f"
   | Var (v, _) -> v
   | Void -> "(void)"
@@ -325,6 +332,7 @@ and interp_exp ?(read = None) env defs = function
 
 and interp_atom ?(read = None) env defs = function
   | Int i -> `Int i
+  | Float f -> `Float f
   | Bool b -> `Bool b
   | Var (v, _) -> (
     match Map.find !env v with
@@ -344,18 +352,22 @@ and interp_prim ?(read = None) env defs = function
   | Plus (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Int Int64.(i1 + i2)
-    | a1, a2 -> assert false )
+    | `Float f1, `Float f2 -> `Float (f1 +. f2)
+    | _ -> assert false )
   | Subtract (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Int Int64.(i1 - i2)
+    | `Float f1, `Float f2 -> `Float (f1 -. f2)
     | _ -> assert false )
   | Mult (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Int Int64.(i1 * i2)
+    | `Float f1, `Float f2 -> `Float (f1 *. f2)
     | _ -> assert false )
   | Div (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Int Int64.(i1 / i2)
+    | `Float f1, `Float f2 -> `Float (f1 /. f2)
     | _ -> assert false )
   | Rem (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
@@ -380,7 +392,8 @@ and interp_prim ?(read = None) env defs = function
   | Eq (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
-    | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
+    | `Float f1, `Float f2 -> `Bool Float.(f1 = f2)
+    | `Bool b1, `Bool b2 -> `Bool Bool.(b1 = b2)
     | `Void, `Void -> `Bool true
     | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2)
     | `Function _, `Function _ -> `Bool (phys_equal a1 a2)
@@ -389,7 +402,8 @@ and interp_prim ?(read = None) env defs = function
   | Neq (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Bool Int64.(i1 <> i2)
-    | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2 |> not)
+    | `Float f1, `Float f2 -> `Bool Float.(f1 <> f2)
+    | `Bool b1, `Bool b2 -> `Bool Bool.(b1 <> b2)
     | `Void, `Void -> `Bool false
     | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2 |> not)
     | `Function _, `Function _ -> `Bool (phys_equal a1 a2 |> not)
@@ -398,18 +412,22 @@ and interp_prim ?(read = None) env defs = function
   | Lt (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Bool Int64.(i1 < i2)
+    | `Float f1, `Float f2 -> `Bool Float.(f1 < f2)
     | _ -> assert false )
   | Le (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Bool Int64.(i1 <= i2)
+    | `Float f1, `Float f2 -> `Bool Float.(f1 <= f2)
     | _ -> assert false )
   | Gt (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Bool Int64.(i1 > i2)
+    | `Float f1, `Float f2 -> `Bool Float.(f1 > f2)
     | _ -> assert false )
   | Ge (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
     | `Int i1, `Int i2 -> `Bool Int64.(i1 >= i2)
+    | `Float f1, `Float f2 -> `Bool Float.(f1 >= f2)
     | _ -> assert false )
   | Not a -> (
     match interp_atom env defs a with
@@ -535,13 +553,14 @@ and explicate_tail fn tails nv n = function
   | R_anf.(Prim (p, t)) -> Return (Prim (translate_prim p, t))
   (* match the pattern for a conditional move *)
   | R_anf.(Let (v, If (econd, (Atom _ as e1), (Atom _ as e2), t), ebody, _))
-    ->
+    when not Type.(equal t Float) ->
       let t = explicate_select fn tails nv n econd e1 e2 t in
       explicate_tail fn tails nv n ebody |> do_assign fn tails nv n t v
   | R_anf.(Let (v, e1, e2, _)) ->
       explicate_tail fn tails nv n e2 |> explicate_assign fn tails nv n e1 v
   (* match the pattern for a conditional move *)
-  | R_anf.(If (econd, (Atom _ as e1), (Atom _ as e2), t)) ->
+  | R_anf.(If (econd, (Atom _ as e1), (Atom _ as e2), t))
+    when not Type.(equal t Float) ->
       explicate_select fn tails nv n econd e1 e2 t
   | R_anf.(If (e1, e2, e3, _)) ->
       let tt = explicate_tail fn tails nv n e2 in
@@ -636,7 +655,7 @@ and explicate_effect fn tails nv n e cont =
       Seq (Vectorsetstmt (translate_atom a1, i, translate_atom a2), cont)
   | R_anf.Prim _ -> cont
   | R_anf.(Let (v, If (econd, (Atom _ as e1), (Atom _ as e2), t), ebody, _))
-    ->
+    when not Type.(equal t Float) ->
       let t = explicate_select fn tails nv n econd e1 e2 t in
       explicate_effect fn tails nv n ebody cont
       |> do_assign fn tails nv n t v
@@ -645,11 +664,13 @@ and explicate_effect fn tails nv n e cont =
       |> explicate_assign fn tails nv n e1 v
   | R_anf.(
       If (econd, Begin ([], Setbang (x, (Atom _ as e)), _), Atom Void, _))
-   |R_anf.(If (econd, Setbang (x, (Atom _ as e)), Atom Void, _)) ->
+   |R_anf.(If (econd, Setbang (x, (Atom _ as e)), Atom Void, _))
+    when not Type.(equal (R_anf.typeof_exp e) Float) ->
       explicate_assignwhen fn tails nv n econd x e cont
   | R_anf.(
       If (econd, Atom Void, Begin ([], Setbang (x, (Atom _ as e)), _), _))
-   |R_anf.(If (econd, Atom Void, Setbang (x, (Atom _ as e)), _)) ->
+   |R_anf.(If (econd, Atom Void, Setbang (x, (Atom _ as e)), _))
+    when not Type.(equal (R_anf.typeof_exp e) Float) ->
       explicate_assignwhen fn tails nv n econd x e cont ~neg:true
   | R_anf.If (e1, e2, e3, _) ->
       let l = fresh_label fn n in
@@ -735,6 +756,7 @@ and explicate_assignwhen ?(neg = false) fn tails nv n econd x e cont =
 
 and translate_atom = function
   | R_anf.Int i -> Int i
+  | R_anf.Float f -> Float f
   | R_anf.Bool b -> Bool b
   | R_anf.Var (v, t) -> Var (v, t)
   | R_anf.Void -> Void

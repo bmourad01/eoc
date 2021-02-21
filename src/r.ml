@@ -6,6 +6,7 @@ module Type = struct
   module T = struct
     type t =
       | Integer
+      | Float
       | Boolean
       | Void
       | Vector of t list
@@ -15,6 +16,7 @@ module Type = struct
 
     let rec to_string = function
       | Integer -> "Integer"
+      | Float -> "Float"
       | Boolean -> "Boolean"
       | Void -> "Void"
       | Vector ts ->
@@ -43,6 +45,7 @@ and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
+  | Float of float
   | Bool of bool
   | Void
   | Prim of prim
@@ -107,6 +110,7 @@ and string_of_def = function
 
 and string_of_exp = function
   | Int i -> Int64.to_string i
+  | Float f -> Printf.sprintf "%f" f
   | Bool b -> if b then "#t" else "#f"
   | Void -> "(void)"
   | Prim p -> string_of_prim p

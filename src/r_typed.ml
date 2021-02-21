@@ -23,6 +23,7 @@ and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
+  | Float of float
   | Bool of bool
   | Void
   | Prim of prim * Type.t
@@ -65,6 +66,7 @@ and prim =
 
 let typeof_exp = function
   | Int _ -> Type.Integer
+  | Float _ -> Type.Float
   | Bool _ -> Type.Boolean
   | Void -> Type.Void
   | Prim (_, t) -> t
@@ -80,6 +82,7 @@ let typeof_exp = function
 
 let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
   | Int _ -> empty_var_env
+  | Float _ -> empty_var_env
   | Bool _ -> empty_var_env
   | Void -> empty_var_env
   | Prim (p, _) -> free_vars_of_prim p ~bnd
@@ -178,6 +181,7 @@ and string_of_def = function
 
 and string_of_exp = function
   | Int i -> Int64.to_string i
+  | Float f -> Printf.sprintf "%f" f
   | Bool b -> if b then "#t" else "#f"
   | Void -> "(void)"
   | Prim (p, _) -> string_of_prim p
@@ -265,6 +269,7 @@ let rec assigned_and_free_exp e =
   let default () = (String.Set.empty, String.Set.empty) in
   match e with
   | Int _ -> default ()
+  | Float _ -> default ()
   | Bool _ -> default ()
   | Void -> default ()
   | Prim (p, _) -> assigned_and_free_prim p
@@ -342,6 +347,7 @@ and opt_def = function
 
 and opt_exp n a env = function
   | Int _ as i -> i
+  | Float _ as f -> f
   | Bool _ as b -> b
   | Void -> Void
   | Prim (Read, _) as r -> r
@@ -354,10 +360,13 @@ and opt_exp n a env = function
   | Prim (Plus (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 + i2)
+    | Float f1, Float f2 -> Float (f1 +. f2)
     (* identity *)
     | e, Int 0L | Int 0L, e -> e
+    | e, Float 0.0 | Float 0.0, e -> e
     (* (+ i1 (- i2)) = (- i1 i2) *)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 - i2)
+    | Float f1, Prim (Minus (Float f2), _) -> Float (f1 -. f2)
     (* (+ e1 (- e2)) = (- e1 e2) *)
     | e1, Prim (Minus e2, _) -> Prim (Subtract (e1, e2), t)
     (* (+ i1 (+ i2 e2)) = (+ (+ i1 i2) e2)
@@ -369,37 +378,54 @@ and opt_exp n a env = function
      |Prim (Plus (Int i1, e2), _), Int i2
      |Prim (Plus (e2, Int i1), _), Int i2 ->
         opt_exp n a env (Prim (Plus (Int Int64.(i1 + i2), e2), t))
+    | Float f1, Prim (Plus (Float f2, e2), _)
+     |Float f1, Prim (Plus (e2, Float f2), _)
+     |Prim (Plus (Float f1, e2), _), Float f2
+     |Prim (Plus (e2, Float f1), _), Float f2 ->
+        opt_exp n a env (Prim (Plus (Float (f1 +. f2), e2), t))
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 + i2)
+    | Prim (Minus (Float f1), _), Float f2 -> Float (Float.neg f1 +. f2)
     | e1, e2 -> Prim (Plus (e1, e2), t) )
   | Prim (Subtract (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 - i2)
+    | Float f1, Float f2 -> Float (f1 +. f2)
     (* identity *)
     | e, Int 0L -> e
+    | e, Float 0.0 -> e
     (* negate *)
     | Int 0L, e -> Prim (Minus e, t)
+    | Float 0.0, e -> Prim (Minus e, t)
     (* (- i1 (- i2)) = (+ i1 i2) *)
     | Int i1, Prim (Minus (Int i2), _) -> Int Int64.(i1 + i2)
+    | Float f1, Prim (Minus (Float f2), _) -> Float (f1 +. f2)
     (* (- e1 (- e2)) = (+ e1 e2) *)
     | e1, Prim (Minus e2, _) -> Prim (Plus (e1, e2), t)
     | Prim (Minus (Int i1), _), Int i2 -> Int Int64.(-i1 - i2)
+    | Prim (Minus (Float f1), _), Float f2 -> Float (Float.neg f1 -. f2)
     | e1, e2 -> Prim (Subtract (e1, e2), t) )
   | Prim (Mult (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     (* multiply by 0 *)
     | (Int 0L as i), _ | _, (Int 0L as i) -> i
+    | (Float 0.0 as f), _ | _, (Float 0.0 as f) -> f
     (* multiply by 1 (identity) *)
     | Int 1L, e | e, Int 1L -> e
+    | Float 1.0, e | e, Float 1.0 -> e
     | Int i1, Int i2 -> Int Int64.(i1 * i2)
+    | Float f1, Float f2 -> Float (f1 *. f2)
     | e1, e2 -> Prim (Mult (e1, e2), t) )
   | Prim (Div (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     (* dividend is 0 *)
     | (Int 0L as i), _ -> i
+    | (Float 0.0 as f), _ -> f
     | _, Int 0L -> failwith "R.opt_exp: divide by zero"
     (* divisor is 1 *)
     | e, Int 1L -> e
+    | e, Float 1.0 -> e
     | Int i1, Int i2 -> Int Int64.(i1 / i2)
+    | Float f1, Float f2 -> Float (f1 /. f2)
     | e1, e2 -> Prim (Div (e1, e2), t) )
   | Prim (Rem (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
@@ -443,7 +469,8 @@ and opt_exp n a env = function
   | Prim (Eq (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 = i2)
-    | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2)
+    | Float f1, Float f2 -> Bool Float.(f1 = f2)
+    | Bool b1, Bool b2 -> Bool Bool.(b1 = b2)
     | Void, Void -> Bool true
     (* these vars are in the same scope so they must be equal *)
     | Var (v1, _), Var (v2, _) when equal_var v1 v2 -> Bool true
@@ -452,7 +479,8 @@ and opt_exp n a env = function
   | Prim (Neq (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 <> i2)
-    | Bool b1, Bool b2 -> Bool (Bool.equal b1 b2 |> not)
+    | Float f1, Float f2 -> Bool Float.(f1 <> f2)
+    | Bool b1, Bool b2 -> Bool Bool.(b1 <> b2)
     | Void, Void -> Bool false
     (* these vars are in the same scope so they must be equal *)
     | Var (v1, _), Var (v2, _) when equal_var v1 v2 -> Bool false
@@ -461,18 +489,22 @@ and opt_exp n a env = function
   | Prim (Lt (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 < i2)
+    | Float f1, Float f2 -> Bool Float.(f1 < f2)
     | e1, e2 -> Prim (Lt (e1, e2), t) )
   | Prim (Le (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 <= i2)
+    | Float f1, Float f2 -> Bool Float.(f1 <= f2)
     | e1, e2 -> Prim (Le (e1, e2), t) )
   | Prim (Gt (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 > i2)
+    | Float f1, Float f2 -> Bool Float.(f1 > f2)
     | e1, e2 -> Prim (Gt (e1, e2), t) )
   | Prim (Ge (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Bool Int64.(i1 >= i2)
+    | Float f1, Float f2 -> Bool Float.(f1 >= f2)
     | e1, e2 -> Prim (Ge (e1, e2), t) )
   | Prim (Not e, t) -> (
     match opt_exp n a env e with
@@ -592,12 +624,12 @@ and opt_exp n a env = function
   | While (e1, e2) -> While (opt_exp n a env e1, opt_exp n a env e2)
 
 and is_simple_exp a = function
-  | Int _ | Bool _ | Void | Funref _ -> true
+  | Int _ | Float _ | Bool _ | Void | Funref _ -> true
   | Var (v, _) -> Set.mem a v |> not
   | _ -> false
 
 and is_pure_exp = function
-  | Int _ | Bool _ | Void | Var _ -> true
+  | Int _ | Float _ | Bool _ | Void | Var _ -> true
   | Prim (p, _) -> is_pure_prim p
   | Let (_, e1, e2, _) -> is_pure_exp e1 && is_pure_exp e2
   | If (e1, e2, e3, _) -> is_pure_exp e1 && is_pure_exp e2 && is_pure_exp e3
@@ -694,6 +726,7 @@ and type_check_def denv = function
 
 and type_check_exp env denv = function
   | R.Int i -> (Type.Integer, Int i)
+  | R.Float f -> (Type.Float, Float f)
   | R.Bool b -> (Type.Boolean, Bool b)
   | R.Void -> (Type.Void, Void)
   | R.(Prim (Procedurearity e)) -> (
@@ -903,65 +936,100 @@ and type_check_prim env denv = function
   | R.Minus e -> (
     match type_check_exp env denv e with
     | Type.Integer, e' -> (Type.Integer, Minus e')
+    | Type.Float, e' -> (Type.Float, Minus e')
     | t, _ ->
         typeerr
           ( "R_typed.type_check_prim: minus exp " ^ R.string_of_exp e
           ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" ) )
+          ^ " but an expression of type Integer/Float was expected" ) )
   | R.Plus (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Plus (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: plus exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Float, e1'), (Type.Float, e2') -> (Type.Float, Plus (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: plus exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: plus exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: plus exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: plus exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: plus exps " ^ R.string_of_exp e1
           ^ " and " ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1
           ^ " and " ^ Type.to_string t2
-          ^ " but expressions of type Integer were expected" ) )
+          ^ " but expressions of type Integer/Float were expected" ) )
   | R.Subtract (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Subtract (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: subtract exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Float, e1'), (Type.Float, e2') ->
+        (Type.Float, Subtract (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: subtract exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: subtract exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: subtract exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: subtract exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: subtract exps " ^ R.string_of_exp e1
           ^ " and " ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1
           ^ " and " ^ Type.to_string t2
-          ^ " but expressions of type Integer were expected" ) )
+          ^ " but expressions of type Integer/Float were expected" ) )
   | R.Mult (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Mult (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: mult exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Float, e1'), (Type.Float, e2') -> (Type.Float, Mult (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: mult exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: mult exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: mult exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: mult exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: mult exps " ^ R.string_of_exp e1
@@ -972,22 +1040,33 @@ and type_check_prim env denv = function
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
         (Type.Integer, Div (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: div exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Float, e1'), (Type.Float, e2') -> (Type.Float, Div (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: div exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: div exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: div exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: div exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: div exps " ^ R.string_of_exp e1
           ^ " and " ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1
           ^ " and " ^ Type.to_string t2
-          ^ " but expressions of type Integer were expected" ) )
+          ^ " but expressions of type Integer/Float were expected" ) )
   | R.Rem (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
@@ -1087,84 +1166,124 @@ and type_check_prim env denv = function
           ^ Type.to_string t2 ^ ") are not the same type" )
   | R.Lt (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
-    | (Type.Integer, e1'), (Type.Integer, e2') ->
-        (Type.Boolean, Lt (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: < exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Integer, e1'), (Type.Integer, e2')
+     |(Type.Float, e1'), (Type.Float, e2') -> (Type.Boolean, Lt (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: < exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: < exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: < exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: < exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: < exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
-          ^ " but expressions of type Integer were expected" ) )
+          ^ " but expressions of type Integer/Float were expected" ) )
   | R.Le (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
-    | (Type.Integer, e1'), (Type.Integer, e2') ->
-        (Type.Boolean, Le (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: <= exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Integer, e1'), (Type.Integer, e2')
+     |(Type.Float, e1'), (Type.Float, e2') -> (Type.Boolean, Le (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: <= exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: <= exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: <= exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: <= exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: <= exps " ^ R.string_of_exp e1
           ^ " and " ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1
           ^ " and " ^ Type.to_string t2
-          ^ " but expressions of type Integer were expected" ) )
+          ^ " but expressions of type Integer/Float were expected" ) )
   | R.Gt (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
-    | (Type.Integer, e1'), (Type.Integer, e2') ->
-        (Type.Boolean, Gt (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: > exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Integer, e1'), (Type.Integer, e2')
+     |(Type.Float, e1'), (Type.Float, e2') -> (Type.Boolean, Gt (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: > exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: > exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: > exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: > exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: > exps " ^ R.string_of_exp e1 ^ " and "
           ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1 ^ " and "
           ^ Type.to_string t2
-          ^ " but expressions of type Integer were expected" ) )
+          ^ " but expressions of type Integer/Float were expected" ) )
   | R.Ge (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
-    | (Type.Integer, e1'), (Type.Integer, e2') ->
-        (Type.Boolean, Ge (e1', e2'))
-    | (t, _), (Type.Integer, _) ->
-        typeerr
-          ( "R_typed.type_check_prim: >= exp " ^ R.string_of_exp e1
-          ^ " has type " ^ Type.to_string t
-          ^ " but an expression of type Integer was expected" )
+    | (Type.Integer, e1'), (Type.Integer, e2')
+     |(Type.Float, e1'), (Type.Float, e2') -> (Type.Boolean, Ge (e1', e2'))
     | (Type.Integer, _), (t, _) ->
         typeerr
           ( "R_typed.type_check_prim: >= exp " ^ R.string_of_exp e2
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer was expected" )
+    | (Type.Float, _), (t, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: >= exp " ^ R.string_of_exp e2
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
+    | (t, _), (Type.Integer, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: >= exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Integer was expected" )
+    | (t, _), (Type.Float, _) ->
+        typeerr
+          ( "R_typed.type_check_prim: >= exp " ^ R.string_of_exp e1
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" )
     | (t1, _), (t2, _) ->
         typeerr
           ( "R_typed.type_check_prim: >= exps " ^ R.string_of_exp e1
           ^ " and " ^ R.string_of_exp e2 ^ " have types " ^ Type.to_string t1
           ^ " and " ^ Type.to_string t2
-          ^ " but expressions of type Integer were expected" ) )
+          ^ " but expressions of type Integer/Float were expected" ) )
   | R.Not e -> (
     match type_check_exp env denv e with
     | Type.Boolean, e' -> (Type.Boolean, Not e')
@@ -1269,6 +1388,7 @@ let read_int () =
 
 type answer =
   [ `Int of Int64.t
+  | `Float of float
   | `Bool of bool
   | `Void
   | `Vector of answer array
@@ -1277,6 +1397,7 @@ type answer =
 
 let rec string_of_answer ?(nested = false) = function
   | `Int i -> Int64.to_string i
+  | `Float f -> Printf.sprintf "%f" f
   | `Bool false -> "#f"
   | `Bool true -> "#t"
   | `Void -> "#<void>"
@@ -1302,6 +1423,7 @@ let rec interp ?(read = None) = function
 
 and interp_exp ?(read = None) menv env defs = function
   | Int i -> `Int i
+  | Float f -> `Float f
   | Bool b -> `Bool b
   | Void -> `Void
   | Prim (p, _) -> interp_prim menv env defs p ~read
@@ -1362,30 +1484,35 @@ and interp_prim ?(read = None) menv env defs = function
   | Minus e -> (
     match interp_exp menv env defs e ~read with
     | `Int i -> `Int Int64.(-i)
+    | `Float f -> `Float (Float.neg f)
     | _ -> assert false )
   | Plus (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 + i2)
+      | `Float f1, `Float f2 -> `Float (f1 +. f2)
       | _ -> assert false )
   | Subtract (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 - i2)
+      | `Float f1, `Float f2 -> `Float (f1 -. f2)
       | _ -> assert false )
   | Mult (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 * i2)
+      | `Float f1, `Float f2 -> `Float (f1 *. f2)
       | _ -> assert false )
   | Div (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Int Int64.(i1 / i2)
+      | `Float f1, `Float f2 -> `Float (f1 /. f2)
       | _ -> assert false )
   | Rem (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
@@ -1420,7 +1547,8 @@ and interp_prim ?(read = None) menv env defs = function
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 = i2)
-      | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2)
+      | `Float f1, `Float f2 -> `Bool Float.(f1 = f2)
+      | `Bool b1, `Bool b2 -> `Bool Bool.(b1 = b2)
       | `Void, `Void -> `Bool true
       | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2)
       | `Function _, `Function _ -> `Bool (phys_equal a1 a2)
@@ -1431,7 +1559,8 @@ and interp_prim ?(read = None) menv env defs = function
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 <> i2)
-      | `Bool b1, `Bool b2 -> `Bool (Bool.equal b1 b2 |> not)
+      | `Float f1, `Float f2 -> `Bool Float.(f1 <> f2)
+      | `Bool b1, `Bool b2 -> `Bool Bool.(b1 <> b2)
       | `Void, `Void -> `Bool false
       | `Vector as1, `Vector as2 -> `Bool (phys_equal as1 as2 |> not)
       | `Function _, `Function _ -> `Bool (phys_equal a1 a2 |> not)
@@ -1442,24 +1571,28 @@ and interp_prim ?(read = None) menv env defs = function
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 < i2)
+      | `Float f1, `Float f2 -> `Bool Float.(f1 < f2)
       | _ -> assert false )
   | Le (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 <= i2)
+      | `Float f1, `Float f2 -> `Bool Float.(f1 <= f2)
       | _ -> assert false )
   | Gt (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 > i2)
+      | `Float f1, `Float f2 -> `Bool Float.(f1 > f2)
       | _ -> assert false )
   | Ge (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
       match (a1, a2) with
       | `Int i1, `Int i2 -> `Bool Int64.(i1 >= i2)
+      | `Float f1, `Float f2 -> `Bool Float.(f1 >= f2)
       | _ -> assert false )
   | Not e -> (
     match interp_exp menv env defs e ~read with
@@ -1509,6 +1642,7 @@ and uniquify_def = function
 
 and uniquify_exp m n = function
   | Int _ as i -> i
+  | Float _ as f -> f
   | Bool _ as b -> b
   | Void -> Void
   | Prim (p, t) -> Prim (uniquify_prim m n p, t)
@@ -1581,6 +1715,7 @@ and escaped_defs_def = function
 
 and escaped_defs_exp = function
   | Int _ -> []
+  | Float _ -> []
   | Bool _ -> []
   | Void -> []
   | Prim (p, _) -> escaped_defs_prim p
@@ -1641,6 +1776,7 @@ let rec recompute_types_def defs = function
 
 and recompute_types_exp defs env = function
   | Int _ as i -> i
+  | Float _ as f -> f
   | Bool _ as b -> b
   | Void -> Void
   | Prim (p, t) ->
@@ -1697,22 +1833,45 @@ and recompute_types_exp defs env = function
 and recompute_types_prim defs env = function
   | Read -> (Read, Type.Integer)
   | Print e -> (Print (recompute_types_exp defs env e), Type.Void)
-  | Minus e -> (Minus (recompute_types_exp defs env e), Type.Integer)
-  | Plus (e1, e2) ->
-      ( Plus
-          (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
-      , Type.Integer )
-  | Subtract (e1, e2) ->
-      ( Subtract
-          (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
-      , Type.Integer )
-  | Mult (e1, e2) ->
-      ( Mult
-          (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
-      , Type.Integer )
-  | Div (e1, e2) ->
-      ( Div (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
-      , Type.Integer )
+  | Minus e -> (
+      let e = recompute_types_exp defs env e in
+      let p = Minus e in
+      match typeof_exp e with
+      | Integer -> (p, Integer)
+      | Float -> (p, Float)
+      | _ -> assert false )
+  | Plus (e1, e2) -> (
+      let e1 = recompute_types_exp defs env e1 in
+      let e2 = recompute_types_exp defs env e2 in
+      let p = Plus (e1, e2) in
+      match (typeof_exp e1, typeof_exp e2) with
+      | Integer, Integer -> (p, Integer)
+      | Float, Float -> (p, Float)
+      | _ -> assert false )
+  | Subtract (e1, e2) -> (
+      let e1 = recompute_types_exp defs env e1 in
+      let e2 = recompute_types_exp defs env e2 in
+      let p = Subtract (e1, e2) in
+      match (typeof_exp e1, typeof_exp e2) with
+      | Integer, Integer -> (p, Integer)
+      | Float, Float -> (p, Float)
+      | _ -> assert false )
+  | Mult (e1, e2) -> (
+      let e1 = recompute_types_exp defs env e1 in
+      let e2 = recompute_types_exp defs env e2 in
+      let p = Mult (e1, e2) in
+      match (typeof_exp e1, typeof_exp e2) with
+      | Integer, Integer -> (p, Integer)
+      | Float, Float -> (p, Float)
+      | _ -> assert false )
+  | Div (e1, e2) -> (
+      let e1 = recompute_types_exp defs env e1 in
+      let e2 = recompute_types_exp defs env e2 in
+      let p = Div (e1, e2) in
+      match (typeof_exp e1, typeof_exp e2) with
+      | Integer, Integer -> (p, Integer)
+      | Float, Float -> (p, Float)
+      | _ -> assert false )
   | Rem (e1, e2) ->
       ( Rem (recompute_types_exp defs env e1, recompute_types_exp defs env e2)
       , Type.Integer )
@@ -1801,6 +1960,7 @@ and convert_assignments_def = function
 
 and convert_assignments_exp a f = function
   | Int _ as i -> i
+  | Float _ as f -> f
   | Bool _ as b -> b
   | Void -> Void
   | Prim (p, t) -> Prim (convert_assignments_prim a f p, t)
@@ -1919,6 +2079,7 @@ and needs_closures_def = function
 
 and needs_closures_exp = function
   | Int _ -> false
+  | Float _ -> false
   | Bool _ -> false
   | Void -> false
   | Prim (p, _) -> needs_closures_prim p
@@ -2007,6 +2168,7 @@ and convert_to_closures_def escaped n = function
 
 and convert_to_closures_exp escaped env n = function
   | Int _ as i -> (i, [])
+  | Float _ as f -> (f, [])
   | Bool _ as b -> (b, [])
   | Void -> (Void, [])
   | Prim (p, t) ->
@@ -2243,6 +2405,7 @@ and limit_functions_def_exp defs = function
 
 and limit_functions_exp defs = function
   | Int _ as i -> i
+  | Float _ as f -> f
   | Bool _ as b -> b
   | Void -> Void
   | Prim (p, t) -> Prim (limit_functions_prim defs p, t)
@@ -2285,6 +2448,7 @@ and limit_functions_exp defs = function
         let e =
           match e with
           | Int _ -> assert false
+          | Float _ -> assert false
           | Bool _ -> assert false
           | Void -> assert false
           | Prim (p, _) -> Prim (p, et)

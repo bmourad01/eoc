@@ -27,6 +27,7 @@ and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
+  | Float of float
   | Bool of bool
   | Void
   | Prim of prim * Type.t

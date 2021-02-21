@@ -29,6 +29,7 @@ and def = Def of var * (var * Type.t) list * Type.t * exp
  * same type, so we don't need to annotate them *)
 and exp =
   | Int of Int64.t
+  | Float of float
   | Bool of bool
   | Void
   | Prim of prim * Type.t
@@ -89,6 +90,7 @@ val type_check : R.t -> t
 
 type answer =
   [ `Int of Int64.t
+  | `Float of float
   | `Bool of bool
   | `Void
   | `Vector of answer array

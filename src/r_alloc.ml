@@ -23,6 +23,7 @@ and def = Def of var * (var * Type.t) list * Type.t * exp
 
 and exp =
   | Int of Int64.t
+  | Float of float
   | Bool of bool
   | Void
   | Prim of prim * Type.t
@@ -84,6 +85,7 @@ and string_of_def = function
 
 and string_of_exp = function
   | Int i -> Int64.to_string i
+  | Float f -> Printf.sprintf "%f" f
   | Bool b -> if b then "#t" else "#f"
   | Void -> "(void)"
   | Prim (p, _) -> string_of_prim p
@@ -173,6 +175,7 @@ and expose_allocation_def = function
 
 and expose_allocation_exp n = function
   | R_typed.Int i -> Int i
+  | R_typed.Float f -> Float f
   | R_typed.Bool b -> Bool b
   | R_typed.Void -> Void
   | R_typed.Prim (Vector es, (Type.Vector ts as t)) -> expand_alloc n t ts es

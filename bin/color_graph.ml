@@ -11,7 +11,7 @@ let () =
     |> Eoc.X.build_interference
   in
   List.iter defs ~f:(fun (Def (info, l, _)) ->
-      let colors = Eoc.X.(color_graph info.conflicts) in
+      let colors = Eoc.X.(color_graph info.conflicts info.locals_types) in
       Printf.printf "%s:\n\n" l;
       Map.iteri colors ~f:(fun ~key ~data ->
           Printf.printf "%s -> %d\n" (Eoc.X.Arg.to_string key) data);

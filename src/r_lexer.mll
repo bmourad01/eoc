@@ -17,6 +17,7 @@ let ident = ['a'-'z'] (alpha | '-' | '\'' | '?' | digit)*
 let integer = digit+
 let ninteger = '-' integer
 let hexnum = "0x" ['0'-'9' 'a'-'f' 'A'-'F']+ 
+let flt = digit+ '.' digit+
 
 rule token = parse
   | '\n' { newline lexbuf; token lexbuf }
@@ -62,6 +63,7 @@ rule token = parse
   | "procedure-arity" { PROCEDUREARITY }
   | "void" { VOID }
   | "Integer" { TINTEGER }
+  | "Float" { TFLOAT }
   | "Boolean" { TBOOLEAN }
   | "Void" { TVOID }
   | "Vector" { TVECTOR }
@@ -71,5 +73,6 @@ rule token = parse
   | integer as n { INT (Int64.of_string n) }
   | ninteger as n { INT (Int64.of_string n) }
   | hexnum as n { INT (Int64.of_string n) }
+  | flt as f { FLOAT (Float.of_string f) }
   | ident as id { VAR id }
   | _ { raise Error }
