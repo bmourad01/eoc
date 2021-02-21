@@ -696,9 +696,17 @@ and select_instructions_tail type_map float_map tails t =
   | C.If ((cmp, Var (v, _), Int i), lt, lf) ->
       let cc = Cc.of_c_cmp cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
+  | C.If ((cmp, Var (v, _), Float f), lt, lf) ->
+      let cc = Cc.of_c_cmp cmp in
+      let l = make_float float_map f in
+      [COMISD (Var v, Var l); JCC (cc, lt); JMP lf]
   | C.If ((cmp, Int i, Var (v, _)), lt, lf) ->
       let cc = Cc.of_c_cmp_swap cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
+  | C.If ((cmp, Float f, Var (v, _)), lt, lf) ->
+      let cc = Cc.of_c_cmp_swap cmp in
+      let l = make_float float_map f in
+      [COMISD (Var v, Var l); JCC (cc, lt); JMP lf]
   | C.If ((cmp, Var (v, _), Bool b), lt, lf)
    |C.If ((cmp, Bool b, Var (v, _)), lt, lf) -> (
     match cmp with
