@@ -37,7 +37,7 @@ Given this, the output assembly programs should work fine on a corresponding Lin
 - Let-binding
 - If-then-else expressions
 - Register allocation with move biasing
-- Tuples (via `vector`) & garbage collection
+- Heap-allocated objects (tuples via `vector`) and stop-and-copy garbage collection
 - Top-level functions via `define`
 - Anonymous functions via `lambda`
 - Loops (via `while`), sequencing (via `begin`, `when`, and `unless`), and assignment (via `set!`)
