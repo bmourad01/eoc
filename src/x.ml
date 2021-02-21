@@ -430,7 +430,17 @@ let rec to_string = function
       in
       let flt_consts =
         Map.to_alist info.float_map
-        |> List.map ~f:(fun (f, l) -> Printf.sprintf "%s:\n    dq %f" l f)
+        |> List.map ~f:(fun (f, l) ->
+               let s =
+                 if Float.is_inf f then
+                   if Float.is_negative f then "-__?Infinity?__"
+                   else "+__?Infinity?__"
+                 else if Float.is_nan f then
+                   if Float.is_negative f then "-__?QNaN?__"
+                   else "+__?QNaN?__"
+                 else Printf.sprintf "%f" f
+               in
+               Printf.sprintf "%s:\n    dq %s" l s)
         |> String.concat ~sep:"\n"
       in
       (* the type information shouldn't be in read-only
