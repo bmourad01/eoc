@@ -1454,7 +1454,7 @@ let function_prologue is_main rootstack_spills floatstack_spills stack_space
       ; MOV (Reg RSI, Imm 0x4000L)
         (* let's use a very small initial heap to trigger the GC *)
       ; MOV (Reg RDX, Imm 16L)
-      ; CALL (Extern.initialize, 2)
+      ; CALL (Extern.initialize, 3)
       ; MOV (Reg R15, Var Extern.rootstack_begin)
       ; MOV (Reg R14, Var Extern.floatstack_begin) ]
       @ adj_rootstk @ adj_floatstack
