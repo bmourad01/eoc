@@ -745,6 +745,14 @@ and select_instructions_stmt type_map float_map s =
   | C.(Vectorsetstmt (Var (v1, _), i, Int n)) ->
       [ MOV (Reg R11, Var v1)
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm n) ]
+  | C.(Vectorsetstmt (Var (v1, _), i, Float f)) ->
+      let l = make_float float_map f in
+      [ MOV (Reg R11, Var v1)
+      ; MOVSD (Xmmreg XMM0, Var l)
+      ; PEXTRQ
+          ( Deref (Reg.R11, (i + total_tag_offset) * word_size)
+          , Xmmreg XMM0
+          , Imm 0L ) ]
   | C.(Vectorsetstmt (Var (v1, _), i, Bool b)) ->
       [ MOV (Reg R11, Var v1)
       ; MOV
@@ -753,6 +761,12 @@ and select_instructions_stmt type_map float_map s =
   | C.(Vectorsetstmt (Var (v1, _), i, Void)) ->
       [ MOV (Reg R11, Var v1)
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm 0L) ]
+  | C.(Vectorsetstmt (Var (v1, _), i, Var (v2, Type.Float))) ->
+      [ MOV (Reg R11, Var v1)
+      ; PEXTRQ
+          ( Deref (Reg.R11, (i + total_tag_offset) * word_size)
+          , Var v2
+          , Imm 0L ) ]
   | C.(Vectorsetstmt (Var (v1, _), i, Var (v2, _))) ->
       [ MOV (Reg R11, Var v1)
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2) ]
@@ -853,7 +867,9 @@ and select_instructions_exp type_map float_map a p =
       [MOVSD (a, Var l0); SUBSD (a, Var l)]
   | C.(Prim (Minus (Var (v, Type.Float)), _)) ->
       let l0 = make_float float_map 0.0 in
-      [MOVSD (a, Var l0); SUBSD (a, Var v)]
+      [ MOVSD (Xmmreg XMM0, Var l0)
+      ; SUBSD (Xmmreg XMM0, Var v)
+      ; MOVSD (Var v, Xmmreg XMM0) ]
   | C.(Prim (Minus (Var (v, t)), _)) -> [MOV (a, Var v); NEG a]
   | C.(Prim (Minus _, _)) -> assert false
   (* plus *)
@@ -1228,9 +1244,14 @@ and select_instructions_exp type_map float_map a p =
       else [MOV (a, Imm Int64.(of_int len))]
   | C.(Prim (Vectorlength _, _)) -> assert false
   (* vector-ref *)
-  | C.(Prim (Vectorref (Var (v, _), i), _)) ->
-      [ MOV (Reg R11, Var v)
-      ; MOV (a, Deref (Reg.R11, (i + total_tag_offset) * word_size)) ]
+  | C.(Prim (Vectorref (Var (v, _), i), t)) ->
+      let r =
+        let loc = Deref (Reg.R11, (i + total_tag_offset) * word_size) in
+        match t with
+        | C.Type.Float -> MOVSD (a, loc)
+        | _ -> MOV (a, loc)
+      in
+      [MOV (Reg R11, Var v); r]
   | C.(Prim (Vectorref _, _)) -> assert false
   (* fun-ref *)
   | C.(Funref (v, _)) -> [LEA (a, Var v)]
