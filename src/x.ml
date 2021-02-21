@@ -220,6 +220,7 @@ and instr =
   | MULSD of arg * arg
   | IDIV of arg
   | DIVSD of arg * arg
+  | SQRTSD of arg * arg
   | NEG of arg
   | MOV of arg * arg
   | MOVSD of arg * arg
@@ -287,6 +288,7 @@ let write_set instr =
      |IMULi (a, _, _)
      |MULSD (a, _)
      |DIVSD (a, _)
+     |SQRTSD (a, _)
      |NOT a
      |XOR (a, _)
      |AND (a, _)
@@ -348,6 +350,7 @@ let read_set instr =
      |DEC a
      |PEXTRQ (_, a, _)
      |PINSRQ (_, a, _)
+     |SQRTSD (_, a)
      |MOVQ (_, a) -> Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
@@ -522,6 +525,8 @@ and string_of_instr = function
   | IDIV a -> Printf.sprintf "idiv %s" (Arg.to_string a)
   | DIVSD (a1, a2) ->
       Printf.sprintf "divsd %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | SQRTSD (a1, a2) ->
+      Printf.sprintf "sqrtsd %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | NEG a -> Printf.sprintf "neg %s" (Arg.to_string a)
   | MOV (a1, a2) ->
       Printf.sprintf "mov %s, %s" (Arg.to_string a1) (Arg.to_string a2)
@@ -879,9 +884,15 @@ and select_instructions_exp type_map float_map a p =
       let l0 = make_float float_map 0.0 in
       [ MOVSD (Xmmreg XMM0, Var l0)
       ; SUBSD (Xmmreg XMM0, Var v)
-      ; MOVSD (Var v, Xmmreg XMM0) ]
+      ; MOVSD (a, Xmmreg XMM0) ]
   | C.(Prim (Minus (Var (v, t)), _)) -> [MOV (a, Var v); NEG a]
   | C.(Prim (Minus _, _)) -> assert false
+  (* sqrt *)
+  | C.(Prim (Sqrt (Float f), _)) ->
+      let l = make_float float_map (Float.sqrt f) in
+      [MOVSD (a, Var l)]
+  | C.(Prim (Sqrt (Var (v, Type.Float)), _)) -> [SQRTSD (a, Var v)]
+  | C.(Prim (Sqrt _, _)) -> assert false
   (* plus *)
   | C.(Prim (Plus (Int i1, Int i2), _)) ->
       let i = Int64.(i1 + i2) in
@@ -1563,6 +1574,8 @@ and patch_instructions_instr = function
       [MOVQ (Xmmreg XMM0, d); MULSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
   | DIVSD ((Deref _ as d), s) ->
       [MOVQ (Xmmreg XMM0, d); DIVSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+  | SQRTSD ((Deref _ as d), s) ->
+      [MOVQ (Xmmreg XMM0, d); SQRTSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
   | CMOV (cc, (Deref _ as d), a) ->
       [MOV (Reg RAX, d); CMOV (cc, Reg RAX, a); MOV (d, Reg RAX)]
   | MOV ((Reg _ as a), Imm 0L) -> [XOR (a, a)]
@@ -1949,6 +1962,7 @@ and allocate_registers_instr colors stack_locs vector_locs float_locs instr =
   | MULSD (a1, a2) -> MULSD (fcolor a1, fcolor a2)
   | IDIV a -> IDIV (color a)
   | DIVSD (a1, a2) -> DIVSD (fcolor a1, fcolor a2)
+  | SQRTSD (a1, a2) -> SQRTSD (fcolor a1, fcolor a2)
   | NEG a -> NEG (color a)
   | MOV (a1, a2) -> MOV (color a1, color a2)
   | MOVSD (a1, a2) -> MOVSD (fcolor a1, fcolor a2)

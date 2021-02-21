@@ -121,6 +121,7 @@ and instr =
   | MULSD of arg * arg
   | IDIV of arg
   | DIVSD of arg * arg
+  | SQRTSD of arg * arg
   | NEG of arg
   | MOV of arg * arg
   | MOVSD of arg * arg

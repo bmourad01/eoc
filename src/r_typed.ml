@@ -41,6 +41,7 @@ and prim =
   | Read
   | Print of exp
   | Minus of exp
+  | Sqrt of exp
   | Plus of exp * exp
   | Subtract of exp * exp
   | Mult of exp * exp
@@ -130,7 +131,7 @@ let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
 and free_vars_of_prim ?(bnd = String.Set.empty) = function
   | Read -> empty_var_env
   | Print e -> free_vars_of_exp e ~bnd
-  | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
+  | Minus e | Sqrt e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
       free_vars_of_exp e ~bnd
   | Plus (e1, e2)
    |Subtract (e1, e2)
@@ -218,6 +219,7 @@ and string_of_prim = function
   | Read -> "(read)"
   | Print e -> Printf.sprintf "(print %s)" (string_of_exp e)
   | Minus e -> Printf.sprintf "(- %s)" (string_of_exp e)
+  | Sqrt e -> Printf.sprintf "(sqrt %s)" (string_of_exp e)
   | Plus (e1, e2) ->
       Printf.sprintf "(+ %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Subtract (e1, e2) ->
@@ -311,8 +313,13 @@ and assigned_and_free_prim p =
   let default () = (String.Set.empty, String.Set.empty) in
   match p with
   | Read -> default ()
-  | Print e | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
-      assigned_and_free_exp e
+  | Print e
+   |Minus e
+   |Sqrt e
+   |Lnot e
+   |Not e
+   |Vectorlength e
+   |Vectorref (e, _) -> assigned_and_free_exp e
   | Plus (e1, e2)
    |Subtract (e1, e2)
    |Mult (e1, e2)
@@ -357,6 +364,10 @@ and opt_exp n a env = function
     | Int i -> Int Int64.(-i)
     | Prim (Minus e, _) -> e
     | e -> Prim (Minus e, t) )
+  | Prim (Sqrt e, t) -> (
+    match opt_exp n a env e with
+    | Float f -> Float (Float.sqrt f)
+    | e -> Prim (Sqrt e, t) )
   | Prim (Plus (e1, e2), t) -> (
     match (opt_exp n a env e1, opt_exp n a env e2) with
     | Int i1, Int i2 -> Int Int64.(i1 + i2)
@@ -648,7 +659,7 @@ and is_pure_exp = function
 and is_pure_prim = function
   | Read -> false
   | Print _ -> false
-  | Minus e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
+  | Minus e | Sqrt e | Lnot e | Not e | Vectorlength e | Vectorref (e, _) ->
       is_pure_exp e
   | Plus (e1, e2)
    |Subtract (e1, e2)
@@ -942,6 +953,14 @@ and type_check_prim env denv = function
           ( "R_typed.type_check_prim: minus exp " ^ R.string_of_exp e
           ^ " has type " ^ Type.to_string t
           ^ " but an expression of type Integer/Float was expected" ) )
+  | R.Sqrt e -> (
+    match type_check_exp env denv e with
+    | Type.Float, e' -> (Type.Float, Sqrt e')
+    | t, _ ->
+        typeerr
+          ( "R_typed.type_check_prim: sqrt exp " ^ R.string_of_exp e
+          ^ " has type " ^ Type.to_string t
+          ^ " but an expression of type Float was expected" ) )
   | R.Plus (e1, e2) -> (
     match (type_check_exp env denv e1, type_check_exp env denv e2) with
     | (Type.Integer, e1'), (Type.Integer, e2') ->
@@ -1490,6 +1509,10 @@ and interp_prim ?(read = None) menv env defs = function
     | `Int i -> `Int Int64.(-i)
     | `Float f -> `Float (Float.neg f)
     | _ -> assert false )
+  | Sqrt e -> (
+    match interp_exp menv env defs e ~read with
+    | `Float f -> `Float (Float.sqrt f)
+    | _ -> assert false )
   | Plus (e1, e2) -> (
       let a1 = interp_exp menv env defs e1 ~read in
       let a2 = interp_exp menv env defs e2 ~read in
@@ -1683,6 +1706,7 @@ and uniquify_prim m n = function
   | Read -> Read
   | Print e -> Print (uniquify_exp m n e)
   | Minus e -> Minus (uniquify_exp m n e)
+  | Sqrt e -> Sqrt (uniquify_exp m n e)
   | Plus (e1, e2) -> Plus (uniquify_exp m n e1, uniquify_exp m n e2)
   | Subtract (e1, e2) -> Subtract (uniquify_exp m n e1, uniquify_exp m n e2)
   | Mult (e1, e2) -> Mult (uniquify_exp m n e1, uniquify_exp m n e2)
@@ -1741,6 +1765,7 @@ and escaped_defs_prim = function
   | Read -> []
   | Print e -> escaped_defs_exp e
   | Minus e -> escaped_defs_exp e
+  | Sqrt e -> escaped_defs_exp e
   | Plus (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
   | Subtract (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
   | Mult (e1, e2) -> escaped_defs_exp e1 @ escaped_defs_exp e2
@@ -1843,6 +1868,11 @@ and recompute_types_prim defs env = function
       match typeof_exp e with
       | Integer -> (p, Integer)
       | Float -> (p, Float)
+      | _ -> assert false )
+  | Sqrt e -> (
+      let e = recompute_types_exp defs env e in
+      match typeof_exp e with
+      | Float -> (Sqrt e, Float)
       | _ -> assert false )
   | Plus (e1, e2) -> (
       let e1 = recompute_types_exp defs env e1 in
@@ -2029,6 +2059,7 @@ and convert_assignments_prim a f = function
   | Read -> Read
   | Print e -> Print (convert_assignments_exp a f e)
   | Minus e -> Minus (convert_assignments_exp a f e)
+  | Sqrt e -> Sqrt (convert_assignments_exp a f e)
   | Plus (e1, e2) ->
       Plus (convert_assignments_exp a f e1, convert_assignments_exp a f e2)
   | Subtract (e1, e2) ->
@@ -2104,6 +2135,7 @@ and needs_closures_prim = function
   | Read -> false
   | Print e -> needs_closures_exp e
   | Minus e -> needs_closures_exp e
+  | Sqrt e -> needs_closures_exp e
   | Plus (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
   | Subtract (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
   | Mult (e1, e2) -> needs_closures_exp e1 || needs_closures_exp e2
@@ -2280,6 +2312,9 @@ and convert_to_closures_prim escaped env n = function
   | Minus e ->
       let e, new_defs = convert_to_closures_exp escaped env n e in
       (Minus e, new_defs)
+  | Sqrt e ->
+      let e, new_defs = convert_to_closures_exp escaped env n e in
+      (Sqrt e, new_defs)
   | Plus (e1, e2) ->
       let e1, new_defs1 = convert_to_closures_exp escaped env n e1 in
       let e2, new_defs2 = convert_to_closures_exp escaped env n e2 in
@@ -2485,6 +2520,7 @@ and limit_functions_prim defs = function
   | Read -> Read
   | Print e -> Print (limit_functions_exp defs e)
   | Minus e -> Minus (limit_functions_exp defs e)
+  | Sqrt e -> Sqrt (limit_functions_exp defs e)
   | Plus (e1, e2) ->
       Plus (limit_functions_exp defs e1, limit_functions_exp defs e2)
   | Subtract (e1, e2) ->

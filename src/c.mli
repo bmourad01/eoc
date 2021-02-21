@@ -63,6 +63,7 @@ and atom =
 and prim =
   | Read
   | Minus of atom
+  | Sqrt of atom
   | Plus of atom * atom
   | Subtract of atom * atom
   | Mult of atom * atom

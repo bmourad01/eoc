@@ -47,6 +47,7 @@ and prim =
   | Read
   | Print of atom
   | Minus of atom
+  | Sqrt of atom
   | Plus of atom * atom
   | Subtract of atom * atom
   | Mult of atom * atom

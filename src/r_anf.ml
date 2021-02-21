@@ -38,6 +38,7 @@ and prim =
   | Read
   | Print of atom
   | Minus of atom
+  | Sqrt of atom
   | Plus of atom * atom
   | Subtract of atom * atom
   | Mult of atom * atom
@@ -113,6 +114,7 @@ and string_of_prim = function
   | Read -> "(read)"
   | Print a -> Printf.sprintf "(print %s)" (string_of_atom a)
   | Minus a -> Printf.sprintf "(- %s)" (string_of_atom a)
+  | Sqrt a -> Printf.sprintf "(sqrt %s)" (string_of_atom a)
   | Plus (a1, a2) ->
       Printf.sprintf "(+ %s %s)" (string_of_atom a1) (string_of_atom a2)
   | Subtract (a1, a2) ->
@@ -191,6 +193,10 @@ and resolve_complex_atom m n = function
       let nv, a = resolve_complex_atom m n e in
       let x = fresh_var n in
       (nv @ [(x, Prim (Minus a, t))], Var (x, t))
+  | R_alloc.(Prim (Sqrt e, t)) ->
+      let nv, a = resolve_complex_atom m n e in
+      let x = fresh_var n in
+      (nv @ [(x, Prim (Sqrt a, t))], Var (x, t))
   | R_alloc.(Prim (Plus (e1, Prim (Minus e2, _)), t)) ->
       let nv1, a1 = resolve_complex_atom m n e1 in
       let nv2, a2 = resolve_complex_atom m n e2 in
@@ -397,6 +403,9 @@ and resolve_complex_exp m n = function
   | R_alloc.Prim (Minus e, t) ->
       let nv, a = resolve_complex_atom m n e in
       unfold nv (Prim (Minus a, t))
+  | R_alloc.Prim (Sqrt e, t) ->
+      let nv, a = resolve_complex_atom m n e in
+      unfold nv (Prim (Sqrt a, t))
   | R_alloc.Prim (Plus (e1, e2), t) ->
       let nv1, a1 = resolve_complex_atom m n e1 in
       let nv2, a2 = resolve_complex_atom m n e2 in

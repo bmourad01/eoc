@@ -26,6 +26,7 @@ rule token = parse
   | '-' { MINUS }
   | '*' { STAR }
   | '/' { FSLASH }
+  | "sqrt" { SQRT }
   | "rem" { REM }
   | "land" { LAND }
   | "lor" { LOR }

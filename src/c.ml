@@ -65,6 +65,7 @@ and atom =
 and prim =
   | Read
   | Minus of atom
+  | Sqrt of atom
   | Plus of atom * atom
   | Subtract of atom * atom
   | Mult of atom * atom
@@ -173,6 +174,7 @@ and string_of_atom = function
 and string_of_prim = function
   | Read -> "(read)"
   | Minus a -> Printf.sprintf "(- %s)" (string_of_atom a)
+  | Sqrt a -> Printf.sprintf "(sqrt %s)" (string_of_atom a)
   | Plus (a1, a2) ->
       Printf.sprintf "(+ %s %s)" (string_of_atom a1) (string_of_atom a2)
   | Subtract (a1, a2) ->
@@ -348,6 +350,11 @@ and interp_prim ?(read = None) env defs = function
   | Minus a -> (
     match interp_atom env defs a with
     | `Int i -> `Int Int64.(-i)
+    | `Float f -> `Float (Float.neg f)
+    | _ -> assert false )
+  | Sqrt a -> (
+    match interp_atom env defs a with
+    | `Float f -> `Float (Float.sqrt f)
     | _ -> assert false )
   | Plus (a1, a2) -> (
     match (interp_atom env defs a1, interp_atom env defs a2) with
@@ -767,6 +774,7 @@ and translate_prim p =
   | R_anf.Read -> Read
   | R_anf.Print _ -> assert false
   | R_anf.Minus a -> Minus (tr a)
+  | R_anf.Sqrt a -> Sqrt (tr a)
   | R_anf.Plus (a1, a2) -> Plus (tr a1, tr a2)
   | R_anf.Subtract (a1, a2) -> Subtract (tr a1, tr a2)
   | R_anf.Mult (a1, a2) -> Mult (tr a1, tr a2)

@@ -47,6 +47,7 @@ and prim =
   | Read
   | Print of exp
   | Minus of exp
+  | Sqrt of exp
   | Plus of exp * exp
   | Subtract of exp * exp
   | Mult of exp * exp
