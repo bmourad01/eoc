@@ -1225,7 +1225,7 @@ and select_instructions_exp type_map float_map a p =
       if String.equal v1 v2 then [XOR (a, a)]
       else
         [ CMP (Var v1, Var v2)
-        ; SETCC (Cc.B, Bytereg AL)
+        ; SETCC (Cc.L, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Lt _, _)) -> assert false
   (* le *)
@@ -1257,7 +1257,7 @@ and select_instructions_exp type_map float_map a p =
       if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
-        ; SETCC (Cc.AE, Bytereg AL)
+        ; SETCC (Cc.LE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Le _, _)) -> assert false
   (* gt *)
@@ -1285,7 +1285,7 @@ and select_instructions_exp type_map float_map a p =
       if String.equal v1 v2 then [XOR (a, a)]
       else
         [ CMP (Var v1, Var v2)
-        ; SETCC (Cc.A, Bytereg AL)
+        ; SETCC (Cc.G, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Gt _, _)) -> assert false
   (* ge *)
@@ -1317,7 +1317,7 @@ and select_instructions_exp type_map float_map a p =
       if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
-        ; SETCC (Cc.AE, Bytereg AL)
+        ; SETCC (Cc.GE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Ge _, _)) -> assert false
   (* not *)
