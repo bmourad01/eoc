@@ -1883,9 +1883,9 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
             try
               Interference_graph.succ bias u
               |> List.filter_map ~f:(fun v ->
-                     Option.(
-                       Map.find !colors v
-                       >>= fun c -> some_if (not (Set.mem sat c)) c))
+                     let open Option.Let_syntax in
+                     let%bind c = Map.find !colors v in
+                     Option.some_if (not (Set.mem sat c)) c)
               |> Int.Set.of_list
             with Invalid_argument _ -> Int.Set.empty
           in
