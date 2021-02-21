@@ -32,7 +32,7 @@ Given this, the output assembly programs should work fine on a corresponding Lin
 
 # Features Implemented
 
-- Integers, booleans
+- Integers, booleans, floating-point numbers
 - Basic arithmetic and bitwise operations
 - Let-binding
 - If-then-else expressions
@@ -41,9 +41,3 @@ Given this, the output assembly programs should work fine on a corresponding Lin
 - Top-level functions via `define`
 - Anonymous functions via `lambda`
 - Loops (via `while`), sequencing (via `begin`, `when`, and `unless`), and assignment (via `set!`)
-
-# Why are you using `nasm`?
-
-Partly for familiarity, partly because it resembles Intel syntax for x86 assembly. I find AT&T syntax to be very ugly, and the mnemonics it uses conflict with those found in the official Intel manuals.
-
-I'm aware that GNU `as` can allow for Intel syntax. I just haven't implemented such a backend (yet).
