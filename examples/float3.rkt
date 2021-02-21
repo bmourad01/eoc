@@ -7,4 +7,7 @@
          [nb (- b)])
     (vector (/ (+ nb s) a2) (/ (- nb s) a2))))
 
-(quadratic-formula 1.0 2.0 (- 3.0))
+(let ([a (int->float (read))]
+      [b (int->float (read))]
+      [c (int->float (read))])
+  (quadratic-formula a b c))

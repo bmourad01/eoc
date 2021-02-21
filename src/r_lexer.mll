@@ -27,6 +27,8 @@ rule token = parse
   | '*' { STAR }
   | '/' { FSLASH }
   | "sqrt" { SQRT }
+  | "int->float" { INT2FLOAT }
+  | "float->int" { FLOAT2INT }
   | "rem" { REM }
   | "land" { LAND }
   | "lor" { LOR }

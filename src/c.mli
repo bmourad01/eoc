@@ -64,6 +64,8 @@ and prim =
   | Read
   | Minus of atom
   | Sqrt of atom
+  | Int2float of atom
+  | Float2int of atom
   | Plus of atom * atom
   | Subtract of atom * atom
   | Mult of atom * atom

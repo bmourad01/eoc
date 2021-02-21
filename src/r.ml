@@ -66,6 +66,8 @@ and prim =
   | Print of exp
   | Minus of exp
   | Sqrt of exp
+  | Int2float of exp
+  | Float2int of exp
   | Plus of exp * exp
   | Subtract of exp * exp
   | Mult of exp * exp
@@ -160,6 +162,8 @@ and string_of_prim = function
   | Print e -> Printf.sprintf "(print %s)" (string_of_exp e)
   | Minus e -> Printf.sprintf "(- %s)" (string_of_exp e)
   | Sqrt e -> Printf.sprintf "(sqrt %s)" (string_of_exp e)
+  | Int2float e -> Printf.sprintf "(int->float %s)" (string_of_exp e)
+  | Float2int e -> Printf.sprintf "(float->int %s)" (string_of_exp e)
   | Plus (e1, e2) ->
       Printf.sprintf "(+ %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Subtract (e1, e2) ->

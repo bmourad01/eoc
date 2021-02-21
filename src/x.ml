@@ -246,6 +246,8 @@ and instr =
   | PEXTRQ of arg * arg * arg
   | PINSRQ of arg * arg * arg
   | MOVQ of arg * arg
+  | CVTSI2SD of arg * arg
+  | CVTSD2SI of arg * arg
 
 and arg = Arg.t
 
@@ -298,7 +300,9 @@ let write_set instr =
      |MOVZX (a, _)
      |PEXTRQ (a, _, _)
      |PINSRQ (a, _, _)
-     |MOVQ (a, _) -> Args.singleton a
+     |MOVQ (a, _)
+     |CVTSI2SD (a, _)
+     |CVTSD2SI (a, _) -> Args.singleton a
     | IDIV _ -> Args.of_list [Reg RAX; Reg RDX]
     | CALL _ | CALLi _ -> Set.add caller_save_set (Reg RSP)
     | PUSH _ | RET -> Args.singleton (Reg RSP)
@@ -351,7 +355,9 @@ let read_set instr =
      |PEXTRQ (_, a, _)
      |PINSRQ (_, a, _)
      |SQRTSD (_, a)
-     |MOVQ (_, a) -> Args.singleton a
+     |MOVQ (_, a)
+     |CVTSI2SD (_, a)
+     |CVTSD2SI (_, a) -> Args.singleton a
     | CALL (_, arity) ->
         List.take Reg.arg_passing arity
         |> List.map ~f:(fun r -> Arg.Reg r)
@@ -570,6 +576,10 @@ and string_of_instr = function
         (Arg.to_string a2) (Arg.to_string a3)
   | MOVQ (a1, a2) ->
       Printf.sprintf "movq %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | CVTSI2SD (a1, a2) ->
+      Printf.sprintf "cvtsi2sd %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | CVTSD2SI (a1, a2) ->
+      Printf.sprintf "cvtsd2si %s, %s" (Arg.to_string a1) (Arg.to_string a2)
 
 let fits_int32 i = Option.is_some (Int64.to_int32 i)
 
@@ -892,6 +902,16 @@ and select_instructions_exp type_map float_map a p =
       [MOVSD (a, Var l)]
   | C.(Prim (Sqrt (Var (v, Type.Float)), _)) -> [SQRTSD (a, Var v)]
   | C.(Prim (Sqrt _, _)) -> assert false
+  (* int->float *)
+  | C.(Prim (Int2float (Int i), _)) ->
+      let l = make_float float_map (Float.of_int64 i) in
+      [MOVSD (a, Var l)]
+  | C.(Prim (Int2float (Var (v, _)), _)) -> [CVTSI2SD (a, Var v)]
+  | C.(Prim (Int2float _, _)) -> assert false
+  (* float->int *)
+  | C.(Prim (Float2int (Float f), _)) -> [MOV (a, Imm (Float.to_int64 f))]
+  | C.(Prim (Float2int (Var (v, _)), _)) -> [CVTSD2SI (a, Var v)]
+  | C.(Prim (Float2int _, _)) -> assert false
   (* plus *)
   | C.(Prim (Plus (Int i1, Int i2), _)) ->
       let i = Int64.(i1 + i2) in
@@ -1607,6 +1627,9 @@ and patch_instructions_instr = function
       [MOVQ (Xmmreg XMM0, s); PEXTRQ (d, Xmmreg XMM0, o)]
   | PINSRQ ((Deref _ as d), s, o) ->
       [PINSRQ (Xmmreg XMM0, s, o); MOVQ (d, Xmmreg XMM0)]
+  | CVTSI2SD ((Deref _ as d), s) ->
+      [CVTSI2SD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+  | CVTSD2SI ((Deref _ as d), s) -> [CVTSD2SI (Reg RAX, s); MOV (d, Reg RAX)]
   | instr -> [instr]
 
 let rec uncover_live = function
@@ -1988,6 +2011,8 @@ and allocate_registers_instr colors stack_locs vector_locs float_locs instr =
   | PEXTRQ (a1, a2, a3) -> PEXTRQ (color a1, fcolor a2, a3)
   | PINSRQ (a1, a2, a3) -> PINSRQ (fcolor a1, color a2, a3)
   | MOVQ _ -> assert false
+  | CVTSI2SD (a1, a2) -> CVTSI2SD (fcolor a1, color a2)
+  | CVTSD2SI (a1, a2) -> CVTSD2SI (color a1, fcolor a2)
 
 and color_arg ?(flt = false) colors stack_locs vector_locs float_locs =
   function

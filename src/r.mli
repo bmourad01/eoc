@@ -49,6 +49,8 @@ and prim =
   | Print of exp
   | Minus of exp
   | Sqrt of exp
+  | Int2float of exp
+  | Float2int of exp
   | Plus of exp * exp
   | Subtract of exp * exp
   | Mult of exp * exp

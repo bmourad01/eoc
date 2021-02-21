@@ -44,6 +44,8 @@ and prim =
   | Print of exp
   | Minus of exp
   | Sqrt of exp
+  | Int2float of exp
+  | Float2int of exp
   | Plus of exp * exp
   | Subtract of exp * exp
   | Mult of exp * exp
@@ -119,6 +121,8 @@ and string_of_prim = function
   | Print e -> Printf.sprintf "(print %s)" (string_of_exp e)
   | Minus e -> Printf.sprintf "(- %s)" (string_of_exp e)
   | Sqrt e -> Printf.sprintf "(sqrt %s)" (string_of_exp e)
+  | Int2float e -> Printf.sprintf "(int->float %s)" (string_of_exp e)
+  | Float2int e -> Printf.sprintf "(float->int %s)" (string_of_exp e)
   | Plus (e1, e2) ->
       Printf.sprintf "(+ %s %s)" (string_of_exp e1) (string_of_exp e2)
   | Subtract (e1, e2) ->
@@ -254,6 +258,8 @@ and expose_allocation_prim n = function
   | R_typed.Print e -> Print (expose_allocation_exp n e)
   | R_typed.Minus e -> Minus (expose_allocation_exp n e)
   | R_typed.Sqrt e -> Sqrt (expose_allocation_exp n e)
+  | R_typed.Int2float e -> Int2float (expose_allocation_exp n e)
+  | R_typed.Float2int e -> Float2int (expose_allocation_exp n e)
   | R_typed.Plus (e1, e2) ->
       Plus (expose_allocation_exp n e1, expose_allocation_exp n e2)
   | R_typed.Subtract (e1, e2) ->

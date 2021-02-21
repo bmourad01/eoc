@@ -147,6 +147,8 @@ and instr =
   | PEXTRQ of arg * arg * arg
   | PINSRQ of arg * arg * arg
   | MOVQ of arg * arg
+  | CVTSI2SD of arg * arg
+  | CVTSD2SI of arg * arg
 
 and arg = Arg.t
 
