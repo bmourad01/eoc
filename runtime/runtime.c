@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -52,6 +53,7 @@ int64_t _read_int() {
 
 static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
   uint64_t i, len, tyv, v;
+  double dv;
 
   switch (tyv = ty[0]) {
   case TYPE_INTEGER:
@@ -91,7 +93,22 @@ static void print_value_aux(uint64_t *ty, int64_t val, bool nested) {
     printf("#<function>");
     return;
   case TYPE_FLOAT:
-    printf("%lf", *(double *)&val);
+    dv = *(double *)&val;
+    if (isinf(dv)) {
+      if (signbit(dv)) {
+        printf("-inf");
+      } else {
+        printf("+inf");
+      }
+    } else if (isnan(dv)) {
+      if (signbit(dv)) {
+        printf("-nan");
+      } else {
+        printf("+nan");
+      }
+    } else {
+      printf("%lf", dv);
+    }
     return;
   default:
     // assume again that this is a pointer

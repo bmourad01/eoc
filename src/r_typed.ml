@@ -1397,7 +1397,11 @@ type answer =
 
 let rec string_of_answer ?(nested = false) = function
   | `Int i -> Int64.to_string i
-  | `Float f -> Printf.sprintf "%f" f
+  | `Float f ->
+      if Float.is_inf f then if Float.is_negative f then "-inf" else "+inf"
+      else if Float.is_nan f then
+        if Float.is_negative f then "-nan" else "+nan"
+      else Printf.sprintf "%f" f
   | `Bool false -> "#f"
   | `Bool true -> "#t"
   | `Void -> "#<void>"
