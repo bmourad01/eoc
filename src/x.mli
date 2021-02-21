@@ -3,7 +3,7 @@ open Core_kernel
 val word_size : int
 
 module Cc : sig
-  type t = E | NE | L | LE | G | GE
+  type t = E | NE | L | LE | G | GE | B | BE | A | AE
 
   val to_string : t -> string
 end

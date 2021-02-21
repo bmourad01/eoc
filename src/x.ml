@@ -5,7 +5,7 @@ let word_size = R_alloc.word_size
 let total_tag_offset = R_alloc.total_tag_offset
 
 module Cc = struct
-  type t = E | NE | L | LE | G | GE
+  type t = E | NE | L | LE | G | GE | B | BE | A | AE
 
   let to_string = function
     | E -> "e"
@@ -14,6 +14,10 @@ module Cc = struct
     | LE -> "le"
     | G -> "g"
     | GE -> "ge"
+    | B -> "b"
+    | BE -> "be"
+    | A -> "a"
+    | AE -> "ae"
 
   let of_c_cmp = function
     | C.Cmp.Eq -> E
@@ -23,6 +27,14 @@ module Cc = struct
     | C.Cmp.Gt -> G
     | C.Cmp.Ge -> GE
 
+  let of_c_cmp_u = function
+    | C.Cmp.Eq -> E
+    | C.Cmp.Neq -> NE
+    | C.Cmp.Lt -> B
+    | C.Cmp.Le -> BE
+    | C.Cmp.Gt -> A
+    | C.Cmp.Ge -> AE
+
   let of_c_cmp_swap = function
     | C.Cmp.Eq -> E
     | C.Cmp.Neq -> NE
@@ -30,6 +42,14 @@ module Cc = struct
     | C.Cmp.Le -> GE
     | C.Cmp.Gt -> L
     | C.Cmp.Ge -> LE
+
+  let of_c_cmp_u_swap = function
+    | C.Cmp.Eq -> NE
+    | C.Cmp.Neq -> E
+    | C.Cmp.Lt -> A
+    | C.Cmp.Le -> AE
+    | C.Cmp.Gt -> B
+    | C.Cmp.Ge -> BE
 end
 
 module Bytereg = struct
@@ -697,14 +717,14 @@ and select_instructions_tail type_map float_map tails t =
       let cc = Cc.of_c_cmp cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
   | C.If ((cmp, Var (v, _), Float f), lt, lf) ->
-      let cc = Cc.of_c_cmp cmp in
+      let cc = Cc.of_c_cmp_u cmp in
       let l = make_float float_map f in
       [COMISD (Var v, Var l); JCC (cc, lt); JMP lf]
   | C.If ((cmp, Int i, Var (v, _)), lt, lf) ->
       let cc = Cc.of_c_cmp_swap cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
   | C.If ((cmp, Float f, Var (v, _)), lt, lf) ->
-      let cc = Cc.of_c_cmp_swap cmp in
+      let cc = Cc.of_c_cmp_u_swap cmp in
       let l = make_float float_map f in
       [COMISD (Var v, Var l); JCC (cc, lt); JMP lf]
   | C.If ((cmp, Var (v, _), Bool b), lt, lf)
@@ -724,7 +744,7 @@ and select_instructions_tail type_map float_map tails t =
     | Eq -> [JMP lt]
     | _ -> [JMP lf] )
   | C.If ((cmp, Var (v1, C.Type.Float), Var (v2, C.Type.Float)), lt, lf) ->
-      let cc = Cc.of_c_cmp cmp in
+      let cc = Cc.of_c_cmp_u cmp in
       [COMISD (Var v1, Var v2); JCC (cc, lt); JMP lf]
   | C.If ((cmp, Var (v1, _), Var (v2, _)), lt, lf) ->
       let cc = Cc.of_c_cmp cmp in
@@ -1191,21 +1211,21 @@ and select_instructions_exp type_map float_map a p =
       [CMP (Var v, Imm i); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Lt (Var (v, _), Float f), _)) ->
       let l = make_float float_map f in
-      [COMISD (Var v, Var l); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
+      [COMISD (Var v, Var l); SETCC (Cc.B, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Lt (Float f, Var (v, _)), _)) ->
       let l = make_float float_map f in
-      [COMISD (Var v, Var l); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
+      [COMISD (Var v, Var l); SETCC (Cc.A, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Lt (Var (v1, Type.Float), Var (v2, Type.Float)), _)) ->
       if String.equal v1 v2 then [XOR (a, a)]
       else
         [ COMISD (Var v1, Var v2)
-        ; SETCC (Cc.L, Bytereg AL)
+        ; SETCC (Cc.B, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Lt (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [XOR (a, a)]
       else
         [ CMP (Var v1, Var v2)
-        ; SETCC (Cc.L, Bytereg AL)
+        ; SETCC (Cc.B, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Lt _, _)) -> assert false
   (* le *)
@@ -1220,24 +1240,24 @@ and select_instructions_exp type_map float_map a p =
   | C.(Prim (Le (Var (v, _), Float f), _)) ->
       let l = make_float float_map f in
       [ COMISD (Var v, Var l)
-      ; SETCC (Cc.LE, Bytereg AL)
+      ; SETCC (Cc.BE, Bytereg AL)
       ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Le (Float f, Var (v, _)), _)) ->
       let l = make_float float_map f in
       [ COMISD (Var v, Var l)
-      ; SETCC (Cc.GE, Bytereg AL)
+      ; SETCC (Cc.AE, Bytereg AL)
       ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Le (Var (v1, Type.Float), Var (v2, Type.Float)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ COMISD (Var v1, Var v2)
-        ; SETCC (Cc.LE, Bytereg AL)
+        ; SETCC (Cc.BE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Le (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
-        ; SETCC (Cc.LE, Bytereg AL)
+        ; SETCC (Cc.AE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Le _, _)) -> assert false
   (* gt *)
@@ -1251,21 +1271,21 @@ and select_instructions_exp type_map float_map a p =
       [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Gt (Var (v, _), Float f), _)) ->
       let l = make_float float_map f in
-      [COMISD (Var v, Var l); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
+      [COMISD (Var v, Var l); SETCC (Cc.A, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Gt (Float f, Var (v, _)), _)) ->
       let l = make_float float_map f in
-      [COMISD (Var v, Var l); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
+      [COMISD (Var v, Var l); SETCC (Cc.B, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Gt (Var (v1, Type.Float), Var (v2, Type.Float)), _)) ->
       if String.equal v1 v2 then [XOR (a, a)]
       else
         [ COMISD (Var v1, Var v2)
-        ; SETCC (Cc.G, Bytereg AL)
+        ; SETCC (Cc.A, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Gt (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [XOR (a, a)]
       else
         [ CMP (Var v1, Var v2)
-        ; SETCC (Cc.G, Bytereg AL)
+        ; SETCC (Cc.A, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Gt _, _)) -> assert false
   (* ge *)
@@ -1280,24 +1300,24 @@ and select_instructions_exp type_map float_map a p =
   | C.(Prim (Ge (Var (v, _), Float f), _)) ->
       let l = make_float float_map f in
       [ COMISD (Var v, Var l)
-      ; SETCC (Cc.GE, Bytereg AL)
+      ; SETCC (Cc.AE, Bytereg AL)
       ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Ge (Float f, Var (v, _)), _)) ->
       let l = make_float float_map f in
       [ COMISD (Var v, Var l)
-      ; SETCC (Cc.LE, Bytereg AL)
+      ; SETCC (Cc.BE, Bytereg AL)
       ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Ge (Var (v1, Type.Float), Var (v2, Type.Float)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ COMISD (Var v1, Var v2)
-        ; SETCC (Cc.GE, Bytereg AL)
+        ; SETCC (Cc.AE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Ge (Var (v1, _), Var (v2, _)), _)) ->
       if String.equal v1 v2 then [MOV (a, Imm 1L)]
       else
         [ CMP (Var v1, Var v2)
-        ; SETCC (Cc.GE, Bytereg AL)
+        ; SETCC (Cc.AE, Bytereg AL)
         ; MOVZX (a, Bytereg AL) ]
   | C.(Prim (Ge _, _)) -> assert false
   (* not *)
