@@ -1862,7 +1862,8 @@ and allocate_registers_def = function
         List.fold blocks ~init ~f:(fun init (_, Block (_, _, instrs)) ->
             List.fold instrs ~init ~f:(fun bias instr ->
                 match instr with
-                | MOV (d, s) -> Interference_graph.add_edge bias d s
+                | MOV (d, s) | MOVSD (d, s) ->
+                    Interference_graph.add_edge bias d s
                 | _ -> bias))
       in
       let colors = color_graph info.conflicts info.locals_types ~bias in
