@@ -877,9 +877,8 @@ and select_instructions_exp type_map float_map a p =
   (* minus *)
   | C.(Prim (Minus (Int i), _)) -> [MOV (a, Imm Int64.(-i))]
   | C.(Prim (Minus (Float f), _)) ->
-      let l = make_float float_map f in
-      let l0 = make_float float_map 0.0 in
-      [MOVSD (a, Var l0); SUBSD (a, Var l)]
+      let l = make_float float_map (Float.neg f) in
+      [MOVSD (a, Var l)]
   | C.(Prim (Minus (Var (v, Type.Float)), _)) ->
       let l0 = make_float float_map 0.0 in
       [ MOVSD (Xmmreg XMM0, Var l0)

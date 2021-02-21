@@ -362,6 +362,7 @@ and opt_exp n a env = function
   | Prim (Minus e, t) -> (
     match opt_exp n a env e with
     | Int i -> Int Int64.(-i)
+    | Float f -> Float (Float.neg f)
     | Prim (Minus e, _) -> e
     | e -> Prim (Minus e, t) )
   | Prim (Sqrt e, t) -> (
