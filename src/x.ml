@@ -1612,21 +1612,23 @@ and patch_instructions_instr = function
   | ADD ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); ADD (d1, Reg RAX)]
   | ADDSD ((Deref _ as d), s) ->
-      [MOVQ (Xmmreg XMM0, d); ADDSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+      [MOVSD (Xmmreg XMM0, d); ADDSD (Xmmreg XMM0, s); MOVSD (d, Xmmreg XMM0)]
   | SUB ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); SUB (d1, Reg RAX)]
   | SUBSD ((Deref _ as d), s) ->
-      [MOVQ (Xmmreg XMM0, d); SUBSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+      [MOVSD (Xmmreg XMM0, d); SUBSD (Xmmreg XMM0, s); MOVSD (d, Xmmreg XMM0)]
   | IMUL ((Deref _ as d), a) ->
       [MOV (Reg RAX, d); IMUL (Reg RAX, a); MOV (d, Reg RAX)]
   | IMULi ((Deref _ as d), a, i) ->
       [MOV (Reg RAX, d); IMULi (Reg RAX, a, i); MOV (d, Reg RAX)]
   | MULSD ((Deref _ as d), s) ->
-      [MOVQ (Xmmreg XMM0, d); MULSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+      [MOVSD (Xmmreg XMM0, d); MULSD (Xmmreg XMM0, s); MOVSD (d, Xmmreg XMM0)]
   | DIVSD ((Deref _ as d), s) ->
-      [MOVQ (Xmmreg XMM0, d); DIVSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+      [MOVSD (Xmmreg XMM0, d); DIVSD (Xmmreg XMM0, s); MOVSD (d, Xmmreg XMM0)]
   | SQRTSD ((Deref _ as d), s) ->
-      [MOVQ (Xmmreg XMM0, d); SQRTSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+      [ MOVSD (Xmmreg XMM0, d)
+      ; SQRTSD (Xmmreg XMM0, s)
+      ; MOVSD (d, Xmmreg XMM0) ]
   | CMOV (cc, (Deref _ as d), a) ->
       [MOV (Reg RAX, d); CMOV (cc, Reg RAX, a); MOV (d, Reg RAX)]
   | MOV ((Reg _ as a), Imm 0L) -> [XOR (a, a)]
@@ -1635,11 +1637,9 @@ and patch_instructions_instr = function
       [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
   | MOVSD (a1, a2) when Arg.equal a1 a2 -> []
   | MOVSD ((Deref _ as d1), (Deref _ as d2)) ->
-      [MOVQ (Xmmreg XMM0, d2); MOVQ (d1, Xmmreg XMM0)]
-  | MOVSD ((Xmmreg _ as d), (Deref _ as s)) -> [MOVQ (d, s)]
-  | MOVSD ((Deref _ as d), (Xmmreg _ as s)) -> [MOVQ (d, s)]
+      [MOVSD (Xmmreg XMM0, d2); MOVSD (d1, Xmmreg XMM0)]
   | MOVSD ((Deref _ as d), (Var _ as s)) ->
-      [MOVSD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+      [MOVSD (Xmmreg XMM0, s); MOVSD (d, Xmmreg XMM0)]
   | LEA ((Deref _ as d), a) -> [LEA (Reg RAX, a); MOV (d, Reg RAX)]
   | XOR ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); XOR (d1, Reg RAX)]
@@ -1650,11 +1650,13 @@ and patch_instructions_instr = function
   | CMP ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); CMP (d1, Reg RAX)]
   | COMISD ((Deref _ as d), s) ->
-      [MOVQ (Xmmreg XMM0, d); COMISD (Xmmreg XMM0, s)]
+      [MOVSD (Xmmreg XMM0, d); COMISD (Xmmreg XMM0, s)]
   | TEST ((Deref _ as d1), (Deref _ as d2)) ->
       if Arg.equal d1 d2 then [MOV (Reg RAX, d1); TEST (Reg RAX, Reg RAX)]
       else [MOV (Reg RAX, d2); TEST (d1, Reg RAX)]
   | MOVZX ((Deref _ as d), a) -> [MOVZX (Reg RAX, a); MOV (d, Reg RAX)]
+  | MOVQ ((Xmmreg _ as d), (Deref _ as s))
+   |MOVQ ((Deref _ as d), (Xmmreg _ as s)) -> [MOVSD (d, s)]
   | MOVQ ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
   | MOVQ ((Reg _ as d), (Deref _ as s)) | MOVQ ((Deref _ as d), (Reg _ as s))
