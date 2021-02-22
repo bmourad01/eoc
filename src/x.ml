@@ -333,7 +333,7 @@ let write_set instr =
 
 let read_set instr =
   let aux = function
-    | XOR (a1, a2) when Arg.equal a1 a2 -> (
+    | (XOR (a1, a2) | XORPD (a1, a2)) when Arg.equal a1 a2 -> (
       (* special case: it DOES read the source register
        * in order to compute the result, but in effect
        * it's just zeroing the destination, so we should
