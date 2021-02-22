@@ -189,7 +189,7 @@ static int64_t *collect_copy(int64_t *obj) {
   // has the object been copied yet?
   fwd = (uint64_t)*obj;
   if (fwd < (uint64_t)_fromspace_begin || fwd >= (uint64_t)_fromspace_end) {
-    size = (((int64_t *)*obj)[1] + 1) * sizeof(int64_t);
+    size = (((int64_t *)fwd)[1] + 1) * sizeof(int64_t);
     // copy the object
     new_obj = _free_ptr;
     memcpy(new_obj, obj, size);
