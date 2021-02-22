@@ -1662,7 +1662,7 @@ and patch_instructions_instr = function
   | MOVQ ((Reg _ as d), (Deref _ as s)) | MOVQ ((Deref _ as d), (Reg _ as s))
     -> [MOV (d, s)]
   | CVTSI2SD ((Deref _ as d), s) ->
-      [CVTSI2SD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
+      [CVTSI2SD (Xmmreg XMM0, s); MOVSD (d, Xmmreg XMM0)]
   | CVTSD2SI ((Deref _ as d), s) -> [CVTSD2SI (Reg RAX, s); MOV (d, Reg RAX)]
   | instr -> [instr]
 
