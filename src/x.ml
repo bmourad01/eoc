@@ -1655,11 +1655,7 @@ and patch_instructions_instr = function
       if Arg.equal d1 d2 then [MOV (Reg RAX, d1); TEST (Reg RAX, Reg RAX)]
       else [MOV (Reg RAX, d2); TEST (d1, Reg RAX)]
   | MOVZX ((Deref _ as d), a) -> [MOVZX (Reg RAX, a); MOV (d, Reg RAX)]
-  | MOVQ ((Deref (RBP, _) as d1), (Deref _ as d2))
-   |MOVQ ((Deref (R14, _) as d1), (Deref _ as d2)) ->
-      [MOVQ (Xmmreg XMM0, d2); MOVQ (d1, Xmmreg XMM0)]
-  | MOVQ ((Deref _ as d1), (Deref (RBP, _) as d2))
-   |MOVQ ((Deref _ as d1), (Deref (R14, _) as d2)) ->
+  | MOVQ ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
   | MOVQ ((Reg _ as d), (Deref _ as s)) | MOVQ ((Deref _ as d), (Reg _ as s))
     -> [MOV (d, s)]
