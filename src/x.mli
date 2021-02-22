@@ -144,8 +144,6 @@ and instr =
   | CMOV of Cc.t * arg * arg
   | MOVZX of arg * arg
   | JCC of Cc.t * Label.t
-  | PEXTRQ of arg * arg * arg
-  | PINSRQ of arg * arg * arg
   | MOVQ of arg * arg
   | CVTSI2SD of arg * arg
   | CVTSD2SI of arg * arg

@@ -263,8 +263,6 @@ and instr =
   | CMOV of Cc.t * arg * arg
   | MOVZX of arg * arg
   | JCC of Cc.t * Label.t
-  | PEXTRQ of arg * arg * arg
-  | PINSRQ of arg * arg * arg
   | MOVQ of arg * arg
   | CVTSI2SD of arg * arg
   | CVTSD2SI of arg * arg
@@ -318,8 +316,6 @@ let write_set instr =
      |SETCC (_, a)
      |CMOV (_, a, _)
      |MOVZX (a, _)
-     |PEXTRQ (a, _, _)
-     |PINSRQ (a, _, _)
      |MOVQ (a, _)
      |CVTSI2SD (a, _)
      |CVTSD2SI (a, _) -> Args.singleton a
@@ -372,8 +368,6 @@ let read_set instr =
      |MOVZX (_, a)
      |INC a
      |DEC a
-     |PEXTRQ (_, a, _)
-     |PINSRQ (_, a, _)
      |SQRTSD (_, a)
      |MOVQ (_, a)
      |CVTSI2SD (_, a)
@@ -591,12 +585,6 @@ and string_of_instr = function
   | MOVZX (a1, a2) ->
       Printf.sprintf "movzx %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | JCC (cc, l) -> Printf.sprintf "j%s %s" (Cc.to_string cc) l
-  | PEXTRQ (a1, a2, a3) ->
-      Printf.sprintf "pextrq %s, %s, %s" (Arg.to_string a1)
-        (Arg.to_string a2) (Arg.to_string a3)
-  | PINSRQ (a1, a2, a3) ->
-      Printf.sprintf "pinsrq %s, %s, %s" (Arg.to_string a1)
-        (Arg.to_string a2) (Arg.to_string a3)
   | MOVQ (a1, a2) ->
       Printf.sprintf "movq %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | CVTSI2SD (a1, a2) ->
@@ -651,7 +639,7 @@ and select_instructions_def type_map float_map = function
           List.foldi regs ~init:[] ~f:(fun i acc r ->
               let v = Arg.Var (List.nth_exn args i |> fst) in
               match List.nth_exn args_t i with
-              | C.Type.Float -> PINSRQ (v, Reg r, Imm 0L) :: acc
+              | C.Type.Float -> MOVQ (v, Reg r) :: acc
               | _ -> MOV (v, Reg r) :: acc)
           |> List.rev
         in
@@ -762,7 +750,7 @@ and select_instructions_tail type_map float_map tails t =
                 MOV (Reg r, Var l) :: acc
             | Bool false | Void -> XOR (Reg r, Reg r) :: acc
             | Bool true -> MOV (Reg r, Imm 1L) :: acc
-            | Var (v, C.Type.Float) -> PEXTRQ (Reg r, Var v, Imm 0L) :: acc
+            | Var (v, C.Type.Float) -> MOVQ (Reg r, Var v) :: acc
             | Var (v, _) -> MOV (Reg r, Var v) :: acc)
         |> List.rev
       in
@@ -791,7 +779,7 @@ and select_instructions_stmt type_map float_map s =
                 MOV (Reg r, Var l) :: acc
             | Bool false | Void -> XOR (Reg r, Reg r) :: acc
             | Bool true -> MOV (Reg r, Imm 1L) :: acc
-            | Var (v, C.Type.Float) -> PEXTRQ (Reg r, Var v, Imm 0L) :: acc
+            | Var (v, C.Type.Float) -> MOVQ (Reg r, Var v) :: acc
             | Var (v, _) -> MOV (Reg r, Var v) :: acc)
         |> List.rev
       in
@@ -805,10 +793,9 @@ and select_instructions_stmt type_map float_map s =
       let l = make_float float_map f in
       [ MOV (Reg R11, Var v1)
       ; MOVSD (Xmmreg XMM0, Var l)
-      ; PEXTRQ
-          ( Deref (Reg.R11, (i + total_tag_offset) * word_size)
-          , Xmmreg XMM0
-          , Imm 0L ) ]
+      ; MOVQ
+          (Deref (Reg.R11, (i + total_tag_offset) * word_size), Xmmreg XMM0)
+      ]
   | C.(Vectorsetstmt (Var (v1, _), i, Bool b)) ->
       [ MOV (Reg R11, Var v1)
       ; MOV
@@ -819,10 +806,7 @@ and select_instructions_stmt type_map float_map s =
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm 0L) ]
   | C.(Vectorsetstmt (Var (v1, _), i, Var (v2, Type.Float))) ->
       [ MOV (Reg R11, Var v1)
-      ; PEXTRQ
-          ( Deref (Reg.R11, (i + total_tag_offset) * word_size)
-          , Var v2
-          , Imm 0L ) ]
+      ; MOVQ (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2) ]
   | C.(Vectorsetstmt (Var (v1, _), i, Var (v2, _))) ->
       [ MOV (Reg R11, Var v1)
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2) ]
@@ -854,7 +838,7 @@ and select_instructions_stmt type_map float_map s =
   | C.(Printstmt (Var (x, (Type.Float as t)))) ->
       let l = make_type type_map t in
       [ LEA (Reg RDI, Var l)
-      ; PEXTRQ (Reg RSI, Var x, Imm 0L)
+      ; MOVQ (Reg RSI, Var x)
       ; CALL (Extern.print_value, 2) ]
   | C.(Printstmt (Var (x, t))) ->
       let l = make_type type_map t in
@@ -1355,13 +1339,13 @@ and select_instructions_exp type_map float_map a p =
                 MOV (Reg r, Var l) :: acc
             | Bool false | Void -> XOR (Reg r, Reg r) :: acc
             | Bool true -> MOV (Reg r, Imm 1L) :: acc
-            | Var (v, C.Type.Float) -> PEXTRQ (Reg r, Var v, Imm 0L) :: acc
+            | Var (v, C.Type.Float) -> MOVQ (Reg r, Var v) :: acc
             | Var (v, _) -> MOV (Reg r, Var v) :: acc)
         |> List.rev
       in
       let r =
         match t with
-        | C.Type.Float -> PEXTRQ (a, Xmmreg XMM0, Imm 0L)
+        | C.Type.Float -> MOVQ (a, Xmmreg XMM0)
         | _ -> MOV (a, Reg RAX)
       in
       mov_args @ [CALLi (Var v, List.length mov_args); r]
@@ -1528,7 +1512,7 @@ let function_epilogue ?(flt = false) is_main type_map rootstack_spills
           if is_main then
             if flt then
               [ LEA (Reg RDI, Var (Map.find_exn type_map typ))
-              ; PEXTRQ (Reg RSI, Xmmreg XMM0, Imm 0L)
+              ; MOVQ (Reg RSI, Xmmreg XMM0)
               ; CALL (Extern.print_value, 2)
               ; CALL (Extern.finalize, 0)
               ; XOR (Reg RAX, Reg RAX) ]
@@ -1671,10 +1655,14 @@ and patch_instructions_instr = function
       if Arg.equal d1 d2 then [MOV (Reg RAX, d1); TEST (Reg RAX, Reg RAX)]
       else [MOV (Reg RAX, d2); TEST (d1, Reg RAX)]
   | MOVZX ((Deref _ as d), a) -> [MOVZX (Reg RAX, a); MOV (d, Reg RAX)]
-  | PEXTRQ (d, (Deref _ as s), o) ->
-      [MOVQ (Xmmreg XMM0, s); PEXTRQ (d, Xmmreg XMM0, o)]
-  | PINSRQ ((Deref _ as d), s, o) ->
-      [PINSRQ (Xmmreg XMM0, s, o); MOVQ (d, Xmmreg XMM0)]
+  | MOVQ ((Deref (RBP, _) as d1), (Deref _ as d2))
+   |MOVQ ((Deref (R14, _) as d1), (Deref _ as d2)) ->
+      [MOVQ (Xmmreg XMM0, d2); MOVQ (d1, Xmmreg XMM0)]
+  | MOVQ ((Deref _ as d1), (Deref (RBP, _) as d2))
+   |MOVQ ((Deref _ as d1), (Deref (R14, _) as d2)) ->
+      [MOV (Reg RAX, d2); MOV (d1, Reg RAX)]
+  | MOVQ ((Reg _ as d), (Deref _ as s)) | MOVQ ((Deref _ as d), (Reg _ as s))
+    -> [MOV (d, s)]
   | CVTSI2SD ((Deref _ as d), s) ->
       [CVTSI2SD (Xmmreg XMM0, s); MOVQ (d, Xmmreg XMM0)]
   | CVTSD2SI ((Deref _ as d), s) -> [CVTSD2SI (Reg RAX, s); MOV (d, Reg RAX)]
@@ -1950,7 +1938,7 @@ and allocate_registers_def = function
         List.map blocks ~f:(fun (label, block) ->
             ( label
             , allocate_registers_block colors stack_locs vector_locs
-                float_locs block ))
+                float_locs info.locals_types block ))
       in
       let stack_space =
         match Map.data stack_locs |> Int.Set.of_list |> Set.min_elt with
@@ -2007,38 +1995,38 @@ and compute_locations ?(vector = false) ?(flt = false) colors locals_types =
             if ok v then Map.find color_map data else None
         | _ -> None)
 
-and allocate_registers_block colors stack_locs vector_locs float_locs =
-  function
+and allocate_registers_block colors stack_locs vector_locs float_locs
+    locals_types = function
   | Block (label, info, instrs) ->
       let instrs =
         List.map instrs
           ~f:
             (allocate_registers_instr colors stack_locs vector_locs
-               float_locs)
+               float_locs locals_types)
       in
       Block (label, info, instrs)
 
-and allocate_registers_instr colors stack_locs vector_locs float_locs instr =
-  let color = color_arg colors stack_locs vector_locs float_locs in
-  let fcolor =
-    color_arg colors stack_locs vector_locs float_locs ~flt:true
+and allocate_registers_instr colors stack_locs vector_locs float_locs
+    locals_types instr =
+  let color =
+    color_arg colors stack_locs vector_locs float_locs locals_types
   in
   match instr with
   | ADD (a1, a2) -> ADD (color a1, color a2)
-  | ADDSD (a1, a2) -> ADDSD (fcolor a1, fcolor a2)
+  | ADDSD (a1, a2) -> ADDSD (color a1, color a2)
   | INC a -> INC (color a)
   | DEC a -> DEC (color a)
   | SUB (a1, a2) -> SUB (color a1, color a2)
-  | SUBSD (a1, a2) -> SUBSD (fcolor a1, fcolor a2)
+  | SUBSD (a1, a2) -> SUBSD (color a1, color a2)
   | IMUL (a1, a2) -> IMUL (color a1, color a2)
   | IMULi (a1, a2, a3) -> IMULi (color a1, color a2, a3)
-  | MULSD (a1, a2) -> MULSD (fcolor a1, fcolor a2)
+  | MULSD (a1, a2) -> MULSD (color a1, color a2)
   | IDIV a -> IDIV (color a)
-  | DIVSD (a1, a2) -> DIVSD (fcolor a1, fcolor a2)
-  | SQRTSD (a1, a2) -> SQRTSD (fcolor a1, fcolor a2)
+  | DIVSD (a1, a2) -> DIVSD (color a1, color a2)
+  | SQRTSD (a1, a2) -> SQRTSD (color a1, color a2)
   | NEG a -> NEG (color a)
   | MOV (a1, a2) -> MOV (color a1, color a2)
-  | MOVSD (a1, a2) -> MOVSD (fcolor a1, fcolor a2)
+  | MOVSD (a1, a2) -> MOVSD (color a1, color a2)
   | LEA (a1, a2) -> LEA (color a1, color a2)
   | CALL _ as c -> c
   | CALLi (a, n) -> CALLi (color a, n)
@@ -2052,19 +2040,17 @@ and allocate_registers_instr colors stack_locs vector_locs float_locs instr =
   | AND (a1, a2) -> AND (color a1, color a2)
   | OR (a1, a2) -> OR (color a1, color a2)
   | CMP (a1, a2) -> CMP (color a1, color a2)
-  | COMISD (a1, a2) -> COMISD (fcolor a1, fcolor a2)
+  | COMISD (a1, a2) -> COMISD (color a1, color a2)
   | TEST (a1, a2) -> TEST (color a1, color a2)
   | SETCC _ as s -> s
   | CMOV (cc, a1, a2) -> CMOV (cc, color a1, color a2)
   | MOVZX (a1, a2) -> MOVZX (color a1, a2)
   | JCC _ as j -> j
-  | PEXTRQ (a1, a2, a3) -> PEXTRQ (color a1, fcolor a2, a3)
-  | PINSRQ (a1, a2, a3) -> PINSRQ (fcolor a1, color a2, a3)
-  | MOVQ _ -> assert false
-  | CVTSI2SD (a1, a2) -> CVTSI2SD (fcolor a1, color a2)
-  | CVTSD2SI (a1, a2) -> CVTSD2SI (color a1, fcolor a2)
+  | MOVQ (a1, a2) -> MOVQ (color a1, color a2)
+  | CVTSI2SD (a1, a2) -> CVTSI2SD (color a1, color a2)
+  | CVTSD2SI (a1, a2) -> CVTSD2SI (color a1, color a2)
 
-and color_arg ?(flt = false) colors stack_locs vector_locs float_locs =
+and color_arg colors stack_locs vector_locs float_locs locals_types =
   function
   | Arg.Var v as a when is_temp_var_name v -> (
     match Map.find stack_locs a with
@@ -2078,11 +2064,12 @@ and color_arg ?(flt = false) colors stack_locs vector_locs float_locs =
         | None -> (
           match Map.find colors a with
           | None -> failwith ("X.color_arg: var " ^ v ^ " was not colored")
-          | Some c ->
-              if flt then (
+          | Some c -> (
+            match Map.find_exn locals_types v with
+            | C.Type.Float ->
                 assert (c >= 0 && c < num_xmm_regs);
-                allocatable_xmm_regs.(c) )
-              else (
+                allocatable_xmm_regs.(c)
+            | _ ->
                 assert (c >= 0 && c < num_regs);
                 allocatable_regs.(c) ) ) ) ) )
   | a -> a
