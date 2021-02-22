@@ -1585,9 +1585,9 @@ and patch_instructions_block l w type_map info = function
   | Block (label, block_info, instrs) ->
       let is_main = Label.equal l R_typed.main in
       let w =
-        (* R15 should only be preserved in the `main` function
+        (* R14 and R15 should only be preserved in `main`
          * in order to be compatible with the System V ABI.
-         * other functions should not preserve R15 on the stack. *)
+         * other functions should not preserve them on the stack. *)
         if is_main then Set.(add (add w (Arg.Reg R14)) (Arg.Reg R15))
         else Set.(remove (remove w (Arg.Reg R14)) (Arg.Reg R15))
       in
@@ -1705,7 +1705,7 @@ and uncover_live_def = function
       Def (info, l, blocks)
 
 and exit_live_set =
-  Args.of_list [Reg RAX; Reg RSP; Reg RBP; Reg R15; Xmmreg XMM0]
+  Args.of_list [Reg RAX; Reg RSP; Reg RBP; Reg R14; Reg R15; Xmmreg XMM0]
 
 let rec build_interference = function
   | Program (info, defs) ->
@@ -1808,7 +1808,8 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
         | Reg RSP -> Map.set colors v (-2)
         | Reg RBP -> Map.set colors v (-3)
         | Reg R11 -> Map.set colors v (-4)
-        | Reg R15 -> Map.set colors v (-5)
+        | Reg R14 -> Map.set colors v (-5)
+        | Reg R15 -> Map.set colors v (-6)
         | Xmmreg XMM0 -> Map.set colors v (-1)
         | _ -> colors)
       g Arg_map.empty
@@ -1958,10 +1959,9 @@ and allocate_registers_def = function
         , l
         , blocks )
 
-(* since we may have spilled variables both to the regular stack
- * and the root stack, we need to normalize the colors of each
- * variable such that they correspond to contiguous offsets
- * from a base address (i.e. RBP or R15). *)
+(* since we may have spilled variables to a particular stack,
+ * we need to normalize the colors of each variable such that
+ * they correspond to contiguous offsets from a base address. *)
 and compute_locations ?(vector = false) ?(flt = false) colors locals_types =
   let ok v =
     match Map.find locals_types v with
