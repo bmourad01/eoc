@@ -685,8 +685,7 @@ and is_pure_prim = function
    |Float2int e
    |Lnot e
    |Not e
-   |Vectorlength e
-   |Vectorref (e, _) -> is_pure_exp e
+   |Vectorlength e -> is_pure_exp e
   | Plus (e1, e2)
    |Subtract (e1, e2)
    |Mult (e1, e2)
@@ -704,6 +703,11 @@ and is_pure_prim = function
    |And (e1, e2)
    |Or (e1, e2) -> is_pure_exp e1 && is_pure_exp e2
   | Vector es -> List.for_all es ~f:is_pure_exp
+  | Vectorref _ ->
+      (* XXX: we may be able to analyze whether
+       * some vector is mutated, but the problem
+       * becomes difficult in the presence of aliasing *)
+      false
   | Vectorset _ -> false
 
 and fresh_var n =
