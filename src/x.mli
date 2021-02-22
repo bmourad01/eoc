@@ -119,6 +119,7 @@ and instr =
   | IMUL of arg * arg
   | IMULi of arg * arg * arg
   | MULSD of arg * arg
+  | XORPD of arg * arg
   | IDIV of arg
   | DIVSD of arg * arg
   | SQRTSD of arg * arg

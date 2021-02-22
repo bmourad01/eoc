@@ -238,6 +238,7 @@ and instr =
   | IMUL of arg * arg
   | IMULi of arg * arg * arg
   | MULSD of arg * arg
+  | XORPD of arg * arg
   | IDIV of arg
   | DIVSD of arg * arg
   | SQRTSD of arg * arg
@@ -307,6 +308,7 @@ let write_set instr =
      |IMUL (a, _)
      |IMULi (a, _, _)
      |MULSD (a, _)
+     |XORPD (a, _)
      |DIVSD (a, _)
      |SQRTSD (a, _)
      |NOT a
@@ -345,6 +347,7 @@ let read_set instr =
      |SUBSD (a1, a2)
      |IMUL (a1, a2)
      |MULSD (a1, a2)
+     |XORPD (a1, a2)
      |DIVSD (a1, a2)
      |XOR (a1, a2)
      |AND (a1, a2)
@@ -545,6 +548,8 @@ and string_of_instr = function
         (Arg.to_string a3)
   | MULSD (a1, a2) ->
       Printf.sprintf "mulsd %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | XORPD (a1, a2) ->
+      Printf.sprintf "xorpd %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | IDIV a -> Printf.sprintf "idiv %s" (Arg.to_string a)
   | DIVSD (a1, a2) ->
       Printf.sprintf "divsd %s, %s" (Arg.to_string a1) (Arg.to_string a2)
@@ -904,9 +909,10 @@ and select_instructions_exp type_map float_map a p =
       let l = make_float float_map (Float.neg f) in
       [MOVSD (a, Var l)]
   | C.(Prim (Minus (Var (v, Type.Float)), _)) ->
-      let l0 = make_float float_map 0.0 in
-      [ MOVSD (Xmmreg XMM0, Var l0)
-      ; SUBSD (Xmmreg XMM0, Var v)
+      let l = make_float float_map (-0.0) in
+      [ MOVSD (Xmmreg XMM1, Var l)
+      ; MOVSD (Xmmreg XMM0, Var v)
+      ; XORPD (Xmmreg XMM0, Xmmreg XMM1)
       ; MOVSD (a, Xmmreg XMM0) ]
   | C.(Prim (Minus (Var (v, t)), _)) -> [MOV (a, Var v); NEG a]
   | C.(Prim (Minus _, _)) -> assert false
@@ -2018,6 +2024,7 @@ and allocate_registers_instr colors stack_locs vector_locs float_locs
   | IMUL (a1, a2) -> IMUL (color a1, color a2)
   | IMULi (a1, a2, a3) -> IMULi (color a1, color a2, a3)
   | MULSD (a1, a2) -> MULSD (color a1, color a2)
+  | XORPD (a1, a2) -> XORPD (color a1, color a2)
   | IDIV a -> IDIV (color a)
   | DIVSD (a1, a2) -> DIVSD (color a1, color a2)
   | SQRTSD (a1, a2) -> SQRTSD (color a1, color a2)
