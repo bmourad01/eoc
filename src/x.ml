@@ -1880,27 +1880,29 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
         let c =
           let sat = saturation u in
           let bias_colors =
+            let limit =
+              match u with
+              | Arg.Var v -> (
+                match Map.find_exn locals_types v with
+                | C.Type.Float -> num_xmm_regs
+                | _ -> num_regs )
+              | _ -> assert false
+            in
             try
               Interference_graph.succ bias u
               |> List.filter_map ~f:(fun v ->
                      let open Option.Let_syntax in
                      let%bind c = Map.find !colors v in
-                     Option.some_if (not (Set.mem sat c)) c)
+                     Option.some_if
+                       ((c >= 0 && c < limit) && not (Set.mem sat c))
+                       c)
               |> Int.Set.of_list
             with Invalid_argument _ -> Int.Set.empty
           in
-          let limit =
-            match u with
-            | Arg.Var v -> (
-              match Map.find_exn locals_types v with
-              | C.Type.Float -> num_xmm_regs
-              | _ -> num_regs )
-            | _ -> assert false
-          in
           (* find the appropriate color *)
           match Set.min_elt bias_colors with
-          | Some c when c >= 0 && c < limit -> c
-          | _ ->
+          | Some c -> c
+          | None ->
               let c = ref 0 in
               while Set.mem sat !c do
                 incr c
