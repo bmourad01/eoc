@@ -14,6 +14,10 @@
 #define DBGPRINT(x...)
 #endif
 
+/*
+ * run-time type information
+ */
+
 enum {
   TYPE_INTEGER,
   TYPE_BOOLEAN,
@@ -129,7 +133,7 @@ void _print_value(uint64_t *ty, int64_t val) {
 }
 
 /*
- * garbage collection
+ * memory management
  */
 
 static uint64_t _heap_size;
