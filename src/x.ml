@@ -910,8 +910,8 @@ and select_instructions_exp type_map float_map a p =
       [MOVSD (a, Var l)]
   | C.(Prim (Minus (Var (v, Type.Float)), _)) ->
       let l = make_float float_map (-0.0) in
-      [ MOVSD (Xmmreg XMM0, Var v)
-      ; MOVSD (Xmmreg XMM1, Var l)
+      [ MOVSD (Xmmreg XMM0, Var l)
+      ; MOVSD (Xmmreg XMM1, Var v)
       ; XORPD (Xmmreg XMM0, Xmmreg XMM1)
       ; MOVSD (a, Xmmreg XMM0) ]
   | C.(Prim (Minus (Var (v, t)), _)) -> [MOV (a, Var v); NEG a]
