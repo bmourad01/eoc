@@ -792,10 +792,8 @@ and select_instructions_stmt type_map float_map s =
   | C.(Vectorsetstmt (Var (v1, _), i, Float f)) ->
       let l = make_float float_map f in
       [ MOV (Reg R11, Var v1)
-      ; MOVSD (Xmmreg XMM0, Var l)
-      ; MOVQ
-          (Deref (Reg.R11, (i + total_tag_offset) * word_size), Xmmreg XMM0)
-      ]
+      ; MOV (Reg RAX, Var l)
+      ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Reg RAX) ]
   | C.(Vectorsetstmt (Var (v1, _), i, Bool b)) ->
       [ MOV (Reg R11, Var v1)
       ; MOV
@@ -806,7 +804,8 @@ and select_instructions_stmt type_map float_map s =
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Imm 0L) ]
   | C.(Vectorsetstmt (Var (v1, _), i, Var (v2, Type.Float))) ->
       [ MOV (Reg R11, Var v1)
-      ; MOVQ (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2) ]
+      ; MOVSD (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2)
+      ]
   | C.(Vectorsetstmt (Var (v1, _), i, Var (v2, _))) ->
       [ MOV (Reg R11, Var v1)
       ; MOV (Deref (Reg.R11, (i + total_tag_offset) * word_size), Var v2) ]
