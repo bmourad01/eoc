@@ -28,7 +28,12 @@ For building the project, run `dune build`. To compile a program, run `./compile
 
 First of all, the compiler targets AMD64 (otherwise known as x86-64 to mindless plebians) and follows the System V ABI for the most part (floating-point numbers are handled in a non-standard way).
 
-Given this, the output assembly programs should work fine on a corresponding Linux system. BSD and macOS systems have not been tested, so your mileage may vary. Windows is a non-starter since it follows a non-standard ABI.
+Given this, the output assembly programs should work fine on a corresponding Linux system.
+Other systems have not been tested, though BSD should work fine with a normal GNU toolchain.
+macOS systems will require some adjustments for the handling of symbol names.
+Windows systems follow a [different ABI](https://en.wikipedia.org/wiki/X86_calling_conventions#Microsoft_x64_calling_convention), so some work would be needed to ensure compatibility.
+
+BSD and macOS systems have not been tested, so your mileage may vary. Windows is a non-starter since it follows a non-standard ABI.
 
 # Features Implemented
 
