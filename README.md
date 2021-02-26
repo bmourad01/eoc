@@ -33,8 +33,6 @@ Other systems have not been tested, though BSD should work fine with a normal GN
 macOS systems will require some adjustments for the handling of symbol names.
 Windows systems follow a [different ABI](https://en.wikipedia.org/wiki/X86_calling_conventions#Microsoft_x64_calling_convention), so some work would be needed to ensure compatibility.
 
-BSD and macOS systems have not been tested, so your mileage may vary. Windows is a non-starter since it follows a non-standard ABI.
-
 # Features Implemented
 
 - Integers, booleans, floating-point numbers
