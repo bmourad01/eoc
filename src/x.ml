@@ -1646,6 +1646,8 @@ and patch_instructions_instr = function
   | MOVSD ((Deref _ as d), (Var _ as s)) ->
       [MOVSD (Xmmreg XMM0, s); MOVSD (d, Xmmreg XMM0)]
   | LEA ((Deref _ as d), a) -> [LEA (Reg RAX, a); MOV (d, Reg RAX)]
+  | XOR ((Deref _ as d1), (Deref _ as d2)) when Arg.equal d1 d2 ->
+      [MOV (d1, Imm 0L)]
   | XOR ((Deref _ as d1), (Deref _ as d2)) ->
       [MOV (Reg RAX, d2); XOR (d1, Reg RAX)]
   | AND ((Deref _ as d1), (Deref _ as d2)) ->
