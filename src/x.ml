@@ -275,7 +275,7 @@ let filter_non_locations ?(write = false) args =
   |> List.map ~f:(function
        | Arg.Imm _ -> []
        | Arg.Deref (r, _) as d -> if write then [d] else [Arg.Reg r; d]
-       | a -> [a])
+       | a -> [a] )
   |> List.concat |> Args.of_list
 
 let caller_save_set =
@@ -454,7 +454,7 @@ let rec to_string = function
                  |> List.map ~f:(fun s -> "    " ^ s)
                  |> String.concat ~sep:"\n"
                in
-               Printf.sprintf "%s:\n%s" l ty)
+               Printf.sprintf "%s:\n%s" l ty )
         |> String.concat ~sep:"\n"
       in
       let flt_consts =
@@ -469,7 +469,7 @@ let rec to_string = function
                    else "+__?QNaN?__"
                  else Printf.sprintf "%f" f
                in
-               Printf.sprintf "%s:\n    dq %s" l s)
+               Printf.sprintf "%s:\n    dq %s" l s )
         |> String.concat ~sep:"\n"
       in
       (* the type information shouldn't be in read-only
@@ -645,7 +645,7 @@ and select_instructions_def type_map float_map = function
               let v = Arg.Var (List.nth_exn args i |> fst) in
               match List.nth_exn args_t i with
               | C.Type.Float -> MOVQ (v, Reg r) :: acc
-              | _ -> MOV (v, Reg r) :: acc)
+              | _ -> MOV (v, Reg r) :: acc )
           |> List.rev
         in
         List.fold_right tails ~init:[] ~f:(fun (label, tail) blocks ->
@@ -655,7 +655,7 @@ and select_instructions_def type_map float_map = function
             let instrs =
               if Label.equal label l then mov_args @ instrs else instrs
             in
-            (label, Block (label, block_info, instrs)) :: blocks)
+            (label, Block (label, block_info, instrs)) :: blocks )
       in
       let info =
         { main= info.main
@@ -756,7 +756,7 @@ and select_instructions_tail type_map float_map tails t =
             | Bool false | Void -> XOR (Reg r, Reg r) :: acc
             | Bool true -> MOV (Reg r, Imm 1L) :: acc
             | Var (v, C.Type.Float) -> MOVQ (Reg r, Var v) :: acc
-            | Var (v, _) -> MOV (Reg r, Var v) :: acc)
+            | Var (v, _) -> MOV (Reg r, Var v) :: acc )
         |> List.rev
       in
       mov_args @ [MOV (Reg RAX, Var v); JMPt (Reg RAX, List.length mov_args)]
@@ -785,7 +785,7 @@ and select_instructions_stmt type_map float_map s =
             | Bool false | Void -> XOR (Reg r, Reg r) :: acc
             | Bool true -> MOV (Reg r, Imm 1L) :: acc
             | Var (v, C.Type.Float) -> MOVQ (Reg r, Var v) :: acc
-            | Var (v, _) -> MOV (Reg r, Var v) :: acc)
+            | Var (v, _) -> MOV (Reg r, Var v) :: acc )
         |> List.rev
       in
       mov_args @ [CALLi (Var v, List.length mov_args)]
@@ -1345,7 +1345,7 @@ and select_instructions_exp type_map float_map a p =
             | Bool false | Void -> XOR (Reg r, Reg r) :: acc
             | Bool true -> MOV (Reg r, Imm 1L) :: acc
             | Var (v, C.Type.Float) -> MOVQ (Reg r, Var v) :: acc
-            | Var (v, _) -> MOV (Reg r, Var v) :: acc)
+            | Var (v, _) -> MOV (Reg r, Var v) :: acc )
         |> List.rev
       in
       let r =
@@ -1457,7 +1457,7 @@ let function_prologue is_main rootstack_spills floatstack_spills stack_space
          * invalid pointers. making them null is one way to
          * tell the GC that these are invalid. *)
         List.init rootstack_spills ~f:(fun i ->
-            MOV (Deref (R15, i * word_size), Imm 0L))
+            MOV (Deref (R15, i * word_size), Imm 0L) )
         @ [ADD (Reg R15, Imm (Int64.of_int (rootstack_spills * word_size)))]
       else []
     in
@@ -1562,10 +1562,10 @@ and patch_instructions_def type_map = function
                     | Some a ->
                         let w = write_set instr in
                         if Set.mem w a then (instr :: instrs, None)
-                        else (instr :: instrs, r11) ))
+                        else (instr :: instrs, r11) ) )
               |> fst |> List.rev
             in
-            (label, Block (label, info, instrs)))
+            (label, Block (label, info, instrs)) )
       in
       (* 'w' is a set which exploits the ordering
        * for registers that Reg.t prescribes *)
@@ -1578,11 +1578,11 @@ and patch_instructions_def type_map = function
                      | Arg.Reg RSP -> false
                      | Arg.Reg RBP -> false
                      | Arg.Reg r -> Reg.is_callee_save r
-                     | _ -> false)))
+                     | _ -> false ) ) )
       in
       let blocks =
         List.map blocks ~f:(fun (label, block) ->
-            (label, patch_instructions_block l w type_map info block))
+            (label, patch_instructions_block l w type_map info block) )
       in
       Def (info, l, blocks)
 
@@ -1694,10 +1694,10 @@ and uncover_live_def = function
                       (diff live_after' (write_set instr))
                       (read_set instr))
                 in
-                (live_after' :: live_after, live_before' :: live_before))
+                (live_after' :: live_after, live_before' :: live_before) )
           in
           Hashtbl.set la_map label live_after;
-          List.hd_exn live_before)
+          List.hd_exn live_before )
         ~bottom:exit_live_set ~join:Set.union ~equal:Args.equal ~rev:true
       |> ignore;
       let blocks =
@@ -1707,7 +1707,7 @@ and uncover_live_def = function
               | None -> List.map instrs ~f:(fun _ -> Args.empty)
               | Some la -> la
             in
-            (label, Block (label, {live_after}, instrs)))
+            (label, Block (label, {live_after}, instrs)) )
       in
       Def (info, l, blocks)
 
@@ -1724,10 +1724,10 @@ and build_interference_def = function
         let init =
           Map.fold info.locals_types ~init:Interference_graph.empty
             ~f:(fun ~key ~data:_ g ->
-              Interference_graph.add_vertex g (Arg.Var key))
+              Interference_graph.add_vertex g (Arg.Var key) )
         in
         List.fold blocks ~init ~f:(fun g (_, block) ->
-            build_interference_block info.locals_types g block)
+            build_interference_block info.locals_types g block )
       in
       Def ({info with conflicts}, l, blocks)
 
@@ -1740,7 +1740,31 @@ and build_interference_block locals_types g = function
                  let default () =
                    Set.fold w ~init:g ~f:(fun g d ->
                        if Arg.equal v d then g
-                       else Interference_graph.add_edge g v d)
+                       else
+                         match v with
+                         | Arg.Var v1 when is_temp_var_name v1 -> (
+                           match Map.find locals_types v1 with
+                           | None -> Interference_graph.add_edge g v d
+                           | Some C.Type.Float -> (
+                             match d with
+                             | Arg.Xmmreg _ ->
+                                 Interference_graph.add_edge g v d
+                             | Arg.Var v2 when is_temp_var_name v2 -> (
+                               match Map.find locals_types v2 with
+                               | None | Some C.Type.Float ->
+                                   Interference_graph.add_edge g v d
+                               | _ -> g )
+                             | _ -> g )
+                           | Some _ -> (
+                             match d with
+                             | Arg.Bytereg _ | Arg.Reg _ ->
+                                 Interference_graph.add_edge g v d
+                             | Arg.Var v2 when is_temp_var_name v2 -> (
+                               match Map.find locals_types v2 with
+                               | Some C.Type.Float -> g
+                               | _ -> Interference_graph.add_edge g v d )
+                             | _ -> g ) )
+                         | _ -> Interference_graph.add_edge g v d )
                  in
                  let spill_vec () =
                    match v with
@@ -1749,7 +1773,7 @@ and build_interference_block locals_types g = function
                      | C.Type.Vector _ ->
                          let g = default () in
                          Set.fold callee_save_set ~init:g ~f:(fun g d ->
-                             Interference_graph.add_edge g v d)
+                             Interference_graph.add_edge g v d )
                      | _ -> default () )
                    | _ -> default ()
                  in
@@ -1769,7 +1793,7 @@ and build_interference_block locals_types g = function
                      else spill_vec ()
                  | CALLi _ -> spill_vec ()
                  | JMPt _ -> spill_vec ()
-                 | _ -> default ()))
+                 | _ -> default () ) )
 
 let allocatable_regs =
   (* prioritize caller-save registers over callee-save registers *)
@@ -1818,19 +1842,19 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
         | Reg R14 -> Map.set colors v (-5)
         | Reg R15 -> Map.set colors v (-6)
         | Xmmreg XMM0 -> Map.set colors v (-1)
-        | _ -> colors)
+        | _ -> colors )
       g Arg_map.empty
   in
   (* assign registers with their numbers *)
   let colors =
     Array.foldi allocatable_regs ~init:colors ~f:(fun i colors a ->
         if Interference_graph.mem_vertex g a then Map.set colors a i
-        else colors)
+        else colors )
   in
   let colors =
     Array.foldi allocatable_xmm_regs ~init:colors ~f:(fun i colors a ->
         if Interference_graph.mem_vertex g a then Map.set colors a i
-        else colors)
+        else colors )
   in
   let colors = ref colors in
   let saturation u =
@@ -1838,7 +1862,7 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
       (fun v acc ->
         match Map.find !colors v with
         | None -> acc
-        | Some c -> Set.add acc c)
+        | Some c -> Set.add acc c )
       g u Int.Set.empty
   in
   (* create a priority heap for processing vertices *)
@@ -1854,7 +1878,7 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
           (* break ties by choosing the highest in-degree *)
           let du = Interference_graph.in_degree g u in
           let dv = Interference_graph.in_degree g v in
-          Int.compare dv du)
+          Int.compare dv du )
       ()
   in
   (* map from vertices to their handles in the heap *)
@@ -1865,7 +1889,7 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
       match u with
       | Arg.Var v when is_temp_var_name v ->
           Hashtbl.set tokens v (Pairing_heap.add_removable q u)
-      | _ -> ())
+      | _ -> () )
     g;
   let rec loop () =
     match Pairing_heap.pop q with
@@ -1889,7 +1913,7 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
                      let%bind c = Map.find !colors v in
                      Option.some_if
                        ((c >= 0 && c < limit) && not (Set.mem sat c))
-                       c)
+                       c )
               |> Int.Set.of_list
             with Invalid_argument _ -> Int.Set.empty
           in
@@ -1911,7 +1935,7 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
                 if not (Map.mem !colors v) then
                   let token = Hashtbl.find_exn tokens v' in
                   Hashtbl.set tokens v' (Pairing_heap.update q token v)
-            | _ -> ())
+            | _ -> () )
           g u;
         loop ()
   in
@@ -1930,7 +1954,7 @@ and allocate_registers_def = function
                 match instr with
                 | MOV (d, s) | MOVSD (d, s) ->
                     Interference_graph.add_edge bias d s
-                | _ -> bias))
+                | _ -> bias ) )
       in
       let colors = color_graph info.conflicts info.locals_types ~bias in
       let stack_locs = compute_locations colors info.locals_types in
@@ -1944,7 +1968,7 @@ and allocate_registers_def = function
         List.map blocks ~f:(fun (label, block) ->
             ( label
             , allocate_registers_block colors stack_locs vector_locs
-                float_locs info.locals_types block ))
+                float_locs info.locals_types block ) )
       in
       let stack_space =
         match Map.data stack_locs |> Int.Set.of_list |> Set.min_elt with
@@ -1986,7 +2010,7 @@ and compute_locations ?(vector = false) ?(flt = false) colors locals_types =
           match key with
           | Arg.Var v when is_temp_var_name v ->
               if ok v then Set.add acc data else acc
-          | _ -> acc)
+          | _ -> acc )
   in
   if Set.is_empty stack_colors then Arg_map.empty
   else
@@ -1998,7 +2022,7 @@ and compute_locations ?(vector = false) ?(flt = false) colors locals_types =
         match key with
         | Arg.Var v when is_temp_var_name v ->
             if ok v then Map.find color_map data else None
-        | _ -> None)
+        | _ -> None )
 
 and allocate_registers_block colors stack_locs vector_locs float_locs
     locals_types = function
@@ -2007,7 +2031,7 @@ and allocate_registers_block colors stack_locs vector_locs float_locs
         List.map instrs
           ~f:
             (allocate_registers_instr colors stack_locs vector_locs
-               float_locs locals_types)
+               float_locs locals_types )
       in
       Block (label, info, instrs)
 
@@ -2091,7 +2115,7 @@ and remove_jumps_def = function
 and remove_jumps_aux cfg blocks =
   let afters = Hashtbl.create (module Label) in
   List.iter (interleave_pairs blocks) ~f:(fun (x, y) ->
-      Hashtbl.set afters x y);
+      Hashtbl.set afters x y );
   let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
   let merged = Hashtbl.create (module Label) in
   let merge_info info info' =
@@ -2113,7 +2137,7 @@ and remove_jumps_aux cfg blocks =
                 && not
                      (List.exists instrs ~f:(function
                        | JCC (_, label'') -> Label.equal label' label''
-                       | _ -> false))
+                       | _ -> false ) )
               then (
                 let (Block (_, info', instrs')) =
                   Hashtbl.find_exn blocks' label'
@@ -2135,14 +2159,14 @@ and remove_jumps_aux cfg blocks =
                       Some (label, Block (label, info, instrs)) )
                 | _ -> Some b )
           | Some _ -> Some b
-          | None -> None)
+          | None -> None )
   in
   let cfg =
     Hashtbl.fold merged ~init:cfg ~f:(fun ~key:l ~data:l' cfg ->
         let cfg =
           Cfg.fold_succ (fun l cfg -> Cfg.add_edge cfg l' l) cfg l cfg
         in
-        Cfg.remove_vertex cfg l)
+        Cfg.remove_vertex cfg l )
   in
   if Hashtbl.is_empty merged then (cfg, blocks)
   else remove_jumps_aux cfg blocks
