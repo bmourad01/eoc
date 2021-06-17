@@ -267,6 +267,7 @@ and instr =
   | MOVQ of arg * arg
   | CVTSI2SD of arg * arg
   | CVTSD2SI of arg * arg
+  | BT of arg * arg
 
 and arg = Arg.t
 
@@ -325,7 +326,7 @@ let write_set instr =
     | CALL _ | CALLi _ -> Set.add caller_save_set (Reg RSP)
     | PUSH _ | RET -> Args.singleton (Reg RSP)
     | POP a -> Args.of_list [a; Reg RSP]
-    | JMP _ | JMPt _ | JCC _ | CMP _ | COMISD _ | TEST _ -> Args.empty
+    | JMP _ | JMPt _ | JCC _ | CMP _ | COMISD _ | TEST _ | BT _ -> Args.empty
   in
   aux instr
   |> filter_non_locations ~write:true
@@ -354,7 +355,8 @@ let read_set instr =
      |OR (a1, a2)
      |CMP (a1, a2)
      |COMISD (a1, a2)
-     |TEST (a1, a2) -> Args.of_list [a1; a2]
+     |TEST (a1, a2)
+     |BT (a1, a2) -> Args.of_list [a1; a2]
     (* this is a hack; a1 is not really being read
      * from but since this is conditional, a1 may not
      * be written to, but future instructions may
@@ -596,6 +598,8 @@ and string_of_instr = function
       Printf.sprintf "cvtsi2sd %s, %s" (Arg.to_string a1) (Arg.to_string a2)
   | CVTSD2SI (a1, a2) ->
       Printf.sprintf "cvtsd2si %s, %s" (Arg.to_string a1) (Arg.to_string a2)
+  | BT (a1, a2) ->
+      Printf.sprintf "bt %s, %s" (Arg.to_string a1) (Arg.to_string a2)
 
 let fits_int32 i = Option.is_some (Int64.to_int32 i)
 
@@ -712,6 +716,14 @@ and select_instructions_tail type_map float_map tails t =
   | C.If ((Neq, Var (v, _), Int 0L), lt, lf)
    |C.If ((Neq, Int 0L, Var (v, _)), lt, lf) ->
       [TEST (Var v, Var v); JCC (NE, lt); JMP lf]
+  | C.If ((Ge, Var (v, _), Int 0L), lt, lf) ->
+      [BT (Var v, Imm 63L); JCC (AE, lt); JMP lf]
+  | C.If ((Le, Int 0L, Var (v, _)), lt, lf) ->
+      [BT (Var v, Imm 63L); JCC (AE, lt); JMP lf]
+  | C.If ((Lt, Var (v, _), Int 0L), lt, lf) ->
+      [BT (Var v, Imm 63L); JCC (B, lt); JMP lf]
+  | C.If ((Ge, Int 0L, Var (v, _)), lt, lf) ->
+      [BT (Var v, Imm 63L); JCC (B, lt); JMP lf]
   | C.If ((cmp, Var (v, _), Int i), lt, lf) ->
       let cc = Cc.of_c_cmp cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
@@ -1054,6 +1066,8 @@ and select_instructions_exp type_map float_map a p =
   | C.(Prim (Rem (Int i1, Int i2), _)) ->
       let i = Int64.(rem i1 i2) in
       if Int64.(i = 0L) then [XOR (a, a)] else [MOV (a, Imm i)]
+  | C.(Prim (Rem (Var (v, _), Int 2L), _)) ->
+      [MOV (a, Var v); AND (a, Imm 1L)]
   | C.(Prim (Rem (Var (v, _), Int i), _)) ->
       [ XOR (Reg RDX, Reg RDX)
       ; MOV (Reg RAX, Var v)
@@ -1206,6 +1220,8 @@ and select_instructions_exp type_map float_map a p =
       if Int64.(i1 < i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Lt (Float f1, Float f2), _)) ->
       if Float.(f1 < f2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
+  | C.(Prim (Lt (Var (v, _), Int 0L), _)) ->
+      [BT (Var v, Imm 63L); SETCC (Cc.B, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Lt (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Lt (Int i, Var (v, _)), _)) ->
@@ -1236,6 +1252,8 @@ and select_instructions_exp type_map float_map a p =
       if Float.(f1 <= f2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Le (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.LE, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Le (Int 0L, Var (v, _)), _)) ->
+      [BT (Var v, Imm 63L); SETCC (Cc.AE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Le (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.GE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Le (Var (v, _), Float f), _)) ->
@@ -1268,6 +1286,8 @@ and select_instructions_exp type_map float_map a p =
       if Float.(f1 > f2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Gt (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.G, Bytereg AL); MOVZX (a, Bytereg AL)]
+  | C.(Prim (Gt (Int 0L, Var (v, _)), _)) ->
+      [BT (Var v, Imm 63L); SETCC (Cc.B, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Gt (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.L, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Gt (Var (v, _), Float f), _)) ->
@@ -1294,6 +1314,8 @@ and select_instructions_exp type_map float_map a p =
       if Int64.(i1 >= i2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Ge (Float f1, Float f2), _)) ->
       if Float.(f1 >= f2) then [MOV (a, Imm 1L)] else [XOR (a, a)]
+  | C.(Prim (Ge (Var (v, _), Int 0L), _)) ->
+      [BT (Var v, Imm 63L); SETCC (Cc.AE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Ge (Var (v, _), Int i), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.GE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Ge (Int i, Var (v, _)), _)) ->
@@ -1433,18 +1455,22 @@ and make_cmp cmp al ar =
       (TEST (Var v, Var v), Cc.NE)
   | Neq, _, _ -> assert false
   | Lt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.L)
+  | Lt, Var (v, _), Int 0L -> (BT (Var v, Imm 63L), Cc.B)
   | Lt, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.L)
   | Lt, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.G)
   | Lt, _, _ -> assert false
   | Le, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.LE)
   | Le, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.LE)
+  | Le, Int 0L, Var (v, _) -> (CMP (Var v, Imm 63L), Cc.AE)
   | Le, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.GE)
   | Le, _, _ -> assert false
   | Gt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.G)
   | Gt, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.G)
+  | Gt, Int 0L, Var (v, _) -> (BT (Var v, Imm 63L), Cc.B)
   | Gt, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.L)
   | Gt, _, _ -> assert false
   | Ge, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.GE)
+  | Ge, Var (v, _), Int 0L -> (BT (Var v, Imm 63L), Cc.AE)
   | Ge, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.GE)
   | Ge, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.LE)
   | Ge, _, _ -> assert false
@@ -1687,6 +1713,7 @@ and patch_instructions_instr = function
   | CVTSI2SD ((Deref _ as d), s) ->
       [CVTSI2SD (Xmmreg XMM0, s); MOVSD (d, Xmmreg XMM0)]
   | CVTSD2SI ((Deref _ as d), s) -> [CVTSD2SI (Reg RAX, s); MOV (d, Reg RAX)]
+  | BT (s, (Deref _ as d)) -> [MOV (Reg RAX, d); BT (s, Reg RAX)]
   | instr -> [instr]
 
 let rec uncover_live = function
@@ -2095,6 +2122,7 @@ and allocate_registers_instr colors stack_locs vector_locs float_locs
   | MOVQ (a1, a2) -> MOVQ (color a1, color a2)
   | CVTSI2SD (a1, a2) -> CVTSI2SD (color a1, color a2)
   | CVTSD2SI (a1, a2) -> CVTSD2SI (color a1, color a2)
+  | BT (a1, a2) -> BT (color a1, color a2)
 
 and color_arg colors stack_locs vector_locs float_locs locals_types =
   function
