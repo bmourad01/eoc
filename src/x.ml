@@ -706,6 +706,12 @@ and select_instructions_tail type_map float_map tails t =
     match cmp with
     | Eq -> if Bool.equal b1 b2 then [JMP lt] else [JMP lf]
     | _ -> assert false )
+  | C.If ((Eq, Var (v, _), Int 0L), lt, lf)
+   |C.If ((Eq, Int 0L, Var (v, _)), lt, lf) ->
+      [TEST (Var v, Var v); JCC (E, lt); JMP lf]
+  | C.If ((Neq, Var (v, _), Int 0L), lt, lf)
+   |C.If ((Neq, Int 0L, Var (v, _)), lt, lf) ->
+      [TEST (Var v, Var v); JCC (NE, lt); JMP lf]
   | C.If ((cmp, Var (v, _), Int i), lt, lf) ->
       let cc = Cc.of_c_cmp cmp in
       [CMP (Var v, Imm i); JCC (cc, lt); JMP lf]
@@ -1131,6 +1137,9 @@ and select_instructions_exp type_map float_map a p =
   | C.(Prim (Eq (Bool b1, Bool b2), _)) ->
       if Bool.equal b1 b2 then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Eq (Void, Void), _)) -> [MOV (a, Imm 1L)]
+  | C.(Prim (Eq (Var (v, _), Int 0L), _))
+   |C.(Prim (Eq (Int 0L, Var (v, _)), _)) ->
+      [TEST (Var v, Var v); SETCC (Cc.E, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Eq (Var (v, _), Int i), _))
    |C.(Prim (Eq (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.E, Bytereg AL); MOVZX (a, Bytereg AL)]
@@ -1163,6 +1172,9 @@ and select_instructions_exp type_map float_map a p =
   | C.(Prim (Neq (Bool b1, Bool b2), _)) ->
       if Bool.equal b1 b2 |> not then [MOV (a, Imm 1L)] else [XOR (a, a)]
   | C.(Prim (Neq (Void, Void), _)) -> [XOR (a, a)]
+  | C.(Prim (Neq (Var (v, _), Int 0L), _))
+   |C.(Prim (Neq (Int 0L, Var (v, _)), _)) ->
+      [TEST (Var v, Var v); SETCC (Cc.NE, Bytereg AL); MOVZX (a, Bytereg AL)]
   | C.(Prim (Neq (Var (v, _), Int i), _))
    |C.(Prim (Neq (Int i, Var (v, _)), _)) ->
       [CMP (Var v, Imm i); SETCC (Cc.NE, Bytereg AL); MOVZX (a, Bytereg AL)]
@@ -1401,6 +1413,8 @@ and make_cmp cmp al ar =
   let open C.Cmp in
   match (cmp, al, ar) with
   | Eq, C.Var (v1, _), C.Var (v2, _) -> (CMP (Var v1, Var v2), Cc.E)
+  | Eq, Int 0L, Var (v, _) | Eq, Var (v, _), Int 0L ->
+      (TEST (Var v, Var v), Cc.E)
   | Eq, Int i, Var (v, _) | Eq, Var (v, _), Int i ->
       (CMP (Var v, Imm i), Cc.E)
   | Eq, Bool true, Var (v, _) | Eq, Var (v, _), Bool true ->
@@ -1409,6 +1423,8 @@ and make_cmp cmp al ar =
       (TEST (Var v, Var v), Cc.E)
   | Eq, _, _ -> assert false
   | Neq, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.NE)
+  | Neq, Int 0L, Var (v, _) | Neq, Var (v, _), Int 0L ->
+      (TEST (Var v, Var v), Cc.NE)
   | Neq, Int i, Var (v, _) | Neq, Var (v, _), Int i ->
       (CMP (Var v, Imm i), Cc.NE)
   | Neq, Bool true, Var (v, _) | Neq, Var (v, _), Bool true ->
