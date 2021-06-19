@@ -1461,7 +1461,7 @@ and make_cmp cmp al ar =
   | Lt, _, _ -> assert false
   | Le, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.LE)
   | Le, Var (v, _), Int i -> (CMP (Var v, Imm i), Cc.LE)
-  | Le, Int 0L, Var (v, _) -> (CMP (Var v, Imm 63L), Cc.AE)
+  | Le, Int 0L, Var (v, _) -> (BT (Var v, Imm 63L), Cc.AE)
   | Le, Int i, Var (v, _) -> (CMP (Var v, Imm i), Cc.GE)
   | Le, _, _ -> assert false
   | Gt, Var (v1, _), Var (v2, _) -> (CMP (Var v1, Var v2), Cc.G)
