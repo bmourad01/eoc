@@ -722,7 +722,7 @@ and select_instructions_tail type_map float_map tails t =
       [BT (Var v, Imm 63L); JCC (AE, lt); JMP lf]
   | C.If ((Lt, Var (v, _), Int 0L), lt, lf) ->
       [BT (Var v, Imm 63L); JCC (B, lt); JMP lf]
-  | C.If ((Ge, Int 0L, Var (v, _)), lt, lf) ->
+  | C.If ((Gt, Int 0L, Var (v, _)), lt, lf) ->
       [BT (Var v, Imm 63L); JCC (B, lt); JMP lf]
   | C.If ((cmp, Var (v, _), Int i), lt, lf) ->
       let cc = Cc.of_c_cmp cmp in
