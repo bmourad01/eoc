@@ -623,7 +623,7 @@ and make_type type_map t =
       | _ -> () );
       let n = Map.length !type_map in
       let l = Printf.sprintf "type%d" n in
-      type_map := Map.set !type_map t l;
+      type_map := Map.set !type_map ~key:t ~data:l;
       l
 
 and make_float float_map f =
@@ -632,7 +632,7 @@ and make_float float_map f =
   | None ->
       let n = Map.length !float_map in
       let l = Printf.sprintf "float%d" n in
-      float_map := Map.set !float_map f l;
+      float_map := Map.set !float_map ~key:f ~data:l;
       l
 
 and select_instructions_def type_map float_map = function
@@ -1739,7 +1739,7 @@ and uncover_live_def = function
                 in
                 (live_after' :: live_after, live_before' :: live_before) )
           in
-          Hashtbl.set la_map label live_after;
+          Hashtbl.set la_map ~key:label ~data:live_after;
           List.hd_exn live_before )
         ~bottom:exit_live_set ~join:Set.union ~equal:Args.equal ~rev:true
       |> ignore;
@@ -1878,25 +1878,27 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
     Interference_graph.fold_vertex
       (fun v colors ->
         match v with
-        | Reg RAX -> Map.set colors v (-1)
-        | Reg RSP -> Map.set colors v (-2)
-        | Reg RBP -> Map.set colors v (-3)
-        | Reg R11 -> Map.set colors v (-4)
-        | Reg R14 -> Map.set colors v (-5)
-        | Reg R15 -> Map.set colors v (-6)
-        | Xmmreg XMM0 -> Map.set colors v (-1)
+        | Reg RAX -> Map.set colors ~key:v ~data:(-1)
+        | Reg RSP -> Map.set colors ~key:v ~data:(-2)
+        | Reg RBP -> Map.set colors ~key:v ~data:(-3)
+        | Reg R11 -> Map.set colors ~key:v ~data:(-4)
+        | Reg R14 -> Map.set colors ~key:v ~data:(-5)
+        | Reg R15 -> Map.set colors ~key:v ~data:(-6)
+        | Xmmreg XMM0 -> Map.set colors ~key:v ~data:(-1)
         | _ -> colors )
       g Arg_map.empty
   in
   (* assign registers with their numbers *)
   let colors =
     Array.foldi allocatable_regs ~init:colors ~f:(fun i colors a ->
-        if Interference_graph.mem_vertex g a then Map.set colors a i
+        if Interference_graph.mem_vertex g a then
+          Map.set colors ~key:a ~data:i
         else colors )
   in
   let colors =
     Array.foldi allocatable_xmm_regs ~init:colors ~f:(fun i colors a ->
-        if Interference_graph.mem_vertex g a then Map.set colors a i
+        if Interference_graph.mem_vertex g a then
+          Map.set colors ~key:a ~data:i
         else colors )
   in
   let colors = ref colors in
@@ -1931,7 +1933,7 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
     (fun u ->
       match u with
       | Arg.Var v when is_temp_var_name v ->
-          Hashtbl.set tokens v (Pairing_heap.add_removable q u)
+          Hashtbl.set tokens ~key:v ~data:(Pairing_heap.add_removable q u)
       | _ -> () )
     g;
   let rec loop () =
@@ -1971,13 +1973,14 @@ let color_graph ?(bias = Interference_graph.empty) g locals_types =
               !c
         in
         (* assign the color and then update all neighbors *)
-        colors := Map.set !colors u c;
+        colors := Map.set !colors ~key:u ~data:c;
         Interference_graph.iter_succ
           (function
             | Arg.Var v' as v when is_temp_var_name v' ->
                 if not (Map.mem !colors v) then
                   let token = Hashtbl.find_exn tokens v' in
-                  Hashtbl.set tokens v' (Pairing_heap.update q token v)
+                  Hashtbl.set tokens ~key:v'
+                    ~data:(Pairing_heap.update q token v)
             | _ -> () )
           g u;
         loop ()
@@ -2059,7 +2062,7 @@ and compute_locations ?(vector = false) ?(flt = false) colors locals_types =
   else
     let color_map, _ =
       Set.fold stack_colors ~init:(Int.Map.empty, -word_size)
-        ~f:(fun (m, off) c -> (Map.set m c off, off - word_size))
+        ~f:(fun (m, off) c -> (Map.set m ~key:c ~data:off, off - word_size))
     in
     Map.filter_mapi colors ~f:(fun ~key ~data ->
         match key with
@@ -2159,7 +2162,7 @@ and remove_jumps_def = function
 and remove_jumps_aux cfg blocks =
   let afters = Hashtbl.create (module Label) in
   List.iter (interleave_pairs blocks) ~f:(fun (x, y) ->
-      Hashtbl.set afters x y );
+      Hashtbl.set afters ~key:x ~data:y );
   let blocks' = Hashtbl.of_alist_exn (module Label) blocks in
   let merged = Hashtbl.create (module Label) in
   let merge_info info info' =
@@ -2187,7 +2190,7 @@ and remove_jumps_aux cfg blocks =
                   Hashtbl.find_exn blocks' label'
                 in
                 let instrs = List.drop_last_exn instrs @ instrs' in
-                Hashtbl.set merged label' label;
+                Hashtbl.set merged ~key:label' ~data:label;
                 Some (label, Block (label, merge_info info info', instrs)) )
               else
                 (* if we're jumping to the immediate next block then

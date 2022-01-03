@@ -22,8 +22,8 @@ module Make (Vertex : S) = struct
     let worklist = Queue.create () in
     iter_vertex
       (fun v ->
-        Hashtbl.set mapping v bottom;
-        Queue.enqueue worklist v)
+        Hashtbl.set mapping ~key:v ~data:bottom;
+        Queue.enqueue worklist v )
       cfg;
     let f_fold, f_iter =
       if rev then (fold_succ, iter_pred) else (fold_pred, iter_succ)
@@ -39,7 +39,7 @@ module Make (Vertex : S) = struct
           in
           let output = transfer node input in
           if not (equal output (Hashtbl.find_exn mapping node)) then (
-            Hashtbl.set mapping node output;
+            Hashtbl.set mapping ~key:node ~data:output;
             f_iter (Queue.enqueue worklist) cfg node );
           loop ()
     in

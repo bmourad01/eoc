@@ -100,12 +100,12 @@ let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
       let m2 = free_vars_of_exp e2 ~bnd in
       let m3 = free_vars_of_exp e3 ~bnd in
       List.fold [m2; m3] ~init:m1 ~f:(fun acc m ->
-          Map.merge_skewed acc m ~combine)
+          Map.merge_skewed acc m ~combine )
   | Apply (e, es, _) ->
       let m = free_vars_of_exp e ~bnd in
       let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
       List.fold ms ~init:m ~f:(fun acc m ->
-          Map.merge_skewed acc m ~combine:(fun ~key v _ -> v))
+          Map.merge_skewed acc m ~combine:(fun ~key v _ -> v) )
   | Lambda (args, _, e) ->
       let bnd =
         List.fold args ~init:bnd ~f:(fun bnd (x, _) -> Set.add bnd x)
@@ -124,7 +124,7 @@ let rec free_vars_of_exp ?(bnd = String.Set.empty) = function
       let m = free_vars_of_exp e ~bnd in
       let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
       List.fold (m :: List.tl_exn ms) ~init:(List.hd_exn ms) ~f:(fun acc m ->
-          Map.merge_skewed acc m ~combine)
+          Map.merge_skewed acc m ~combine )
   | While (e1, e2) ->
       let m1 = free_vars_of_exp e1 ~bnd in
       let m2 = free_vars_of_exp e2 ~bnd in
@@ -166,7 +166,7 @@ and free_vars_of_prim ?(bnd = String.Set.empty) = function
       let ms = List.map es ~f:(free_vars_of_exp ~bnd) in
       List.(
         fold (tl_exn ms) ~init:(hd_exn ms) ~f:(fun acc m ->
-            Map.merge_skewed acc m ~combine))
+            Map.merge_skewed acc m ~combine ))
 
 and combine ~key:_ (t, n1) (_, n2) = (t, n1 + n2)
 
@@ -178,7 +178,7 @@ and string_of_def = function
   | Def (v, args, t, e) ->
       let s =
         List.map args ~f:(fun (a, t) ->
-            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+            Printf.sprintf "[%s : %s]" a (Type.to_string t) )
         |> String.concat ~sep:" "
       in
       if String.is_empty s then
@@ -209,7 +209,7 @@ and string_of_exp = function
   | Lambda (args, t, e) ->
       let s =
         List.map args ~f:(fun (a, t) ->
-            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+            Printf.sprintf "[%s : %s]" a (Type.to_string t) )
         |> String.concat ~sep:" "
       in
       Printf.sprintf "(lambda: (%s) : %s %s)" s (Type.to_string t)
@@ -595,7 +595,7 @@ and opt_exp n a env = function
   | Let (v, e1, e2, t) ->
       let e1 = opt_exp n a env e1 in
       let default () = Let (v, e1, opt_exp n a (Map.remove env v) e2, t) in
-      let prop () = opt_exp n a (Map.set env v e1) e2 in
+      let prop () = opt_exp n a (Map.set env ~key:v ~data:e1) e2 in
       if not (Set.mem a v) then
         let fvs = free_vars_of_exp e2 in
         let is_pure = is_pure_exp a e1 in
@@ -634,17 +634,17 @@ and opt_exp n a env = function
           let vs', vars =
             List.map ts ~f:(fun t ->
                 let v = fresh_var n in
-                (Var (v, t), v))
+                (Var (v, t), v) )
             |> List.unzip
           in
           let exp =
             List.zip_exn xs vs'
             |> List.fold_right ~init:body ~f:(fun (x, e) acc ->
-                   Let (x, e, acc, tret))
+                   Let (x, e, acc, tret) )
           in
           List.zip_exn vars es'
           |> List.fold_right ~init:exp ~f:(fun (x, e) acc ->
-                 Let (x, e, acc, tret))
+                 Let (x, e, acc, tret) )
           |> opt_exp n a env
       | e' -> Apply (e', es', t) )
   | Funref _ as f -> f
@@ -729,7 +729,7 @@ let fix_def_name ?(d = true) =
     | '-' when d -> '_'
     | '\'' -> 'p'
     | '?' -> 'q'
-    | c -> c)
+    | c -> c )
 
 (* make sure that there are no name conflicts *)
 let fix_def_name' denv name =
@@ -748,7 +748,7 @@ let rec type_check = function
             ( match Hash_set.strict_add names v with
             | Error _ ->
                 typeerr ("R_typed.type_check: redefined function " ^ v)
-            | Ok () -> (v, Type.Arrow (List.map args ~f:snd, t)) ))
+            | Ok () -> (v, Type.Arrow (List.map args ~f:snd, t)) ) )
         |> String.Map.of_alist_exn
       in
       let defs = List.map defs ~f:(type_check_def denv) in
@@ -793,7 +793,7 @@ and type_check_exp env denv = function
       ) )
   | R.Let (v, e1, e2) ->
       let t1, e1 = type_check_exp env denv e1 in
-      let t2, e2 = type_check_exp (Map.set env v t1) denv e2 in
+      let t2, e2 = type_check_exp (Map.set env ~key:v ~data:t1) denv e2 in
       (t2, Let (v, e1, e2, t2))
   | R.Letm (bnd, e) ->
       let ts, es =
@@ -806,18 +806,18 @@ and type_check_exp env denv = function
         List.(
           zip_exn xs ts
           |> fold ~init:env ~f:(fun env (x, t) ->
-                 match Map.add env x t with
+                 match Map.add env ~key:x ~data:t with
                  | `Ok env -> env
                  | `Duplicate ->
                      typeerr
                        ( "R_typed.type_check_exp: let variable " ^ x
-                       ^ " shadows an existing binding" )))
+                       ^ " shadows an existing binding" ) ))
       in
       let t, e = type_check_exp env denv e in
       ( t
       , List.(
           fold_right (zip_exn xs es) ~init:e ~f:(fun (x, e) acc ->
-              Let (x, e, acc, t))) )
+              Let (x, e, acc, t) )) )
   | R.If (e1, e2, e3) -> (
     match type_check_exp env denv e1 with
     | Type.Boolean, e1' ->
@@ -854,7 +854,7 @@ and type_check_exp env denv = function
                     ^ R.string_of_exp (List.nth_exn es i)
                     ^ " has type " ^ Type.to_string t2
                     ^ " but an expression of type " ^ Type.to_string t1
-                    ^ " was expected" ));
+                    ^ " was expected" ) );
             (tret, Apply (e', es', tret)) )
       | _ ->
           typeerr
@@ -863,7 +863,8 @@ and type_check_exp env denv = function
             ^ "; it is not a function and cannot be applied" ) )
   | R.Lambda (args, t, e) -> (
       let env =
-        List.fold args ~init:env ~f:(fun env (x, t) -> Map.set env x t)
+        List.fold args ~init:env ~f:(fun env (x, t) ->
+            Map.set env ~key:x ~data:t )
       in
       match type_check_exp env denv e with
       | t', e' when Type.equal t t' ->
@@ -898,7 +899,7 @@ and type_check_exp env denv = function
                 typeerr
                   ( "R_typed.type_check_exp: begin expression "
                   ^ R.string_of_exp e ^ " has type " ^ Type.to_string t
-                  ^ " but an expression of type Void was expected" )));
+                  ^ " but an expression of type Void was expected" ) ));
       let t', e' = type_check_exp env denv e in
       (t', Begin (es', e', t'))
   | R.When (e, es) -> (
@@ -915,7 +916,7 @@ and type_check_exp env denv = function
                   typeerr
                     ( "R_typed.type_check_exp: when expression "
                     ^ R.string_of_exp e ^ " has type " ^ Type.to_string t
-                    ^ " but an expression of type Void was expected" )));
+                    ^ " but an expression of type Void was expected" ) ));
         let len = List.length es' in
         ( Type.Void
         , If
@@ -942,7 +943,7 @@ and type_check_exp env denv = function
                   typeerr
                     ( "R_typed.type_check_exp: unless expression "
                     ^ R.string_of_exp e ^ " has type " ^ Type.to_string t
-                    ^ " but an expression of type Void was expected" )));
+                    ^ " but an expression of type Void was expected" ) ));
         let len = List.length es' in
         ( Type.Void
         , If
@@ -1518,7 +1519,7 @@ and interp_exp ?(read = None) menv env defs = function
       | Some e -> e ) )
   | Let (v, e1, e2, _) ->
       let e1 = interp_exp menv env defs e1 ~read in
-      interp_exp menv (Map.set env v e1) defs e2 ~read
+      interp_exp menv (Map.set env ~key:v ~data:e1) defs e2 ~read
   | If (e1, e2, e3, _) -> (
     match interp_exp menv env defs e1 ~read with
     | `Bool true -> interp_exp menv env defs e2 ~read
@@ -1538,7 +1539,7 @@ and interp_exp ?(read = None) menv env defs = function
         let env =
           List.(
             fold (zip_exn args es) ~init:env' ~f:(fun acc (x, e) ->
-                Map.set acc x e))
+                Map.set acc ~key:x ~data:e ))
         in
         interp_exp menv env defs e' ~read
     | _ -> assert false )
@@ -1546,7 +1547,8 @@ and interp_exp ?(read = None) menv env defs = function
   | Lambda (args, _, e) -> `Function (env, List.map args ~f:fst, e)
   | Setbang (v, e) ->
       let e' = interp_exp menv env defs e ~read in
-      Hashtbl.set menv v e'; `Void
+      Hashtbl.set menv ~key:v ~data:e';
+      `Void
   | Begin (es, e, _) ->
       List.iter es ~f:(fun e -> interp_exp menv env defs e ~read |> ignore);
       interp_exp menv env defs e ~read
@@ -1731,7 +1733,7 @@ and uniquify_def = function
       let m, args =
         let n = 0 in
         List.fold args ~init:(empty_var_env, []) ~f:(fun (m, args) (x, t) ->
-            (Map.set m x n, (newvar x n, t) :: args))
+            (Map.set m ~key:x ~data:n, (newvar x n, t) :: args) )
       in
       Def (v, List.rev args, t, uniquify_exp m (ref 0) e)
 
@@ -1748,7 +1750,7 @@ and uniquify_exp m n = function
   | Let (v, e1, e2, t) ->
       let e1 = uniquify_exp m n e1 in
       let n' = incr n; !n in
-      let e2 = uniquify_exp (Map.set m v n') n e2 in
+      let e2 = uniquify_exp (Map.set m ~key:v ~data:n') n e2 in
       Let (newvar v n', e1, e2, t)
   | If (e1, e2, e3, t) ->
       If (uniquify_exp m n e1, uniquify_exp m n e2, uniquify_exp m n e3, t)
@@ -1759,7 +1761,7 @@ and uniquify_exp m n = function
       let args, m =
         List.fold args ~init:([], m) ~f:(fun (args, m) (x, t) ->
             let n = incr n; !n in
-            ((newvar x n, t) :: args, Map.set m x n))
+            ((newvar x n, t) :: args, Map.set m ~key:x ~data:n) )
       in
       Lambda (List.rev args, t, uniquify_exp m n e)
   | Setbang (v, e) -> (
@@ -1890,7 +1892,7 @@ and recompute_types_exp defs env = function
   | Let (v, e1, e2, t) ->
       let e1 = recompute_types_exp defs env e1 in
       let t1 = typeof_exp e1 in
-      let e2 = recompute_types_exp defs (Map.set env v t1) e2 in
+      let e2 = recompute_types_exp defs (Map.set env ~key:v ~data:t1) e2 in
       Let (v, e1, e2, typeof_exp e2)
   | If (e1, e2, e3, t) ->
       let e1 = recompute_types_exp defs env e1 in
@@ -1917,7 +1919,8 @@ and recompute_types_exp defs env = function
       Funref (v, t)
   | Lambda (args, _, e) ->
       let env =
-        List.fold args ~init:env ~f:(fun env (x, t) -> Map.set env x t)
+        List.fold args ~init:env ~f:(fun env (x, t) ->
+            Map.set env ~key:x ~data:t )
       in
       let e = recompute_types_exp defs env e in
       Lambda (args, typeof_exp e, e)
@@ -2065,7 +2068,7 @@ and convert_assignments_def = function
         List.fold args ~init:([], []) ~f:(fun (args, renamed_args) (x, t) ->
             if Set.mem inter x then
               (("_param_" ^ x, t) :: args, (x, t) :: renamed_args)
-            else ((x, t) :: args, renamed_args))
+            else ((x, t) :: args, renamed_args) )
       in
       let e = convert_assignments_exp a f e in
       let renamed_args = List.rev renamed_args in
@@ -2075,7 +2078,7 @@ and convert_assignments_def = function
               ( x
               , Prim (Vector [Var ("_param_" ^ x, t)], Type.Vector [t])
               , e
-              , typ ))
+              , typ ) )
       in
       Def (v, List.rev args', typ, e)
 
@@ -2112,7 +2115,7 @@ and convert_assignments_exp a f = function
         List.fold args ~init:([], []) ~f:(fun (args, renamed_args) (x, t) ->
             if Set.mem inter x then
               (("_param_" ^ x, t) :: args, (x, t) :: renamed_args)
-            else ((x, t) :: args, renamed_args))
+            else ((x, t) :: args, renamed_args) )
       in
       let e = convert_assignments_exp a f e in
       let renamed_args = List.rev renamed_args in
@@ -2122,7 +2125,7 @@ and convert_assignments_exp a f = function
               ( x
               , Prim (Vector [Var ("_param_" ^ x, t)], Type.Vector [t])
               , e
-              , typ ))
+              , typ ) )
       in
       Lambda (List.rev args', typ, e)
   | Setbang (v, e) as s ->
@@ -2281,7 +2284,7 @@ and convert_to_closures_def escaped n = function
             match t with
             | Type.Arrow (targs, tret) ->
                 (x, Type.(Vector [Arrow (targs, tret); Vector [Trustme]]))
-            | _ -> (x, t))
+            | _ -> (x, t) )
       in
       let e', new_defs =
         convert_to_closures_exp escaped (String.Map.of_alist_exn args) n e
@@ -2311,7 +2314,9 @@ and convert_to_closures_exp escaped env n = function
   | Let (v, e1, e2, t) ->
       let e1, new_defs1 = convert_to_closures_exp escaped env n e1 in
       let e2, new_defs2 =
-        convert_to_closures_exp escaped (Map.set env v (typeof_exp e1)) n e2
+        convert_to_closures_exp escaped
+          (Map.set env ~key:v ~data:(typeof_exp e1))
+          n e2
       in
       let t = typeof_exp e2 in
       (Let (v, e1, e2, t), new_defs1 @ new_defs2)
@@ -2359,7 +2364,8 @@ and convert_to_closures_exp escaped env n = function
       let clo_arg = ("_c", ct) in
       let e, new_defs =
         let env =
-          List.fold args ~init:env ~f:(fun env (x, t) -> Map.set env x t)
+          List.fold args ~init:env ~f:(fun env (x, t) ->
+              Map.set env ~key:x ~data:t )
         in
         convert_to_closures_exp escaped env n e
       in
@@ -2368,7 +2374,8 @@ and convert_to_closures_exp escaped env n = function
         List.fold_right free_vars
           ~init:(e, List.length free_vars - 1)
           ~f:(fun (x, (t, _)) (e, i) ->
-            (Let (x, Prim (Vectorref (Var ("_c", ct), i), t), e, et), i - 1))
+            (Let (x, Prim (Vectorref (Var ("_c", ct), i), t), e, et), i - 1)
+            )
       in
       let ft = Type.Arrow (List.map args ~f:snd, t) in
       let new_defs = Def (d, clo_arg :: args, t, new_body) :: new_defs in
@@ -2518,7 +2525,7 @@ and limit_functions_def = function
       else
         let args1, args2 =
           List.foldi args ~init:([], []) ~f:(fun i (a1, a2) a ->
-              if i + 1 < max_args then (a :: a1, a2) else (a1, a :: a2))
+              if i + 1 < max_args then (a :: a1, a2) else (a1, a :: a2) )
         in
         let args1 = List.rev args1 in
         let args2 = List.rev args2 in
@@ -2532,7 +2539,7 @@ and limit_functions_def = function
                   , Prim (Vectorref (Var ("_args", snd vec_arg), i), t')
                   , e
                   , t )
-              , i - 1 ))
+              , i - 1 ) )
         in
         Def (v, args1 @ [vec_arg], t, e')
 
@@ -2550,7 +2557,7 @@ and limit_functions_exp defs = function
     | Type.Arrow (targs, tret) when List.length targs > max_args ->
         let args1, args2 =
           List.foldi targs ~init:([], []) ~f:(fun i (a1, a2) a ->
-              if i + 1 < max_args then (a :: a1, a2) else (a1, a :: a2))
+              if i + 1 < max_args then (a :: a1, a2) else (a1, a :: a2) )
         in
         let args1 = List.rev args1 in
         let args2 = List.rev args2 in
@@ -2572,7 +2579,7 @@ and limit_functions_exp defs = function
       else
         let args1, args2 =
           List.foldi es ~init:([], []) ~f:(fun i (a1, a2) a ->
-              if i + 1 < max_args then (a :: a1, a2) else (a1, a :: a2))
+              if i + 1 < max_args then (a :: a1, a2) else (a1, a :: a2) )
         in
         let args1 = List.rev args1 in
         let args2 = List.rev args2 in

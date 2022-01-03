@@ -110,12 +110,12 @@ and string_of_def = function
   | Def (v, args, t, info, tails) ->
       let s =
         List.map args ~f:(fun (a, t) ->
-            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+            Printf.sprintf "[%s : %s]" a (Type.to_string t) )
         |> String.concat ~sep:" "
       in
       let tls =
         List.map tails ~f:(fun (l, t) ->
-            Printf.sprintf "(%s:\n  %s)" l (string_of_tail t))
+            Printf.sprintf "(%s:\n  %s)" l (string_of_tail t) )
         |> String.concat ~sep:"\n "
       in
       if String.is_empty s then
@@ -260,7 +260,8 @@ and interp_tail ?(read = None) env defs tails = function
         let as' = List.map as' ~f:(interp_atom env defs ~read) in
         let env =
           List.zip_exn (List.map args ~f:fst) as'
-          |> List.fold ~init:!env ~f:(fun env (x, a) -> Map.set env x a)
+          |> List.fold ~init:!env ~f:(fun env (x, a) ->
+                 Map.set env ~key:x ~data:a )
           |> ref
         in
         let tails = Label.Map.of_alist_exn tails in
@@ -273,7 +274,7 @@ and interp_tail ?(read = None) env defs tails = function
 and interp_stmt ?(read = None) env defs = function
   | Assign (v, e) ->
       let e = interp_exp env defs e ~read in
-      env := Map.set !env v e
+      env := Map.set !env ~key:v ~data:e
   | Collect _ -> ()
   | Callstmt (a, as') -> (
     match interp_atom env defs a ~read with
@@ -305,7 +306,7 @@ and interp_stmt ?(read = None) env defs = function
     match interp_cmp env defs cmp ~read with
     | `Bool true ->
         let a = interp_atom env defs a ~read in
-        env := Map.set !env v a
+        env := Map.set !env ~key:v ~data:a
     | `Bool false -> ()
     | _ -> assert false )
 
@@ -484,7 +485,7 @@ let massage_cfg cfg tails v =
       Cfg.fold_succ
         (fun v (s, res) ->
           if Set.mem s v then (s, res)
-          else traverse_dfs_post v Set.(add s v) res)
+          else traverse_dfs_post v Set.(add s v) res )
         cfg v (s, res)
     in
     (s, v :: res)
@@ -492,13 +493,13 @@ let massage_cfg cfg tails v =
   let visited, labels = traverse_dfs_post v Label.Set.(singleton v) [] in
   let tails =
     List.fold_right labels ~init:[] ~f:(fun l acc ->
-        (l, Hashtbl.find_exn tails l) :: acc)
+        (l, Hashtbl.find_exn tails l) :: acc )
   in
   (* purge unreachable nodes from the CFG *)
   let cfg =
     Cfg.fold_vertex
       (fun v acc ->
-        if Set.mem visited v then acc else Cfg.remove_vertex acc v)
+        if Set.mem visited v then acc else Cfg.remove_vertex acc v )
       cfg cfg
   in
   (cfg, tails)
@@ -514,7 +515,7 @@ and explicate_control_def nvars = function
       (* compile to a C program by flattening control flow *)
       let tails = Hashtbl.create (module Label) in
       let nv = ref (Map.find_exn nvars v) in
-      Hashtbl.set tails v (explicate_tail v tails nv (ref 0) e);
+      Hashtbl.set tails ~key:v ~data:(explicate_tail v tails nv (ref 0) e);
       (* construct the CFG *)
       let cfg =
         Hashtbl.fold tails
@@ -528,13 +529,13 @@ and explicate_control_def nvars = function
                   Cfg.(add_edge (add_edge cfg label lt) label lf)
               | Tailcall _ -> cfg
             in
-            aux tail)
+            aux tail )
       in
       let cfg, tails = massage_cfg cfg tails v in
       (* map local variables to their types *)
       let locals_types =
         List.fold args ~init:String.Map.empty ~f:(fun locals_types (x, t) ->
-            Map.set locals_types x t)
+            Map.set locals_types ~key:x ~data:t )
       in
       let locals_types =
         List.fold tails ~init:locals_types ~f:(fun locals_types (_, tail) ->
@@ -545,7 +546,7 @@ and explicate_control_def nvars = function
               | If _ -> env
               | Tailcall _ -> env
             and aux_stmt env = function
-              | Assign (v, e) -> Map.set env v (typeof_exp e)
+              | Assign (v, e) -> Map.set env ~key:v ~data:(typeof_exp e)
               | Collect _ -> env
               | Callstmt _ -> env
               | Vectorsetstmt _ -> env
@@ -553,7 +554,7 @@ and explicate_control_def nvars = function
               | Printstmt _ -> env
               | Assignwhen _ -> env
             in
-            aux_tail locals_types tail)
+            aux_tail locals_types tail )
       in
       Def
         ( v
@@ -934,7 +935,7 @@ and fresh_var n =
   let v = Printf.sprintf "%%%d" !n in
   incr n; v
 
-and add_tail tails l t = Hashtbl.set tails l t
+and add_tail tails l t = Hashtbl.set tails ~key:l ~data:t
 
 let rec optimize_jumps = function
   | Program (info, defs) ->
@@ -952,7 +953,7 @@ and optimize_jumps_aux cfg tails =
     List.filter_map tails ~f:(fun (label, tail) ->
         match tail with
         | Goto label' -> Some (label, label')
-        | _ -> None)
+        | _ -> None )
     |> Hashtbl.of_alist_exn (module Label)
   in
   let rec find_single ?(visited = Label.Set.empty) l =
@@ -1011,7 +1012,7 @@ and optimize_jumps_aux cfg tails =
             | Tailcall _ as t -> t
           in
           let tail = aux tail in
-          (!cfg, (label, tail) :: tails, !changed))
+          (!cfg, (label, tail) :: tails, !changed) )
   in
   let tails = List.rev tails in
   if changed then optimize_jumps_aux cfg tails else (cfg, tails)

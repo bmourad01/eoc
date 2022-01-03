@@ -69,7 +69,7 @@ and string_of_def = function
   | Def (v, args, t, e) ->
       let s =
         List.map args ~f:(fun (a, t) ->
-            Printf.sprintf "[%s : %s]" a (Type.to_string t))
+            Printf.sprintf "[%s : %s]" a (Type.to_string t) )
         |> String.concat ~sep:" "
       in
       if String.is_empty s then
@@ -168,17 +168,17 @@ and resolve_complex_def nvars = function
       let m =
         List.map args ~f:(fun (x, t) ->
             let x' = fresh_var n in
-            (x, Var (x', t)))
+            (x, Var (x', t)) )
         |> String.Map.of_alist_exn
       in
       let args =
         List.map args ~f:(fun (x, t) ->
             match Map.find_exn m x with
             | Var (x', _) -> (x', t)
-            | _ -> assert false)
+            | _ -> assert false )
       in
       let e = resolve_complex_exp m n e in
-      nvars := Map.set !nvars v !n;
+      nvars := Map.set !nvars ~key:v ~data:!n;
       Def (v, args, t, e)
 
 and resolve_complex_atom m n = function
@@ -342,7 +342,7 @@ and resolve_complex_atom m n = function
     | Some e -> ([], e) )
   | R_alloc.Let (v, e1, e2, _) ->
       let nv1, a1 = resolve_complex_atom m n e1 in
-      let nv2, a2 = resolve_complex_atom (Map.set m v a1) n e2 in
+      let nv2, a2 = resolve_complex_atom (Map.set m ~key:v ~data:a1) n e2 in
       (nv1 @ nv2, a2)
   | R_alloc.If (e1, e2, e3, t) ->
       let e =
@@ -517,7 +517,9 @@ and resolve_complex_exp m n = function
       Let
         ( x
         , resolve_complex_exp m n e1
-        , resolve_complex_exp (Map.set m v (Var (x, typeof' e1))) n e2
+        , resolve_complex_exp
+            (Map.set m ~key:v ~data:(Var (x, typeof' e1)))
+            n e2
         , t )
   | R_alloc.If (e1, e2, e3, t) ->
       If
@@ -560,7 +562,7 @@ and fresh_var n =
 
 and unfold nv e =
   List.fold_right nv ~init:e ~f:(fun (v, e) acc ->
-      Let (v, e, acc, typeof_exp acc))
+      Let (v, e, acc, typeof_exp acc) )
 
 and typeof' = function
   | R_alloc.Int _ -> Type.Integer
